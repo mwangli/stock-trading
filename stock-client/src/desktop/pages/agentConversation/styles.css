@@ -1,4 +1,4 @@
-/* Hallmark · checked: 2026-11-02 · app screen · Blue Ledger · AI_GENERATE_START -- */
+/* Hallmark · checked: 2026-11-02 · app screen · Blue Ledger · AI_GENERATE_START --- */
 .agent-conversation-layout { display: grid; height: calc(100dvh - 112px); min-height: 620px; grid-template-columns: minmax(0, 1fr); gap: 12px; }
 .agent-panel { border-color: var(--border-color) !important; border-radius: 0; background: var(--panel-bg) !important; box-shadow: none; }
 .agent-chat-panel { width: 100%; min-height: 0; border-color: color-mix(in srgb, var(--brand) 18%, var(--border-color)) !important; }
@@ -40,21 +40,6 @@
 .agent-composer-row { align-items: flex-end; }
 .agent-question-input.ant-input { min-height: 56px; padding: 10px 12px; line-height: 1.5; resize: none; }
 .agent-send-button.ant-btn { min-width: 82px; height: 56px; flex: 0 0 auto; padding-inline: 18px; }
-.development-task-view { display: flex; max-width: 960px; margin: 0 auto; flex-direction: column; gap: 20px; }
-.development-task-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--border-color); padding-bottom: 16px; }
-.development-step-list { display: grid; grid-template-columns: repeat(6, minmax(92px, 1fr)); gap: 8px; overflow-x: auto; padding-bottom: 4px; }
-.development-step { display: flex; min-width: 92px; min-height: 72px; align-items: center; justify-content: center; flex-direction: column; gap: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--panel-bg); color: var(--text-secondary); font-size: 12px; }
-.development-step > span { display: inline-flex; width: 26px; height: 26px; align-items: center; justify-content: center; border: 1px solid currentColor; border-radius: 50%; }
-.development-step.is-active { border-color: var(--brand); background: var(--brand-soft); color: var(--brand); }
-.development-step.is-complete { color: #16a34a; }
-.development-task-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: 1px solid var(--border-color); border-left: 1px solid var(--border-color); }
-.development-task-summary > div { display: flex; min-height: 56px; align-items: center; justify-content: space-between; gap: 12px; border-right: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); padding: 10px 12px; }
-.development-task-summary span { color: var(--text-secondary); font-size: 12px; }
-.development-task-summary strong { min-width: 0; overflow-wrap: anywhere; color: var(--text-primary); text-align: right; font-size: 13px; }
-.development-file-list { display: flex; flex-direction: column; gap: 8px; }
-.development-file-list code { overflow-wrap: anywhere; border-left: 3px solid var(--brand); background: var(--panel-bg); color: var(--text-secondary); padding: 8px 10px; font-size: 12px; }
-.development-workflow-link { display: inline-flex; width: fit-content; align-items: center; gap: 8px; color: var(--brand); font-weight: 600; }
-.development-failure { border-left: 3px solid #dc2626; background: color-mix(in srgb, #dc2626 8%, var(--panel-bg)); color: #dc2626; padding: 12px; white-space: pre-wrap; }
 .agent-conversation-page .bg-white { background: var(--panel-bg) !important; }
 .agent-conversation-page .bg-slate-50 { background: var(--panel-muted) !important; }
 .agent-conversation-page .bg-emerald-50 { background: var(--brand-soft) !important; color: var(--text-primary) !important; }
@@ -137,11 +122,9 @@
   .agent-composer > div { gap: 8px; }
   .agent-composer .ant-btn { width: 44px; min-width: 44px; height: 44px; padding-inline: 0; font-size: 0; }
   .agent-composer .ant-btn .anticon { margin-inline-end: 0; font-size: 16px; }
-  .development-task-heading { flex-direction: column; }
-  .development-task-summary { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .agent-conversation-page * { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
 }
-/* AI_GENERATE_END -- */
+/* AI_GENERATE_END --- */

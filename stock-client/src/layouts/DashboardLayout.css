@@ -1,4 +1,4 @@
-/* AI_GENERATE_START -- */
+/* AI_GENERATE_START --- */
 @media (max-width: 991px) {
   .app-mobile-navigation-drawer .ant-drawer-content,
   .app-mobile-user-drawer .ant-drawer-content {
@@ -57,5 +57,33 @@
     background: var(--brand-soft);
     color: var(--brand);
   }
+  .app-mobile-navigation-drawer .ant-drawer-header {
+    min-height: 52px;
+    padding: 6px 8px;
+  }
+
+  .app-mobile-navigation-drawer .ant-drawer-title {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 14px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .app-mobile-navigation-drawer .ant-drawer-close {
+    width: 40px;
+    height: 40px;
+    margin-inline-end: 0;
+    padding: 0;
+  }
+
+  .app-mobile-navigation-drawer .ant-drawer-body {
+    padding: 6px;
+  }
+
+  .app-mobile-navigation-menu .ant-menu-item {
+    padding-inline: 10px !important;
+    font-size: 13px;
+  }
 }
-/* AI_GENERATE_END -- */
+/* AI_GENERATE_END --- */

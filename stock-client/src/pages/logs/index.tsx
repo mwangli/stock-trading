@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----------
+// AI_GENERATE_START------------
 import './styles.css';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Space, Switch, Tag } from 'antd';
@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { usePageHeader } from '../../layouts/PageHeaderContext';
 import request from '../../utils/request';
 import type { ApiResponse } from '../../utils/api';
+import LogSearchBar, { LogSearchButton, useLogSearch } from '../../components/LogSearch';
 
 type LogState = 'offline' | 'missing' | 'empty' | 'live' | 'error';
 
@@ -36,6 +37,11 @@ const Logs: React.FC = () => {
   const logsContainerRef = useRef<HTMLDivElement | null>(null);
   const isMobileRef = useRef(window.matchMedia(MOBILE_BREAKPOINT_QUERY).matches);
   const mobileFollowRef = useRef(true);
+  const suspendLogFollowing = useCallback(() => {
+    setAutoScroll(false);
+    mobileFollowRef.current = false;
+  }, []);
+  const logSearch = useLogSearch({ logs, containerRef: logsContainerRef, onNavigate: suspendLogFollowing });
 
   useEffect(() => {
     const mediaQuery = window.matchMedia(MOBILE_BREAKPOINT_QUERY);
@@ -142,6 +148,7 @@ const Logs: React.FC = () => {
     <div className="app-page logs-page h-full min-h-[520px]">
       <div className="logs-toolbar flex flex-wrap items-center justify-end gap-3">
         <Tag color={status.color}>{status.label}</Tag>
+        <LogSearchButton search={logSearch} />
         <div className="logs-desktop-actions">
           <Space className="rounded border border-[var(--border-color)] px-3 py-1.5">
             <span className="text-sm text-[var(--text-secondary)]">{t('logs.autoScroll')}</span>
@@ -152,6 +159,7 @@ const Logs: React.FC = () => {
           </Button>
         </div>
       </div>
+      <LogSearchBar search={logSearch} />
       <div className="logs-console relative flex min-h-0 flex-1 flex-col overflow-hidden font-mono text-sm">
         <div
           ref={logsContainerRef}
@@ -167,7 +175,7 @@ const Logs: React.FC = () => {
               className="logs-line"
             >
               <span className="logs-line-number">#{String(index + 1).padStart(4, '0')}</span>
-              <span className="logs-line-content">{log}</span>
+              <span className="logs-line-content">{logSearch.renderHighlightedLine(log, index)}</span>
             </div>
           ))}
         </div>
@@ -177,4 +185,4 @@ const Logs: React.FC = () => {
 };
 
 export default Logs;
-// AI_GENERATE_END-----------
+// AI_GENERATE_END------------

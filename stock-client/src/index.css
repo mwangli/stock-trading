@@ -1,4 +1,4 @@
-/* AI_GENERATE_START-------------------------------------------------------- */
+/* AI_GENERATE_START--------------------------------------------------------- */
 @import "tailwindcss";
 
 :root,
@@ -311,8 +311,7 @@ button,
   padding: 0;
 }
 
-.app-sidebar-backdrop,
-.app-mobile-page-indicator { display: none; }
+.app-sidebar-backdrop { display: none; }
 
 .app-main-layout {
   min-width: 0;
@@ -1461,54 +1460,6 @@ button,
   .app-sidebar,
   .app-sidebar-backdrop { display: none !important; }
 
-  .app-mobile-page-indicator {
-    position: fixed;
-    bottom: env(safe-area-inset-bottom);
-    left: 50%;
-    z-index: 35;
-    display: flex;
-    width: max-content;
-    height: 44px;
-    align-items: flex-end;
-    justify-content: center;
-    transform: translateX(-50%);
-    pointer-events: none;
-  }
-
-  .app-mobile-page-dot {
-    position: relative;
-    width: 32px;
-    height: 44px;
-    flex: 0 0 32px;
-    border: 0;
-    padding: 0;
-    background: transparent;
-    cursor: pointer;
-    pointer-events: auto;
-  }
-
-  .app-mobile-page-dot::before {
-    position: absolute;
-    bottom: 4px;
-    left: 50%;
-    width: 3px;
-    height: 3px;
-    border-radius: 50%;
-    background: var(--text-muted);
-    content: '';
-    transform: translateX(-50%);
-    transition: background-color 160ms ease, transform 160ms ease;
-  }
-
-  .app-mobile-page-dot-active::before {
-    background: var(--brand);
-    transform: translateX(-50%) scale(2);
-  }
-
-  .app-mobile-page-dot:focus-visible {
-    outline: 2px solid var(--brand);
-    outline-offset: -8px;
-  }
 
   .app-header {
     min-height: calc(58px + env(safe-area-inset-top));
@@ -1532,7 +1483,7 @@ button,
   .app-header-tools { gap: 2px; }
 
   .app-content {
-    padding: 16px 12px calc(34px + env(safe-area-inset-bottom));
+    padding: 16px 12px calc(16px + env(safe-area-inset-bottom));
     outline: none;
     overflow-x: clip;
     touch-action: pan-y;
@@ -1577,4 +1528,4 @@ button,
     border-bottom: 0;
   }
 }
-/* AI_GENERATE_END-------------------------------------------------------- */
+/* AI_GENERATE_END--------------------------------------------------------- */

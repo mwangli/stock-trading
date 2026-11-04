@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 import React, {
   useRef,
   useState,
@@ -224,21 +224,7 @@ const MobileLayout: React.FC = () => {
             </AnimatePresence>
           </Content>
         </Layout>
-        {pageIndex >= 0 && (
-          <nav className="app-mobile-page-indicator" aria-label="移动页面导航">
-            {menuItems.map((item, index) => (
-              <button
-                key={item.key}
-                type="button"
-                className={index === pageIndex ? 'app-mobile-page-dot app-mobile-page-dot-active' : 'app-mobile-page-dot'}
-                aria-label={`切换到${item.label}`}
-                aria-current={index === pageIndex ? 'page' : undefined}
-                onClick={() => navigateToPage(index)}
-              />
-            ))}
-          </nav>
-        )}
-        <Drawer rootClassName="app-mobile-navigation-drawer" title={t('layout.title')} placement="left" size="min(84vw, 320px)" open={navigationOpen} onClose={() => setNavigationOpen(false)}>
+        <Drawer rootClassName="app-mobile-navigation-drawer" title={t('layout.title')} placement="left" size="40vw" open={navigationOpen} onClose={() => setNavigationOpen(false)}>
           <Menu
             className="app-mobile-navigation-menu"
             selectedKeys={[location.pathname]}
@@ -255,4 +241,4 @@ const MobileLayout: React.FC = () => {
 };
 
 export default MobileLayout;
-// AI_GENERATE_END -
+// AI_GENERATE_END --

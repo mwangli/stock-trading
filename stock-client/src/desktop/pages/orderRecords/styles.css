@@ -1,4 +1,4 @@
-/* Hallmark · checked: 2026-11-02 · app screen · Blue Ledger · AI_GENERATE_START - */
+/* Hallmark · checked: 2026-11-02 · app screen · Blue Ledger · AI_GENERATE_START -- */
 .order-records-shell { min-width: 0; overflow: hidden; border-radius: 0 !important; padding: 0 16px 16px; }
 .order-records-shell .ant-tabs-nav { min-height: 52px; margin-bottom: 16px; border-bottom: 1px solid var(--border-color); }
 .order-records-shell .ant-tabs-nav::before { border-bottom: 0; }
@@ -32,10 +32,10 @@
 .order-records-shell button:active { background-color: var(--brand-soft); }
 
 @media (max-width: 991px) {
-  .order-records-shell { padding: 0 0 28px; border: 0 !important; background: transparent !important; }
+  .order-records-shell { width: calc(100% + 24px); margin-inline: -12px; padding: 0 0 20px; border: 0 !important; background: transparent !important; }
   .order-records-shell .ant-tabs-nav { margin: 0; padding-inline: 16px; background: var(--panel-bg); }
   .order-records-shell .ant-tabs-tab { min-height: 50px; }
-  .order-records-shell .ant-tabs-content-holder { margin-top: 12px; }
+  .order-records-shell .ant-tabs-content-holder { margin-top: 4px; }
   .order-records-swipe-area { touch-action: pan-y; overscroll-behavior-x: contain; }
   .order-records-filters { display: none !important; }
   .order-records-desktop-table,
@@ -43,19 +43,23 @@
   .order-records-mobile-list { display: grid; border-block: 1px solid var(--border-color); background: var(--panel-bg); }
   .order-records-mobile-card { min-width: 0; overflow: hidden; border-bottom: 1px solid var(--border-color); background: var(--panel-bg); }
   .order-records-mobile-card:last-of-type { border-bottom: 0; }
-  .order-records-mobile-card-header { display: flex; min-height: 56px; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 16px; }
-  .order-records-mobile-security { display: flex; min-width: 0; align-items: baseline; gap: 8px; }
-  .order-records-mobile-security strong { min-width: 0; overflow: hidden; color: var(--text-primary); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
-  .order-records-mobile-card-header .ant-tag { flex: 0 0 auto; margin-inline-end: 0; }
-  .order-records-mobile-grid { display: grid; margin-inline: 16px; border-block: 1px solid var(--border-soft); grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .order-records-mobile-grid > div { display: flex; min-width: 0; min-height: 56px; flex-direction: column; justify-content: center; gap: 4px; padding: 8px; }
-  .order-records-mobile-grid > div:nth-child(2n) { text-align: right; }
-  .order-records-mobile-grid span { color: var(--text-muted); font-size: 10px; }
-  .order-records-mobile-grid strong { min-width: 0; color: var(--text-primary); font-size: 13px; font-variant-numeric: tabular-nums; font-weight: 600; overflow-wrap: anywhere; }
-  .order-records-mobile-card-footer { display: flex; min-height: 46px; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 16px; color: var(--text-muted); font-size: 10px; }
+  .order-records-mobile-card-header { display: flex; min-height: 48px; align-items: center; justify-content: space-between; gap: 10px; padding: 2px 12px; }
+  .order-records-mobile-security { display: flex; min-width: 0; flex: 1 1 auto; align-items: center; gap: 6px; }
+  .order-records-mobile-security .order-records-stock-code { min-height: 44px; }
+  .order-records-mobile-security > strong { min-width: 0; overflow: hidden; color: var(--text-primary); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+  .order-records-mobile-result { display: flex; min-width: 72px; flex: 0 0 auto; flex-direction: column; align-items: flex-end; gap: 1px; font-variant-numeric: tabular-nums; }
+  .order-records-mobile-result strong,
+  .order-records-mobile-result .ant-typography { font-size: 13px; font-weight: 650; line-height: 1.25; }
+  .order-records-mobile-result > span { color: var(--text-secondary); font-size: 10px; line-height: 1.25; }
+  .order-records-mobile-grid { display: grid; margin-inline: 12px; border-block: 1px solid var(--border-soft); grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .order-records-mobile-grid > div { display: flex; min-width: 0; min-height: 48px; flex-direction: column; justify-content: center; gap: 2px; padding: 5px 4px; text-align: right; }
+  .order-records-mobile-grid > div:first-child { text-align: left; }
+  .order-records-mobile-grid span { overflow: hidden; color: var(--text-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+  .order-records-mobile-grid strong { min-width: 0; overflow: hidden; color: var(--text-primary); font-size: 12px; font-variant-numeric: tabular-nums; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+  .order-records-mobile-card-footer { display: flex; min-height: 34px; align-items: center; justify-content: space-between; gap: 10px; padding: 5px 12px; overflow: hidden; color: var(--text-muted); font-size: 10px; font-variant-numeric: tabular-nums; }
+  .order-records-mobile-card-footer > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .order-records-mobile-card-footer strong { color: var(--text-secondary); font-weight: 600; }
-  .order-records-mobile-card-footer-stacked { align-items: flex-start; flex-direction: column; gap: 4px; }
-  .trade-record-mobile-status { flex: 0 0 auto; padding: 4px 8px; border: 1px solid var(--border-color); border-radius: 3px; color: var(--text-secondary); font-size: 10px; }
+  .trade-record-mobile-status { flex: 0 0 auto; padding: 2px 5px; border: 1px solid var(--border-color); border-radius: 2px; color: var(--text-secondary); font-size: 10px; line-height: 1.3; white-space: nowrap; }
   .trade-record-mobile-status.is-closed { border-color: color-mix(in srgb, var(--brand) 35%, var(--border-color)); background: var(--brand-soft); color: var(--brand); }
   .order-records-mobile-state { display: flex; min-height: 220px; align-items: center; justify-content: center; border-block: 1px solid var(--border-color); background: var(--panel-bg); }
   .order-records-mobile-load-more { display: flex; min-height: 52px; grid-column: 1 / -1; align-items: center; justify-content: center; }
@@ -65,4 +69,4 @@
 @media (prefers-reduced-motion: reduce) {
   .order-records-shell * { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
 }
-/* AI_GENERATE_END - */
+/* AI_GENERATE_END -- */

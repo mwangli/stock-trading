@@ -1,4 +1,4 @@
-// AI_GENERATE_START--------------------------------------------------------------------------
+// AI_GENERATE_START---------------------------------------------------------------------------
 import './DashboardLayout.css';
 import React, {
   useEffect,
@@ -303,13 +303,6 @@ const DashboardLayout: React.FC = () => {
       ...menuItems.filter((item) => !menuOrder.includes(item.key)),
     ];
   }, [menuItems, menuOrder]);
-
-  const mobileMenuItems = useMemo(() => {
-    const itemMap = new Map(menuItems.map((item) => [item.key, item]));
-    return MOBILE_SWIPE_ROUTES
-      .map((key) => itemMap.get(key))
-      .filter((item): item is SidebarMenuItem => Boolean(item));
-  }, [menuItems]);
 
   const mobilePageIndex = MOBILE_SWIPE_ROUTES.findIndex((route) => route === location.pathname);
 
@@ -688,30 +681,13 @@ const DashboardLayout: React.FC = () => {
           </AnimatePresence>
         </Content>
       </Layout>
-      {isMobile && mobilePageIndex >= 0 && (
-        <nav className="app-mobile-page-indicator" aria-label="移动页面导航">
-          {mobileMenuItems.map((item, index) => {
-            const selected = index === mobilePageIndex;
-            return (
-              <button
-                key={item.key}
-                type="button"
-                className={selected ? 'app-mobile-page-dot app-mobile-page-dot-active' : 'app-mobile-page-dot'}
-                aria-label={`切换到${item.label}`}
-                aria-current={selected ? 'page' : undefined}
-                onClick={() => navigateToMobilePage(index)}
-              />
-            );
-          })}
-        </nav>
-      )}
       {isMobile && (
         <>
           <Drawer
             rootClassName="app-mobile-navigation-drawer"
             title={t('layout.title')}
             placement="left"
-            size="min(84vw, 320px)"
+            size="40vw"
             open={mobileNavigationOpen}
             onClose={() => setMobileNavigationOpen(false)}
           >
@@ -745,4 +721,4 @@ const DashboardLayout: React.FC = () => {
 };
 
 export default DashboardLayout;
-// AI_GENERATE_END--------------------------------------------------------------------------
+// AI_GENERATE_END---------------------------------------------------------------------------

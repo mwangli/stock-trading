@@ -1,4 +1,4 @@
-// AI_GENERATE_START-----------------------------------
+// AI_GENERATE_START------------------------------------
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dayjs from 'dayjs';
 import { Button, DatePicker, Empty, Input, Pagination, Space, Spin, Table, Typography } from 'antd';
@@ -77,6 +77,9 @@ const timestamp = (value?: string) => {
 };
 const percent = (value?: number) => value == null ? '-' : `${(Number(value) * 100).toFixed(2)}%`;
 const days = (value?: number) => value == null ? '-' : `${Math.trunc(Number(value))} 天`;
+const compactDateTime = (value?: string) => value && dayjs(value).isValid()
+  ? dayjs(value).format('MM-DD HH:mm')
+  : '-';
 const dailyReturn = (returnRate: number, holdingDays?: number) => {
   if (!holdingDays || holdingDays <= 0 || returnRate <= -1) return returnRate;
   return Math.pow(1 + returnRate, 1 / holdingDays) - 1;
@@ -367,8 +370,8 @@ const TradeRecordTable: React.FC = () => {
             <div className="order-records-mobile-state"><Spin /></div>
           ) : records.length > 0 ? (
             <>
-              {records.map((item, index) => (
-                <article className="order-records-mobile-card" key={`${item.tradeKey}-${index}`}>
+              {records.map((item) => (
+                <article className="order-records-mobile-card" key={item.tradeKey}>
               <header className="order-records-mobile-card-header">
                 <div className="order-records-mobile-security">
                   <button
@@ -380,24 +383,25 @@ const TradeRecordTable: React.FC = () => {
                     {item.stockCode}
                   </button>
                   <strong>{item.stockName || '-'}</strong>
+                  <span className={`trade-record-mobile-status${item.soldQuantity > 0 ? ' is-closed' : ''}`}>
+                    {item.soldQuantity > 0 ? '已卖出' : '持仓中'}
+                  </span>
                 </div>
-                <span className={`trade-record-mobile-status${item.soldQuantity > 0 ? ' is-closed' : ''}`}>
-                  {item.soldQuantity > 0 ? '已卖出' : '持仓中'}
-                </span>
+                <div className="order-records-mobile-result">
+                  <strong>{item.soldQuantity > 0 ? profit(item.netProfit) : '-'}</strong>
+                  <span>{item.soldQuantity > 0 ? rate(item.returnRate) : '-'}</span>
+                </div>
               </header>
               <div className="order-records-mobile-grid">
-                <div><span>买入均价</span><strong>{money(item.buyPrice)}</strong></div>
-                <div><span>卖出均价</span><strong>{money(item.averageSellPrice)}</strong></div>
-                <div><span>买入数量</span><strong>{item.buyQuantity}</strong></div>
-                <div><span>卖出数量</span><strong>{item.soldQuantity || '-'}</strong></div>
-                <div><span>净收益</span><strong>{item.soldQuantity > 0 ? profit(item.netProfit) : '-'}</strong></div>
-                <div><span>收益率</span><strong>{item.soldQuantity > 0 ? rate(item.returnRate) : '-'}</strong></div>
-                <div><span>手续费</span><strong>{money(item.totalFee)}</strong></div>
+                <div><span>买入价</span><strong>{money(item.buyPrice)}</strong></div>
+                <div><span>卖出价</span><strong>{money(item.averageSellPrice)}</strong></div>
+                <div><span>买 / 卖</span><strong>{item.buyQuantity} / {item.soldQuantity || '-'}</strong></div>
                 <div><span>持仓时间</span><strong>{days(item.holdingDays)}</strong></div>
               </div>
-              <footer className="order-records-mobile-card-footer order-records-mobile-card-footer-stacked">
-                <span>买入 {formatDateTime(item.buyTime)}</span>
-                <span>{item.lastSellTime ? `卖出 ${formatDateTime(item.lastSellTime)}` : '尚未卖出'}</span>
+              <footer className="order-records-mobile-card-footer">
+                <span>买 {compactDateTime(item.buyTime)}</span>
+                <span>{item.lastSellTime ? `卖 ${compactDateTime(item.lastSellTime)}` : '尚未卖出'}</span>
+                <span>费用 {money(item.totalFee)}</span>
               </footer>
                 </article>
               ))}
@@ -436,4 +440,4 @@ const TradeRecordTable: React.FC = () => {
 };
 
 export default TradeRecordTable;
-// AI_GENERATE_END-----------------------------------
+// AI_GENERATE_END------------------------------------

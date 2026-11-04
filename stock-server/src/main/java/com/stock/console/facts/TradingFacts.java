@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----------------
+// AI_GENERATE_START -----------------
 package com.stock.console.facts;
 
 import com.stock.console.config.ConsoleProperties;
@@ -54,13 +54,55 @@ public class TradingFacts {
             """;
     private static final String PERFORMANCE_SQL = """
             SELECT sell_date AS business_date, model_version_id,
-                   cost_basis AS cash, sell_amount AS market_value,
+                   cost_basis AS cash, buy_fee, sell_amount AS market_value,
                    sell_amount AS equity, NULL AS external_cash_flow,
                    sell_amount AS turnover, buy_fee + sell_fee AS estimated_fees,
                    gross_profit AS gross_pnl, net_profit AS net_pnl,
                    gross_return, net_return, updated_at, instrument AS scenario
             FROM trading.realized_trade
             ORDER BY sell_time DESC
+            """;
+    private static final String PERFORMANCE_SUMMARY_SQL = """
+            WITH latest_period AS (
+                SELECT max(CAST(sell_date AS DATE)) AS latest_day,
+                       max(strftime(CAST(sell_date AS DATE), '%Y-%m')) AS latest_month
+                FROM trading.realized_trade
+            )
+            SELECT count(*) AS total_trade_count,
+                   sum(CASE WHEN net_profit > 0 THEN 1 ELSE 0 END) AS winning_trade_count,
+                   sum(CASE WHEN net_profit < 0 THEN 1 ELSE 0 END) AS losing_trade_count,
+                   coalesce(sum(net_profit), 0) AS net_profit,
+                   coalesce(sum(net_profit) / nullif(sum(cost_basis) + sum(buy_fee), 0), 0) AS net_return,
+                   coalesce(avg(net_return), 0) AS average_net_return,
+                   coalesce(max(net_return), 0) AS best_net_return,
+                   coalesce(min(net_return), 0) AS worst_net_return,
+                   latest_period.latest_day AS daily_period,
+                   coalesce(sum(CASE WHEN CAST(sell_date AS DATE) = latest_period.latest_day THEN net_profit ELSE 0 END), 0) AS daily_net_profit,
+                   coalesce(
+                       sum(CASE WHEN CAST(sell_date AS DATE) = latest_period.latest_day THEN net_profit ELSE 0 END)
+                       / nullif(sum(CASE WHEN CAST(sell_date AS DATE) = latest_period.latest_day THEN cost_basis + buy_fee ELSE 0 END), 0),
+                       0
+                   ) AS daily_net_return,
+                   latest_period.latest_month AS monthly_period,
+                   coalesce(sum(CASE WHEN strftime(CAST(sell_date AS DATE), '%Y-%m') = latest_period.latest_month THEN net_profit ELSE 0 END), 0) AS monthly_net_profit,
+                   coalesce(
+                       sum(CASE WHEN strftime(CAST(sell_date AS DATE), '%Y-%m') = latest_period.latest_month THEN net_profit ELSE 0 END)
+                       / nullif(sum(CASE WHEN strftime(CAST(sell_date AS DATE), '%Y-%m') = latest_period.latest_month THEN cost_basis + buy_fee ELSE 0 END), 0),
+                       0
+                   ) AS monthly_net_return
+            FROM trading.realized_trade
+            CROSS JOIN latest_period
+            GROUP BY latest_period.latest_day, latest_period.latest_month
+            """;
+    private static final String PERFORMANCE_MONTHLY_SQL = """
+            SELECT strftime(CAST(sell_date AS DATE), '%Y-%m') AS period,
+                   sum(net_profit) AS net_profit,
+                   sum(net_profit) / nullif(sum(cost_basis) + sum(buy_fee), 0) AS net_return,
+                   count(*) AS trade_count,
+                   sum(CASE WHEN net_profit > 0 THEN 1 ELSE 0 END) AS winning_trade_count
+            FROM trading.realized_trade
+            GROUP BY period
+            ORDER BY period DESC
             """;
     private static final String PERFORMANCE_RANKING_SQL = """
             SELECT trade.trade_key, trade.instrument,
@@ -353,6 +395,9 @@ public class TradingFacts {
             result.put("account", summarizeAccount(positions));
             result.put("positions", positions);
             result.put("performance", query(connection, PERFORMANCE_SQL, 90));
+            List<Map<String, Object>> performanceSummary = query(connection, PERFORMANCE_SUMMARY_SQL, 1);
+            result.put("performanceSummary", performanceSummary.isEmpty() ? Map.of() : performanceSummary.get(0));
+            result.put("monthlyPerformance", query(connection, PERFORMANCE_MONTHLY_SQL, 500));
             result.put("ranking", withHoldingDays(query(connection, PERFORMANCE_RANKING_SQL, 500)));
             return result;
         } catch (SQLException exception) {
@@ -583,6 +628,8 @@ public class TradingFacts {
         result.put("account", summarizeAccount(List.of()));
         result.put("positions", List.of());
         result.put("performance", List.of());
+        result.put("performanceSummary", Map.of());
+        result.put("monthlyPerformance", List.of());
         result.put("ranking", List.of());
         return result;
     }
@@ -612,4 +659,4 @@ public class TradingFacts {
         return message == null || message.isBlank() ? "SQLite 数据源无法读取" : message;
     }
 }
-// AI_GENERATE_END ----------------
+// AI_GENERATE_END -----------------
