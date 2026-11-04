@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---------------
+// AI_GENERATE_START -----------------
 package com.stock.console.agent;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -146,7 +146,7 @@ public class AgentService {
             }
         } catch (RuntimeException exception) {
             LOGGER.warn("Agent Provider 调用失败，已切换本地只读回答: {}",
-                    exception.getClass().getSimpleName());
+                    masker.mask(providerFailureDetail(exception)));
             answer = localFallbackAnswer("模型服务暂时不可用", question);
             evidence.add("sqlite:trading-status:fallback");
         } finally {
@@ -217,6 +217,30 @@ public class AgentService {
                 && !"DEEPSEEK_API_KEY".equals(apiKey);
     }
 
+    static String providerFailureDetail(Throwable throwable) {
+        Throwable current = throwable;
+        Throwable selected = throwable;
+        while (current != null) {
+            if (current.getMessage() != null && !current.getMessage().isBlank()) {
+                selected = current;
+            }
+            if (current.getCause() == null || current.getCause() == current) {
+                break;
+            }
+            current = current.getCause();
+        }
+        String type = selected.getClass().getSimpleName();
+        String detail = selected.getMessage();
+        if (detail == null) {
+            return type;
+        }
+        String normalized = detail.replaceAll("\\s+", " ").trim();
+        if (normalized.length() > 1_000) {
+            normalized = normalized.substring(0, 1_000) + "...";
+        }
+        return type + ": " + normalized;
+    }
+
     static QuestionInput normalizeQuestion(String question) {
         if (question.length() <= MAX_ANALYSIS_LENGTH) {
             return new QuestionInput(question, false, "");
@@ -252,4 +276,4 @@ public class AgentService {
     record QuestionInput(String content, boolean truncated, String notice) {
     }
 }
-// AI_GENERATE_END ---------------
+// AI_GENERATE_END -----------------

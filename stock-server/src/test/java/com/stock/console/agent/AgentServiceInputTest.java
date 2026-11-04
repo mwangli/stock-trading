@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 package com.stock.console.agent;
 
 import org.junit.jupiter.api.Test;
@@ -28,5 +28,16 @@ class AgentServiceInputTest {
         assertTrue(input.content().endsWith("ERROR root failure"));
         assertTrue(input.notice().contains("输入已截断"));
     }
+
+    @Test
+    void reportsTheDeepestProviderFailureWithoutMultilineNoise() {
+        RuntimeException failure = new RuntimeException(
+                "provider failed",
+                new IllegalStateException("HTTP 401\ninvalid api key"));
+
+        String detail = AgentService.providerFailureDetail(failure);
+
+        assertEquals("IllegalStateException: HTTP 401 invalid api key", detail);
+    }
 }
-// AI_GENERATE_END -
+// AI_GENERATE_END --
