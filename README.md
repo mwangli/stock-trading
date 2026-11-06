@@ -1,98 +1,101 @@
-<!-- AI_GENERATE_START--------------- -->
-# stock-console
+<!-- AI_GENERATE_START---------------- -->
+# 智能股票交易系统
 
-`stock-web` 分支是纯 Python T+1 交易系统的只读 Web 外壳，与核心交易代码共用同一个代码库。核心行情采集、模型训练、预测、交易执行、状态恢复和绩效计算位于 `stock-trading` 分支；两个分支共享同一套 `var/market` Parquet 和 `var/state/trading.db` 数据结构。
+面向个人量化交易场景的只读 Web 控制台，将账户收益、市场行情、交易记录、模型预测、运行状态与 Agent 智能分析集中在一个简洁的工作台中。
 
-## 工程结构
+<p align="center">
+  <a href="http://117.72.216.67/"><strong>在线体验：117.72.216.67</strong></a>
+</p>
 
-```text
-stock-trading4/
-├── pom.xml             # 聚合 stock-server
-├── stock-server/       # 单一 Spring Boot 后端 Maven 模块
-├── stock-client/       # React + Vite 前端，由 Docker 独立构建
-├── documents/          # 控制台架构、契约与运维文档
-└── docker-compose.yml  # 仅前端和后端两个服务
-```
+> 支持 PC 与移动端自适应访问。当前为个人项目演示环境，需要登录后使用。
 
-根 `pom.xml` 仅聚合 `stock-server`；前端由 `stock-client/Dockerfile` 使用 npm/Vite 独立构建。
+## PC 端工作台
 
-## 系统边界
+桌面端提供完整导航与高信息密度视图，适合持续观察账户表现、模型结果和系统运行情况。
 
-```text
-Host Cron -> Python CLI -> Parquet + trading.db + logs
-                              ↑ read-only
-                         Spring Boot
-                              ↑
-                         React/Nginx
-```
+<p align="center">
+  <img src="documents/images/readme/pc-console.png" alt="PC 端控制台" width="80%" />
+</p>
 
-- Java 通过 DuckDB 直接只读查询 Python 生成的 SQLite 业务表、Parquet 和日志。
-- Java 不调用券商、不训练模型、不生成或执行交易计划、不触发 Python CLI。
-- Java 不对 `trading.db` 建表、迁移、修复或更新状态。
-- Java 不写数据库或本地状态文件；Agent 会话和消息仅保存在当前登录的 JVM `HttpSession` 内存中。
-- 退出登录、Session 超时或后端重启后对话会清空；PC 与手机的不同登录 Session 不同步。
-- Agent 仅使用 DeepSeek-compatible Provider、SQLite 事实和 Markdown 文档，不包含交易审批、向量库、本地 Embedding 或多 Provider 路由。
+深色主题适合长时间查看任务运行状态与实时日志。
 
-## 后端
+<p align="center">
+  <img src="documents/images/readme/pc-console-dark.png" alt="PC 端深色运行日志" width="80%" />
+</p>
 
-后端包位于 `com.stock.console`：
+## Agent 智能对话
 
-- `auth`：环境变量单用户登录和 Cookie Session。
-- `facts`：DuckDB 挂载 `trading.db` 并查询现有业务表。
-- `market`：DuckDB 查询 Parquet 股票目录和日 K。
-- `dashboard`、`trading`、`model`：只读业务接口。
-- `operations`：任务状态、固定日志文件和 SSE。
-- `agent`：只读事实问答、文档检索和 Session 内对话上下文。
-- `documents`：受控 Markdown 目录扫描、读取与搜索。
+Agent 不是脱离业务数据的通用聊天机器人，而是基于交易数据库、任务状态、模型结果和项目文档进行只读分析：
 
-依赖仅保留 Spring Web、Validation、Spring Security Crypto、DuckDB JDBC、Jackson 和 LangChain4j OpenAI-compatible。Java 不引入独立 SQLite JDBC 写入链路。
+- 分析当天是否产生任务、预测与交易结果。
+- 解释没有生成信号或执行记录的具体原因。
+- 给出查询范围、数据日期和事实来源，避免脱离数据回答。
+- 保持分析与真实交易执行隔离，不生成可审批的交易计划。
 
-## 前端
+## 移动端体验
 
-前端固定保留七个页面：概览、行情、交易记录、模型与预测、Agent、运行状态与日志、文档工作台。默认简体中文，主题偏好保存在浏览器 `localStorage`。
+移动端聚焦高频查看场景，通过底部导航快速切换收益、交易、Agent 对话和运行日志。
 
-已移除旧新闻、情绪模型、训练弹窗、任务控制、券商同步、交易审批、菜单拖拽、双语、WebSocket 日志和旧路由兼容。
+<table>
+  <tr>
+    <td width="25%" align="center"><strong>收益总览</strong></td>
+    <td width="25%" align="center"><strong>交易记录</strong></td>
+    <td width="25%" align="center"><strong>Agent 智能分析</strong></td>
+    <td width="25%" align="center"><strong>运行日志</strong></td>
+  </tr>
+  <tr>
+    <td width="25%" valign="top"><img src="documents/images/readme/mobile-dashboard.png" alt="移动端收益总览" width="100%" /></td>
+    <td width="25%" valign="top"><img src="documents/images/readme/mobile-trades.png" alt="移动端交易记录" width="100%" /></td>
+    <td width="25%" valign="top"><img src="documents/images/readme/mobile-agent.png" alt="移动端 Agent 智能对话" width="100%" /></td>
+    <td width="25%" valign="top"><img src="documents/images/readme/mobile-logs.png" alt="移动端运行日志" width="100%" /></td>
+  </tr>
+</table>
 
-## 数据读取
+## 核心能力
 
-- `var/state/trading.db` 由 DuckDB 以 SQLite 只读附件方式打开，控制台只执行固定 `SELECT`。
-- `var/market/instruments/stocks.parquet` 提供代码、名称、交易状态和数据日期。
-- 历史日线位于 `var/market/daily_history/code=<code>/bars.parquet`。
-- 5 分钟行情位于 `var/market/minute_5m/code=<code>/bars.parquet`。
+- **收益总览**：集中查看账户资产、阶段收益、胜率与历史表现。
+- **行情与股票信息**：浏览股票目录、历史行情与关键市场数据。
+- **交易记录**：按订单、成交和持仓维度回看策略执行结果。
+- **模型与预测**：查看模型版本、预测排名和评估结果。
+- **Agent 智能分析**：基于真实只读数据分析执行情况、异常和策略表现。
+- **运行日志与文档**：追踪任务状态、实时日志，并在控制台内查阅项目文档。
 
-控制台不要求 Python 额外维护控制台专用视图、元数据表或文件清单。文件缺失、表不存在或不可读时，服务保持启动，相关页面显示具体数据源不可用原因。
+## 项目定位
 
-## 配置
+本项目是 Python T+1 交易系统的可视化入口。Python 负责行情、模型、交易与绩效计算；Web 控制台只读取既有数据，不触发训练、下单或状态修改。
 
-后端只需要通过 `STOCK_TRADING_VAR_DIR` 配置 Python 交易系统的 `var` 数据根目录，并自动读取其下的 `state/trading.db` 与 `market`。本地默认值为 `D:/stock-trading4/var`。本地直接启动后端时默认启用 `local` profile，登录账号默认为 `admin`，但密码哈希仍须通过 `CONSOLE_PASSWORD_HASH` 显式提供。可通过 `CONSOLE_USERNAME` 修改账号，不在源码或配置中保存明文开发密码。
+这种边界让日常观察更直观，同时保持交易核心链路独立、可控。
 
-生产部署至少需要：
+## 技术概览
 
-```text
-CONSOLE_PASSWORD_HASH=<BCrypt hash>
-STOCK_TRADING_VAR_DIR=/data/stock-trading
-STOCK_TRADING_LOG_DIR=/var/log/stock-trading
-STOCK_TRADING_DOCUMENTS_DIR=/srv/stock-trading
-```
+前端使用 React、TypeScript 与 Vite 构建响应式体验；后端使用 Spring Boot 提供只读聚合接口；DuckDB 负责统一查询 SQLite 与 Parquet 数据。
 
-Docker Compose 固定将服务器 `/data/stock-trading` 只读挂载到容器同名目录，并启用 `prod` profile，不使用本地默认密码。Agent 可选配置：`DEEPSEEK_API_KEY`、`DEEPSEEK_BASE_URL`、`DEEPSEEK_MODEL`、`AGENT_TIMEOUT_SECONDS`、`AGENT_MAX_TOKENS`。生产账号默认为 `admin`，可通过 `CONSOLE_USERNAME` 修改。
+~~~text
+Python 交易系统 -> SQLite / Parquet / Logs -> Spring Boot -> React Web
+~~~
 
-Agent 对话最多保留 20 个会话，每个会话最多保留 50 条消息；对话只存在于单个登录 Session 内，不需要独立数据目录。
+## 本地启动
 
-## API
+~~~bash
+# 前端
+cd stock-client
+npm install
+npm run dev
 
-- `/api/auth/*`
-- `/api/dashboard/overview`
-- `/api/market/status|instruments|bars`
-- `/api/trading/orders|fills|positions`
-- `/api/models/overview|predictions|evaluations`
-- `/api/operations/status|logs|logs/stream`
-- `/api/agent/status|sessions|chat`
-- `/api/documents/*`
+# 后端
+mvn -pl stock-server spring-boot:run
+~~~
 
-不存在训练、预测重试、任务触发、暂停恢复、券商同步、交易审批或运行参数修改接口。
+运行前需要配置控制台登录密码哈希与 Python 交易系统数据目录。详细配置、数据契约和部署说明统一维护在 [documents](documents/) 中。
 
-## 验证边界
+## 安全边界
 
-默认只执行源码、引用、依赖、编码和差异检查。未获得当次明确授权时，不执行 Maven/npm 编译、测试、启动、Docker 构建或浏览器验证；源码检查结果不得描述为编译或运行通过。
-<!-- AI_GENERATE_END--------------- -->
+- 控制台只读访问交易数据，不修改或迁移交易数据库。
+- Java 服务不调用券商、训练流程或 Python CLI。
+- Agent 回答必须基于可追溯的数据或文档来源。
+- GitHub 开发能力与交易数据、券商接口完全隔离。
+
+## License
+
+本项目许可证见 [LICENSE.txt](LICENSE.txt)。
+<!-- AI_GENERATE_END---------------- -->
