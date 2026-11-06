@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START--------------------------------------------------------------------------------------------------------- -->
+<!-- AI_GENERATE_START----------------------------------------------------------------------------------------------------------- -->
 <div align="center">
 
 # stock-trading
@@ -23,9 +23,13 @@
 
 ## 命令总览
 
+<details>
+<summary><strong>查看大图 · 命令总览</strong></summary>
+<br />
 <p align="center">
-  <img src="./assets/readme/stock-help.png" alt="stock-trading 命令总览" width="80%" />
+  <img src="./assets/readme/stock-help.png" alt="stock-trading 命令总览" width="100%" />
 </p>
+</details>
 <p align="center"><sub>通过 stock-help 按业务阶段查看全部公开命令，从数据准备一路覆盖到交易复盘。</sub></p>
 
 | 阶段 | 命令 | 作用 |
@@ -46,12 +50,29 @@
         -> 卖出 / 买入 -> 券商订单同步 -> 已实现收益 -> 模型复盘
 ```
 
+<details>
+<summary><strong>查看大图 · 交易命令</strong></summary>
+<br />
 <p align="center">
-  <img src="./assets/readme/stock-trading-command.png" alt="stock-trading 交易命令" width="80%" />
+  <img src="./assets/readme/stock-trading-command.png" alt="stock-trading 交易命令" width="100%" />
 </p>
+</details>
 <p align="center"><sub>交易命令明确展示买卖方向、执行顺序与业务边界，最终合法性和成交状态由券商确认。</sub></p>
 
 系统将模型评分与交易执行分离：模型负责排名，确定性规则负责候选筛选、持仓轮换、价格与数量计算、T+1 时序、幂等恢复和订单状态跟踪。交易完成后，再以券商成交事实结算收益并进入下一轮复盘。
+
+## 消息推送
+
+配置 `DEVICE_KEY` 后，交易执行结果和系统异常会推送到移动端。消息包含任务、时间、原因和诊断线索，便于在离开服务器时快速了解运行状态；推送失败只记录本地警告，不改变原任务结果。
+
+<details>
+<summary><strong>查看大图 · 消息推送</strong></summary>
+<br />
+<p align="center">
+  <img src="./assets/readme/stock-notification.jpg" alt="stock-trading 移动端消息推送" width="42%" />
+</p>
+</details>
+<p align="center"><sub>移动端历史消息集中展示任务异常、发生时间与原因，帮助快速定位需要进一步查看的运行日志。</sub></p>
 
 ## 快速开始
 
@@ -87,4 +108,4 @@ Linux 部署使用 `.venv/bin/` 下的同名命令。项目可通过 Cron 串行
 - 模型输出不等于成交结果，任何真实交易仍需满足券商权限、资金、价格与市场规则。
 - 本项目用于技术研究与自动化验证，不构成投资建议。
 
-<!-- AI_GENERATE_END---------------------------------------------------------------------------------------------------------- -->
+<!-- AI_GENERATE_END------------------------------------------------------------------------------------------------------------ -->
