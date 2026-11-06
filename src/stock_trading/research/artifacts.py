@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----------------
+# AI_GENERATE_START -------------------
 from __future__ import annotations
 
 import json
@@ -10,14 +10,8 @@ from uuid import uuid4
 
 import pandas as pd
 
-from stock_trading.research.model import (
-    MODEL_LABEL_CONTRACT,
-    ModelSegments,
-    train_alpha158_lightgbm_adaptive,
-)
-from stock_trading.utils.time_utils import utc_now
+from stock_trading.research.model_config import ModelSpec
 
-MODEL_DIRECTORY = "alpha158-lightgbm"
 _REQUIRED_FILES = (
     "model.pkl",
     "metrics.json",
@@ -26,39 +20,38 @@ _REQUIRED_FILES = (
 )
 
 
-def model_root(artifact_dir: Path) -> Path:
-    """返回模型版本根目录。"""
-    return artifact_dir / MODEL_DIRECTORY
+def model_directory(artifact_dir: Path, spec: ModelSpec) -> Path:
+    """返回模型 ID 唯一对应的当前制品目录。"""
+    return spec.artifact_dir(artifact_dir)
 
 
-def resolve_current_model_dir(root: Path) -> Path:
-    """返回最新且制品完整的模型版本。"""
-    versions = root / "versions"
-    if versions.is_dir():
-        candidates = sorted(
-            (
-                candidate
-                for candidate in versions.iterdir()
-                if candidate.is_dir() and not candidate.name.startswith(".")
-            ),
-            key=lambda candidate: candidate.name,
-            reverse=True,
-        )
-        for candidate in candidates:
-            if model_artifacts_valid(candidate):
-                return candidate
-    if model_artifacts_valid(root):
-        return root
-    raise FileNotFoundError(f"没有可用模型，请先执行 train: {root}")
+def staging_model_directory(target: Path) -> Path:
+    return target.with_name(f".{target.name}.{uuid4().hex[:8]}.building")
+
+
+def replace_model_directory(staging: Path, target: Path) -> None:
+    """校验完成后原子替换同一模型 ID 的当前制品。"""
+    backup = target.with_name(f".{target.name}.previous")
+    shutil.rmtree(backup, ignore_errors=True)
+    if target.exists():
+        target.replace(backup)
+    try:
+        staging.replace(target)
+    except BaseException:
+        if target.exists():
+            shutil.rmtree(target)
+        if backup.exists():
+            backup.replace(target)
+        raise
+    else:
+        shutil.rmtree(backup, ignore_errors=True)
 
 
 def prediction_artifact_path(model_dir: Path, prediction_date: date) -> Path:
-    """返回指定模型和交易日的预测制品路径。"""
     return model_dir / "predictions" / f"ranking-{prediction_date.isoformat()}.parquet"
 
 
 def prediction_artifact_valid(model_dir: Path, prediction_date: date) -> bool:
-    """检查单日完整横截面预测的文件、字段和日期。"""
     try:
         frame = pd.read_parquet(prediction_artifact_path(model_dir, prediction_date))
         dates = pd.to_datetime(frame["datetime"]).dt.date.unique()
@@ -75,44 +68,12 @@ def prediction_artifact_valid(model_dir: Path, prediction_date: date) -> bool:
     )
 
 
-def train_model_candidate(
-    qlib_dir: Path,
-    root: Path,
-    segments: ModelSegments,
-    feature_batch_days: int,
-) -> dict[str, object]:
-    """在独立版本目录训练并发布完整模型制品。"""
-    versions = root / "versions"
-    versions.mkdir(parents=True, exist_ok=True)
-    version = (
-        utc_now().strftime("%Y%m%dT%H%M%S%fZ")
-        + "-"
-        + uuid4().hex[:8]
-    )
-    staging = versions / f".{version}.building"
-    published = versions / version
-    checkpoint_dir = root / ".feature-checkpoint"
-    shutil.rmtree(staging, ignore_errors=True)
-    try:
-        result = train_alpha158_lightgbm_adaptive(
-            qlib_dir,
-            staging,
-            segments,
-            feature_batch_days=feature_batch_days,
-            checkpoint_dir=checkpoint_dir,
-        )
-        validate_model_artifacts(staging)
-        staging.replace(published)
-    finally:
-        shutil.rmtree(staging, ignore_errors=True)
-    return result | {
-        "modelVersion": version,
-        "artifactPath": str(published),
-    }
-
-
-def model_artifacts_valid(directory: Path) -> bool:
-    """检查一个模型版本的必需文件、指标和预测表。"""
+def model_artifacts_valid(
+    directory: Path,
+    spec: ModelSpec | None = None,
+    require_evaluation: bool = False,
+) -> bool:
+    """检查模型、指标和测试预测是否属于同一模型配置。"""
     try:
         if not all(
             (directory / name).is_file()
@@ -120,34 +81,57 @@ def model_artifacts_valid(directory: Path) -> bool:
             for name in _REQUIRED_FILES
         ):
             return False
-        metrics = json.loads(
-            (directory / "metrics.json").read_text(encoding="utf-8")
+        metrics = json.loads((directory / "metrics.json").read_text(encoding="utf-8"))
+        evaluation = (
+            json.loads(
+                (directory / "evaluation.json").read_text(encoding="utf-8")
+            )
+            if require_evaluation
+            else None
         )
-        top = pd.read_parquet(directory / "top5.parquet")
+        predictions = pd.read_parquet(
+            directory / "test_predictions.parquet",
+            columns=["datetime", "instrument", "score"],
+        )
+        if not isinstance(metrics, dict) or (
+            evaluation is not None and not isinstance(evaluation, dict)
+        ):
+            return False
+        aggregate = evaluation.get("aggregate", {}) if evaluation else {}
+        completed_scenarios = aggregate.get("completedScenarios")
+        required_scenarios = aggregate.get("requiredScenarios")
     except Exception:
         return False
     return (
-        metrics.get("model") == "LightGBM Regression"
-        and metrics.get("labelContract") == MODEL_LABEL_CONTRACT
-        and not top.empty
+        not predictions.empty
+        and predictions["score"].notna().any()
+        and (spec is None or metrics.get("modelId") == spec.model_id)
+        and metrics.get("algorithm") in {
+            "LightGBM",
+            "XGBoost",
+            "XGBoostRanker",
+            None,
+        }
+        and (
+            evaluation is None
+            or (
+                evaluation.get("modelId") == metrics.get("modelId")
+                and isinstance(required_scenarios, int)
+                and required_scenarios > 0
+                and completed_scenarios == required_scenarios
+            )
+        )
     )
 
 
-def validate_model_artifacts(directory: Path) -> None:
-    """发布前完整读取模型和配套制品，拒绝切换到损坏版本。"""
-    if not model_artifacts_valid(directory):
+def validate_model_artifacts(directory: Path, spec: ModelSpec) -> None:
+    if not model_artifacts_valid(directory, spec):
         raise ValueError(f"训练制品检查失败: {directory}")
     try:
-        predictions = pd.read_parquet(
-            directory / "test_predictions.parquet",
-            columns=["datetime", "instrument"],
-        )
-        if predictions.empty:
-            raise ValueError("测试预测为空")
         with (directory / "model.pkl").open("rb") as stream:
             pickle.load(stream)
     except Exception as error:
         raise ValueError(f"训练模型无法反序列化: {directory / 'model.pkl'}") from error
 
 
-# AI_GENERATE_END -----------------
+# AI_GENERATE_END -------------------

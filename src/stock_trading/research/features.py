@@ -1,8 +1,10 @@
-# AI_GENERATE_START -
+# AI_GENERATE_START ---
 from __future__ import annotations
 
 from qlib.contrib.data.handler import Alpha158
 from qlib.contrib.data.loader import Alpha158DL
+
+from stock_trading.market.minute1_summary import MINUTE1_FEATURE_FIELDS
 
 MORNING_FEATURE_FIELDS = (
     "morning_return",
@@ -30,4 +32,26 @@ class MorningAlpha158(Alpha158):
 
     def get_feature_config(self):
         return morning_alpha158_feature_config()
-# AI_GENERATE_END -
+
+
+class DailyAlpha158(Alpha158):
+    """仅消费 Qlib 标准日级字段的 Alpha158 特征处理器。"""
+
+
+class FullDayMinute1Alpha158(Alpha158):
+    """Alpha158 加完整交易日1分钟压缩量价特征。"""
+
+    def get_feature_config(self):
+        fields, names = Alpha158DL.get_feature_config(
+            {
+                "kbar": {},
+                "price": {"windows": [0], "feature": ["OPEN", "HIGH", "LOW", "VWAP"]},
+                "rolling": {},
+            }
+        )
+        fields.extend(f"${field}" for field in MINUTE1_FEATURE_FIELDS)
+        names.extend(field.upper() for field in MINUTE1_FEATURE_FIELDS)
+        return fields, names
+
+
+# AI_GENERATE_END ---

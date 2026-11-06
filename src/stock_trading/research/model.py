@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------------------------------
+# AI_GENERATE_START ------------------------------------
 from __future__ import annotations
 
 import json
@@ -13,14 +13,15 @@ from pathlib import Path
 import pandas as pd
 
 from stock_trading.utils.logging_utils import set_log_context
+from stock_trading.research.model_config import ModelSpec
 
 LOGGER = logging.getLogger(__name__)
 LIGHTGBM_NUM_BOOST_ROUND = 300
 LIGHTGBM_EARLY_STOPPING_ROUNDS = 30
-MODEL_LABEL_CONTRACT = "t1-morning-observation-afternoon-windows-v3"
+MODEL_LABEL_CONTRACT = "t1-next-day-entry-following-morning-exit-v4"
 MODEL_LABEL_DESCRIPTION = (
-    "T+1 13:00-14:00 adjusted sell VWAP / "
-    "T 14:00-15:00 adjusted buy VWAP - 1; observed through T 11:30"
+    "D+2 09:35-11:25 adjusted sell VWAP / "
+    "D+1 13:05-14:54 adjusted buy VWAP - 1; observed through D 11:30"
 )
 
 
@@ -154,10 +155,10 @@ def train_alpha158_lightgbm(
     LOGGER.info("准备训练、验证和测试数据")
     train = dataset.prepare(
         "train", col_set=["feature", "label"], data_key=DataHandlerLP.DK_L
-    )
+    ).sort_index()
     valid = dataset.prepare(
         "valid", col_set=["feature", "label"], data_key=DataHandlerLP.DK_L
-    )
+    ).sort_index()
     test_features = dataset.prepare(
         "test", col_set="feature", data_key=DataHandlerLP.DK_I
     )
@@ -228,6 +229,177 @@ def train_alpha158_lightgbm(
     )
 
 
+def train_configured_model(
+    spec: ModelSpec,
+    qlib_dir: Path,
+    artifact_dir: Path,
+    segments: ModelSegments,
+    top_k: int = 5,
+) -> dict[str, object]:
+    """通过统一数据集接口训练配置指定的 LightGBM 或 XGBoost。"""
+    import qlib
+    from qlib.constant import REG_CN
+    from qlib.data.dataset import DatasetH
+    from qlib.data.dataset.handler import DataHandlerLP
+
+    handler_type = _configured_handler(spec)
+    qlib.init(provider_uri=str(qlib_dir), region=REG_CN, kernels=2)
+    handler = handler_type(
+        instruments="all",
+        start_time=segments.train_start,
+        end_time=segments.test_end,
+        fit_start_time=segments.train_start,
+        fit_end_time=segments.train_end,
+        label=(["$label"], ["LABEL0"]),
+    )
+    dataset = DatasetH(
+        handler=handler,
+        segments={
+            "train": (segments.train_start, segments.train_end),
+            "valid": (segments.valid_start, segments.valid_end),
+            "test": (segments.test_start, segments.test_end),
+        },
+    )
+    train = dataset.prepare(
+        "train", col_set=["feature", "label"], data_key=DataHandlerLP.DK_L
+    )
+    valid = dataset.prepare(
+        "valid", col_set=["feature", "label"], data_key=DataHandlerLP.DK_L
+    )
+    test_features = dataset.prepare(
+        "test", col_set="feature", data_key=DataHandlerLP.DK_I
+    )
+    model = _configured_estimator(spec)
+    set_log_context(step="4/6", progress="0/300", target=spec.algorithm)
+    train_target = _training_target(spec, train["label"].iloc[:, 0])
+    valid_target = _training_target(spec, valid["label"].iloc[:, 0])
+    if spec.algorithm == "LightGBM":
+        import lightgbm as lgb
+
+        model.fit(
+            train["feature"],
+            train_target,
+            eval_set=[(valid["feature"], valid_target)],
+            eval_names=["valid"],
+            eval_metric="l1" if spec.training_target == "winsorized_return" else "l2",
+            callbacks=[
+                lgb.early_stopping(LIGHTGBM_EARLY_STOPPING_ROUNDS, verbose=False),
+                _lightgbm_progress_callback(),
+            ],
+        )
+    elif spec.algorithm == "XGBoostRanker":
+        model.fit(
+            train["feature"],
+            train_target,
+            group=_date_groups(train_target),
+            eval_set=[(valid["feature"], valid_target)],
+            eval_group=[_date_groups(valid_target)],
+            verbose=False,
+        )
+    else:
+        model.fit(
+            train["feature"],
+            train_target,
+            eval_set=[(valid["feature"], valid_target)],
+            verbose=False,
+        )
+    predictions = pd.Series(
+        _model_predict(model, test_features),
+        index=test_features.index,
+        name="score",
+    )
+    labels = dataset.prepare(
+        "test", col_set="label", data_key=DataHandlerLP.DK_R
+    ).iloc[:, 0].rename("label")
+    scored = pd.concat([predictions, labels], axis=1)
+    scored.index.names = ["datetime", "instrument"]
+    return _persist_training_artifacts(
+        model,
+        scored,
+        artifact_dir,
+        segments,
+        top_k,
+        training_mode="single-pass",
+        train_rows=len(train),
+        valid_rows=len(valid),
+        feature_count=train["feature"].shape[1],
+        feature_batch_days=None,
+        spec=spec,
+    )
+
+
+def _configured_handler(spec: ModelSpec):
+    from stock_trading.research.features import (
+        DailyAlpha158,
+        FullDayMinute1Alpha158,
+        MorningAlpha158,
+    )
+
+    if spec.feature_frequency == "daily":
+        return DailyAlpha158
+    if spec.feature_frequency == "minute1":
+        return FullDayMinute1Alpha158
+    return MorningAlpha158
+
+
+def _configured_estimator(spec: ModelSpec):
+    parameters = dict(spec.algorithm_parameters)
+    if spec.algorithm == "LightGBM":
+        import lightgbm as lgb
+
+        return lgb.LGBMRegressor(
+            objective=parameters.pop("objective", "regression"),
+            metric="l2",
+            n_jobs=2,
+            random_state=20261030,
+            verbosity=-1,
+            **parameters,
+        )
+    if spec.algorithm == "XGBoost":
+        import xgboost as xgb
+
+        return xgb.XGBRegressor(
+            objective="reg:squarederror",
+            eval_metric="rmse",
+            n_jobs=2,
+            random_state=20261030,
+            early_stopping_rounds=LIGHTGBM_EARLY_STOPPING_ROUNDS,
+            **parameters,
+        )
+    if spec.algorithm == "XGBoostRanker":
+        import xgboost as xgb
+
+        return xgb.XGBRanker(
+            objective="rank:pairwise",
+            eval_metric="ndcg@5",
+            n_jobs=2,
+            random_state=20261030,
+            early_stopping_rounds=LIGHTGBM_EARLY_STOPPING_ROUNDS,
+            **parameters,
+        )
+    raise ValueError(f"不支持的模型算法：{spec.algorithm}")
+
+
+def _training_target(spec: ModelSpec, labels: pd.Series) -> pd.Series:
+    values = labels.astype(float).copy()
+    if spec.training_target == "raw_return":
+        return values
+    if spec.training_target == "winsorized_return":
+        return values.groupby(level="datetime", group_keys=False).transform(
+            lambda group: group.clip(group.quantile(0.01), group.quantile(0.99))
+        )
+    if spec.training_target == "cross_sectional_rank":
+        ranks = values.groupby(level="datetime", group_keys=False).rank(
+            method="average", pct=True
+        )
+        return ranks.mul(5).sub(1e-12).astype(int).clip(0, 4)
+    raise ValueError(f"不支持的训练标签变换：{spec.training_target}")
+
+
+def _date_groups(labels: pd.Series) -> list[int]:
+    return labels.groupby(level="datetime", sort=False).size().astype(int).tolist()
+
+
 def _persist_training_artifacts(
     model,
     scored: pd.DataFrame,
@@ -239,6 +411,7 @@ def _persist_training_artifacts(
     valid_rows: int,
     feature_count: int,
     feature_batch_days: int | None,
+    spec: ModelSpec | None = None,
 ) -> dict[str, object]:
     evaluation = scored.dropna(subset=["score", "label"])
     metrics = _cross_sectional_metrics(evaluation)
@@ -268,10 +441,37 @@ def _persist_training_artifacts(
     with (artifact_dir / "model.pkl").open("wb") as stream:
         pickle.dump(model, stream)
     payload = {
-        "featureSet": "MorningAlpha158",
-        "model": "LightGBM Regression",
-        "labelContract": MODEL_LABEL_CONTRACT,
-        "label": MODEL_LABEL_DESCRIPTION,
+        "modelId": spec.model_id if spec else "legacy",
+        "algorithm": spec.algorithm if spec else "LightGBM",
+        "dataFeature": spec.feature_frequency if spec else "minute5",
+        "labelHorizon": spec.label_horizon if spec else 1,
+        "businessDescription": (
+            spec.business_description if spec else MODEL_LABEL_DESCRIPTION
+        ),
+        "configSummary": (
+            {
+                "algorithmParameters": spec.algorithm_parameters,
+                "requiredFields": spec.required_fields,
+                "trainingTarget": spec.training_target,
+                "trainingWindowDays": spec.training_window_days,
+            }
+            if spec
+            else {}
+        ),
+        "featureSet": spec.feature_set if spec else "MorningAlpha158",
+        "model": (
+            "XGBoost Pairwise Ranking"
+            if spec and spec.algorithm == "XGBoostRanker"
+            else f"{spec.algorithm} Regression"
+            if spec
+            else "LightGBM Regression"
+        ),
+        "labelContract": (
+            f"{spec.feature_frequency}-T+{spec.label_horizon}-v2"
+            if spec
+            else MODEL_LABEL_CONTRACT
+        ),
+        "label": spec.label_description if spec else MODEL_LABEL_DESCRIPTION,
         "segments": _segments_record(segments),
         "metrics": metrics,
         "topK": top_k,
@@ -407,7 +607,101 @@ def predict_alpha158_lightgbm(
     }
 
 
+def predict_configured_model(
+    spec: ModelSpec,
+    qlib_dir: Path,
+    model_dir: Path,
+    prediction_date: date,
+    eligible_instruments: set[str] | None = None,
+) -> dict[str, object]:
+    """使用配置指定的特征处理器和已训练模型生成单日完整排名。"""
+    import qlib
+    from qlib.constant import REG_CN
+    from qlib.data.dataset import DatasetH
+    from qlib.data.dataset.handler import DataHandlerLP
+
+    metrics = json.loads((model_dir / "metrics.json").read_text(encoding="utf-8"))
+    segments = metrics["segments"]
+    calendar = pd.to_datetime(
+        (qlib_dir / "calendars" / "day.txt").read_text(encoding="utf-8").splitlines()
+    )
+    target = pd.Timestamp(prediction_date)
+    if target not in calendar:
+        raise ValueError(f"prediction date is absent from Qlib calendar: {prediction_date}")
+    qlib.init(provider_uri=str(qlib_dir), region=REG_CN, kernels=2)
+    handler_type = _configured_handler(spec)
+    handler = handler_type(
+        instruments="all",
+        start_time=pd.Timestamp(calendar.min()).date(),
+        end_time=prediction_date,
+        fit_start_time=date.fromisoformat(segments["train_start"]),
+        fit_end_time=date.fromisoformat(segments["train_end"]),
+        label=(["$label"], ["LABEL0"]),
+    )
+    dataset = DatasetH(
+        handler=handler,
+        segments={"prediction": (prediction_date, prediction_date)},
+    )
+    features = dataset.prepare(
+        "prediction", col_set="feature", data_key=DataHandlerLP.DK_I
+    )
+    if features.empty:
+        raise ValueError(f"目标日期没有可用模型特征：{prediction_date}")
+    with (model_dir / "model.pkl").open("rb") as stream:
+        model = pickle.load(stream)
+    model_columns = _model_feature_names(model)
+    if model_columns:
+        missing = sorted(set(model_columns) - set(features.columns))
+        if missing:
+            raise ValueError(f"prediction features are missing model columns: {missing[:5]}")
+        features = features.loc[:, model_columns]
+    scored = pd.Series(
+        _model_predict(model, features), index=features.index, name="score"
+    ).dropna()
+    scored.index.names = ["datetime", "instrument"]
+    if eligible_instruments is not None:
+        allowed = {value.upper() for value in eligible_instruments}
+        instruments = scored.index.get_level_values("instrument").astype(str).str.upper()
+        scored = scored[instruments.isin(allowed)]
+    if scored.empty:
+        raise ValueError(f"目标日期没有可排名股票：{prediction_date}")
+    ranking = scored.reset_index().sort_values(
+        ["datetime", "score", "instrument"], ascending=[True, False, True]
+    ).reset_index(drop=True)
+    ranking["rank"] = range(1, len(ranking) + 1)
+    ranking["label"] = float("nan")
+    output_dir = model_dir / "predictions"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output = output_dir / f"ranking-{prediction_date.isoformat()}.parquet"
+    temporary = output.with_suffix(".parquet.tmp")
+    try:
+        ranking.to_parquet(temporary, index=False)
+        temporary.replace(output)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return {
+        "modelId": spec.model_id,
+        "model": metrics["model"],
+        "featureSet": metrics["featureSet"],
+        "predictionDate": prediction_date.isoformat(),
+        "universeRows": len(scored),
+        "rankingRows": len(ranking),
+        "path": str(output),
+        "topCandidates": [
+            {
+                "instrument": str(row.instrument),
+                "rank": int(row.rank),
+                "score": float(row.score),
+            }
+            for row in ranking.head(5).itertuples(index=False)
+        ],
+    }
+
+
 def _model_feature_names(model) -> list[str]:
+    names = getattr(model, "feature_names_in_", None)
+    if names is not None:
+        return list(names)
     names = getattr(model, "feature_name_", None)
     if names is not None:
         return list(names)
@@ -416,6 +710,8 @@ def _model_feature_names(model) -> list[str]:
 
 
 def _model_predict(model, features: pd.DataFrame):
+    if model.__class__.__module__.startswith("xgboost"):
+        return model.predict(features)
     best_iteration = getattr(model, "best_iteration_", None)
     if best_iteration is None:
         best_iteration = getattr(model, "best_iteration", None)
@@ -485,6 +781,7 @@ def _lightgbm_progress_callback():
 def automatic_model_segments(
     calendar_path: Path,
     split: tuple[Decimal, Decimal, Decimal] | None = None,
+    maximum_days: int | None = None,
 ) -> ModelSegments:
     """按指定比例切分连续交易日；省略比例时使用 70%/15%/15%。"""
     calendar = [
@@ -492,6 +789,10 @@ def automatic_model_segments(
         for value in calendar_path.read_text(encoding="utf-8").splitlines()
         if value.strip()
     ]
+    if maximum_days is not None:
+        if maximum_days <= 0:
+            raise ValueError("训练窗口交易日数必须大于 0")
+        calendar = calendar[-maximum_days:]
     if len(calendar) < 63:
         raise ValueError(f"自动切分至少需要 63 个交易日，当前={len(calendar)}")
     ratios = split or (Decimal("70"), Decimal("15"), Decimal("15"))
@@ -518,4 +819,4 @@ def automatic_model_segments(
         test_end=calendar[-1],
     )
 
-# AI_GENERATE_END --------------------------------
+# AI_GENERATE_END ------------------------------------

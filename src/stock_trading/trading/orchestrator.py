@@ -1,9 +1,10 @@
-# AI_GENERATE_START ----------------------
+# AI_GENERATE_START ------------------------
 from __future__ import annotations
 
 import logging
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 from typing import Protocol
 
 from stock_trading.broker.models import BrokerAccount, BrokerPosition, FiveLevelQuote
@@ -40,28 +41,27 @@ class LiveTradingOrchestrator:
         config: AppConfig,
         state_store: StateStore,
         broker: BrokerReader,
+        model_id: str,
+        qlib_dir: Path,
     ) -> None:
         self._config = config
         self._state_store = state_store
         self._broker = broker
+        self._model_id = model_id
+        self._qlib_dir = qlib_dir
         self._market_store = ParquetMarketStore(config.data_dir)
 
     def select_targets(
         self, business_date: date, side: str
     ) -> dict[str, object]:
         if side == "SELL":
-            return self._select_afternoon_sell_targets(business_date)
+            return self._select_morning_sell_targets(business_date)
         if side == "BUY":
             return self._select_afternoon_buy_target(business_date)
         raise ValueError("交易方向必须是 BUY 或 SELL")
 
-    def _select_afternoon_sell_targets(self, business_date: date) -> dict[str, object]:
-        """只卖出跌出保留排名的可卖持仓，实际数量和价格在委托前重算。"""
-        candidates = self._prediction_candidates(business_date)
-        candidate_by_instrument = {
-            normalize_instrument(candidate["instrument"]): candidate
-            for candidate in candidates
-        }
+    def _select_morning_sell_targets(self, business_date: date) -> dict[str, object]:
+        """卖出所有 T+1 已可卖持仓，实际数量和价格在委托前重算。"""
         buy_dates = self._unsettled_buy_dates()
         targets: list[dict[str, object]] = []
         ignored: list[dict[str, object]] = []
@@ -73,58 +73,34 @@ class LiveTradingOrchestrator:
                     {"instrument": instrument, "reason": "NO_AVAILABLE_QUANTITY"}
                 )
                 continue
-            candidate = candidate_by_instrument.get(instrument)
-            rank = int(candidate["rank"]) if candidate is not None else None
             buy_date = buy_dates.get(instrument)
             holding_days = (
                 self._holding_trade_days(buy_date, business_date)
                 if buy_date is not None
                 else None
             )
-            maximum_reached = (
-                holding_days is not None
-                and holding_days >= self._config.trading_max_holding_days
-            )
-            if (
-                not maximum_reached
-                and rank is not None
-                and rank <= self._config.trading_exit_rank
-            ):
-                ignored.append(
-                    {
-                        "instrument": instrument,
-                        "rank": rank,
-                        "holdingDays": holding_days,
-                        "reason": "RANK_RETAINED",
-                    }
-                )
-                continue
             targets.append(
                 {
                     "instrument": instrument,
                     "side": "SELL",
-                    "candidateRank": rank,
+                    "candidateRank": None,
                     "holdingDays": holding_days,
                     "exitReason": (
-                        "MAX_HOLDING_DAYS" if maximum_reached else "RANK_EXIT"
+                        "T1_MORNING_EXIT" if holding_days == 1 else "T1_RECOVERY_EXIT"
                     ),
-                    "modelVersionId": (
-                        int(candidate["model_version_id"])
-                        if candidate is not None
-                        else None
-                    ),
-                    "predictionDate": candidates[0]["prediction_date"],
+                    "modelVersionId": None,
+                    "predictionDate": None,
                 }
             )
         LOGGER.info(
-            "下午卖出目标选择完成：目标数=%d；忽略数=%d",
+            "上午 T+1 卖出目标选择完成：目标数=%d；忽略数=%d",
             len(targets),
             len(ignored),
         )
         return {
             "businessDate": business_date.isoformat(),
-            "predictionDate": candidates[0]["prediction_date"],
-            "mode": "AFTERNOON_SELL",
+            "predictionDate": None,
+            "mode": "MORNING_SELL",
             "targets": targets,
             "ignored": ignored,
         }
@@ -142,7 +118,7 @@ class LiveTradingOrchestrator:
         return buy_dates
 
     def _holding_trade_days(self, buy_date: date, business_date: date) -> int:
-        calendar_path = self._config.qlib_dir / "calendars" / "day.txt"
+        calendar_path = self._qlib_dir / "calendars" / "day.txt"
         trading_dates = (
             date.fromisoformat(value)
             for value in calendar_path.read_text(encoding="utf-8").splitlines()
@@ -153,7 +129,9 @@ class LiveTradingOrchestrator:
         """从完整横截面排名选择最高分可买目标，不保存五档价格和委托数量。"""
         candidates = self._prediction_candidates(business_date)
 
-        existing_target = self._existing_buy_target(business_date)
+        existing_target = self._existing_buy_target(
+            business_date, int(candidates[0]["model_version_id"])
+        )
         if existing_target is not None:
             candidate = next(
                 (
@@ -291,7 +269,7 @@ class LiveTradingOrchestrator:
         self, business_date: date
     ) -> list[dict[str, object]]:
         candidates = self._state_store.latest_prediction_candidates(
-            business_date.isoformat()
+            business_date.isoformat(), self._model_id
         )
         if not candidates:
             raise ValueError("目标交易日前没有可用横截面预测")
@@ -306,12 +284,15 @@ class LiveTradingOrchestrator:
             )
         return candidates
 
-    def _existing_buy_target(self, business_date: date) -> str | None:
+    def _existing_buy_target(
+        self, business_date: date, model_version_id: int
+    ) -> str | None:
         prefix = f"LIVE:AFTERNOON_BUY:{business_date.isoformat()}:"
         matching = [
             row
             for row in self._state_store.list_order_intents()
             if str(row["client_order_id"]).startswith(prefix)
+            and row["model_version_id"] == model_version_id
         ]
         if not matching or matching[-1]["status"] == "REJECTED":
             return None
@@ -346,4 +327,4 @@ class LiveTradingOrchestrator:
             "targets": [target] if target else [],
             "rejected": rejected,
         }
-# AI_GENERATE_END ----------------------
+# AI_GENERATE_END ------------------------

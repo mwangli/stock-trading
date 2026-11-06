@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------------------------------
+# AI_GENERATE_START --------------------------------
 from __future__ import annotations
 
 import base64
@@ -16,7 +16,8 @@ from typing import Any
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from stock_trading.broker.models import FiveLevelQuote
+from stock_trading.broker.minute import parse_minute_series
+from stock_trading.broker.models import BrokerMinuteSeries, FiveLevelQuote
 from stock_trading.broker.parser import (
     parse_account_rows,
     parse_decimal,
@@ -29,6 +30,7 @@ from stock_trading.utils.logging_utils import set_log_context
 from stock_trading.utils.time_utils import shanghai_today
 
 ACTION_GET_PRICE = 33
+ACTION_GET_MINUTES = 20109
 ACTION_LOGIN = 100
 ACTION_SUBMIT_ORDER = 110
 ACTION_CANCEL_ORDER = 111
@@ -256,6 +258,35 @@ class ZXBrokerClient:
             quote.asks[2],
         )
         return quote
+
+    def get_minute_series(
+        self, stock_code: str, trade_date: date | None = None
+    ) -> BrokerMinuteSeries:
+        """读取单只证券单日分时价点；历史日期由 BeginDate 精确指定。"""
+        LOGGER.info(
+            "正在读取券商分钟行情：股票=%s；日期=%s",
+            stock_code,
+            trade_date.isoformat() if trade_date else "当日",
+        )
+        values: dict[str, object] = {
+            "action": ACTION_GET_MINUTES,
+            "stockcode": stock_code,
+        }
+        if trade_date is not None:
+            values["BeginDate"] = trade_date.strftime("%Y%m%d")
+        response = self._request(self.build_params(values))
+        series = parse_minute_series(response, stock_code)
+        if trade_date is not None and series.trade_date != trade_date:
+            raise BrokerProtocolError(
+                f"券商分钟行情日期不匹配: {series.trade_date} != {trade_date}"
+            )
+        LOGGER.info(
+            "券商分钟行情读取完成：股票=%s；日期=%s；分钟点=%d",
+            stock_code,
+            series.trade_date,
+            len(series.points),
+        )
+        return series
 
     def submit_limit_order(
         self,
@@ -588,4 +619,4 @@ def _parse_five_level_prices(
     if any(price is None or price <= 0 for price in bids + asks):
         raise BrokerProtocolError("券商未返回完整五档行情")
     return bids, asks
-# AI_GENERATE_END ------------------------------
+# AI_GENERATE_END --------------------------------

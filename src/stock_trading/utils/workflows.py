@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------------------------------
+# AI_GENERATE_START----- ---------------------------------
 from __future__ import annotations
 
 import json
@@ -23,20 +23,20 @@ from stock_trading.market.sync import (
     research_codes,
     sync_daily,
     sync_factors,
+    sync_minute,
     sync_minute5,
     sync_stock_basics,
     trading_dates_between,
 )
 from stock_trading.utils.notifications import push_execution_result
 from stock_trading.research.artifacts import (
-    model_root,
+    model_artifacts_valid,
+    model_directory,
     prediction_artifact_path,
     prediction_artifact_valid,
-    resolve_current_model_dir,
 )
-from stock_trading.research.model import predict_alpha158_lightgbm
-from stock_trading.research.qlib_store import QlibBinaryStore
-from stock_trading.research.training import activate_trained_model
+from stock_trading.research.model_adapter import create_research_model
+from stock_trading.research.model_config import ModelSpec
 from stock_trading.state.store import StateStore
 from stock_trading.trading.broker_sync import BrokerOrderSyncService
 from stock_trading.trading.execution import OrderExecutionOrchestrator
@@ -46,170 +46,194 @@ from stock_trading.trading.review import (
     RealizedProfitService,
 )
 from stock_trading.trading.permissions import refresh_permissions
-from stock_trading.utils.time_utils import shanghai_now
+from stock_trading.utils.time_utils import shanghai_now, shanghai_today
 
 LOGGER = logging.getLogger(__name__)
+MINUTE1_MIN_TRAINING_DAYS = 252
+COLLECTION_TYPES = ("basic", "daily", "factor", "minute5", "minute")
 
 
 def collect_workflow(
     config: AppConfig,
     start_date: date,
     end_date: date,
-    snapshot_date: date,
+    collection_types: tuple[str, ...],
     requested_codes: list[str] | None = None,
-    mode: str = "daily",
 ) -> dict[str, object]:
-    """按模式采集日线研究数据或5分钟行情。"""
-    if mode not in {"daily", "minute5"}:
-        raise ValueError("采集模式只能是 daily 或 minute5")
+    """按相互独立的数据类型顺序采集，并分别登记任务状态。"""
+    unknown = sorted(set(collection_types) - set(COLLECTION_TYPES))
+    if unknown:
+        raise ValueError(f"不支持的采集类型：{','.join(unknown)}")
+    selected_types = tuple(
+        value for value in COLLECTION_TYPES if value in collection_types
+    )
+    if not selected_types:
+        raise ValueError("至少指定一个采集类型")
+    if requested_codes and "basic" in selected_types:
+        LOGGER.warning("basic 始终写入全市场快照，--codes 对 basic 不生效")
+
     state = StateStore(config.state_db_path)
-    task_type = "COLLECT_DAILY" if mode == "daily" else "COLLECT_MINUTE5"
-    business_key = state.start_task(task_type, end_date)
     store = ParquetMarketStore(config.data_dir)
-    try:
-        result = (
-            _collect_daily_data(
+    collection: dict[str, object] = {}
+    errors: dict[str, str] = {}
+    today = shanghai_today()
+    for collection_type in selected_types:
+        task_date = today if collection_type == "basic" else end_date
+        business_key = state.start_task(
+            f"COLLECT_{collection_type.upper()}", task_date
+        )
+        try:
+            result = _collect_type(
                 config,
                 store,
+                collection_type,
                 start_date,
                 end_date,
-                snapshot_date,
                 requested_codes,
             )
-            if mode == "daily"
-            else _collect_minute5_data(
-                config, store, start_date, end_date, requested_codes
+        except Exception as error:
+            state.finish_task(business_key, False, error)
+            errors[collection_type] = str(error)
+            collection[collection_type] = {
+                "status": "FAILED",
+                "error": str(error),
+            }
+            LOGGER.error(
+                "采集阶段失败：类型=%s；原因=%s", collection_type, error
             )
+        else:
+            state.finish_task(business_key, True)
+            collection[collection_type] = {"status": "SUCCESS"} | result
+            LOGGER.info("采集阶段完成：类型=%s", collection_type)
+
+    summary = {
+        "types": list(selected_types),
+        "startDate": start_date.isoformat(),
+        "endDate": end_date.isoformat(),
+        "collection": collection,
+    }
+    if errors:
+        details = "；".join(
+            f"{name}={message}" for name, message in errors.items()
         )
-    except BaseException as error:
-        state.finish_task(business_key, False, error)
-        raise
-    state.finish_task(business_key, True)
-    LOGGER.info(
-        "股票数据采集完成：模式=%s；股票数=%d",
-        mode,
-        result["researchCodes"],
-    )
-    return result
+        raise ValueError(
+            f"采集未完整成功，其他类型已独立执行并保留成功数据：{details}"
+        )
+    return summary
 
 
-def _collect_daily_data(
+def _collect_type(
     config: AppConfig,
     store: ParquetMarketStore,
+    collection_type: str,
     start_date: date,
     end_date: date,
-    snapshot_date: date,
     requested_codes: list[str] | None,
 ) -> dict[str, object]:
-    errors: dict[str, str] = {}
-    collection: dict[str, object] = {}
-    provider = market_provider(config, config.daily_market_provider)
+    if collection_type == "basic":
+        return _collect_basic(config, store)
+    stocks = _local_stock_basics(store)
+    codes = _collection_codes(stocks, start_date, end_date, requested_codes)
+    if collection_type == "daily":
+        return _collect_daily(config, store, stocks, codes, start_date, end_date)
+    if collection_type == "factor":
+        return _collect_factor(config, store, stocks, codes, start_date, end_date)
+    if collection_type == "minute5":
+        return _collect_minute5(config, store, codes, start_date, end_date)
+    if collection_type == "minute":
+        return _collect_minute(config, store, codes, start_date, end_date)
+    raise ValueError(f"不支持的采集类型：{collection_type}")
+
+
+def _collect_basic(
+    config: AppConfig, store: ParquetMarketStore
+) -> dict[str, object]:
+    snapshot_date = shanghai_today()
+    provider = market_provider(config, "tushare")
     if store.stock_basics_valid(snapshot_date):
-        collection["basic"] = {
+        result: dict[str, object] = {
             "skipped": True,
             "snapshotDate": snapshot_date.isoformat(),
         }
     else:
-        try:
-            collection["basic"] = sync_stock_basics(
-                store, provider, snapshot_date
-            )
-        except Exception as error:
-            _record_collection_error(errors, "basic", error)
-            collection["basic"] = {"failed": True, "error": str(error)}
-
-    try:
-        stocks = store.read_stock_basics()
-    except (OSError, ValueError, KeyError) as error:
-        _record_collection_error(errors, "basic", error)
-        raise ValueError(_collection_error_message(errors)) from error
-    codes = _collection_codes(stocks, start_date, end_date, requested_codes)
-    dates = trading_dates_between(
-        store, provider, start_date, end_date
-    )
-    if not dates:
-        raise ValueError("指定日期范围内没有交易日")
-
-    audit = audit_research_quality(store, stocks, codes, start_date, end_date)
-    missing_daily = sum(plan.needs_daily for plan in audit.pending)
-    daily_coverage = (len(codes) - missing_daily) / len(codes)
-    if missing_daily:
-        try:
-            collection["daily"] = sync_daily(
-                store, provider, stocks, codes, dates
-            )
-        except Exception as error:
-            _record_collection_error(errors, "daily", error)
-            collection["daily"] = {"failed": True, "error": str(error)}
-    else:
-        collection["daily"] = {
-            "skipped": True,
-            "codes": len(codes) - missing_daily,
-            "missingCodes": missing_daily,
-            "coverageRate": daily_coverage,
-        }
-
-    audit = audit_research_quality(store, stocks, codes, start_date, end_date)
-    if any(plan.needs_factor for plan in audit.pending):
-        try:
-            collection["factor"] = sync_factors(
-                store, provider, codes, dates
-            )
-        except Exception as error:
-            _record_collection_error(errors, "factor", error)
-            collection["factor"] = {"failed": True, "error": str(error)}
-    else:
-        collection["factor"] = {"skipped": True, "codes": len(codes)}
-
-    audit = audit_research_quality(store, stocks, codes, start_date, end_date)
-    _log_collection_audit("日线和复权因子独立检查完成", audit)
-    quality = {
-        "basic": _basic_quality(store, snapshot_date),
-        "daily": _component_quality(
-            "collect-daily",
-            codes,
-            audit,
-            "needs_daily",
-            config.data_quality_min_ratio,
-            errors,
-        ),
-        "factor": _component_quality(
-            "collect-factor",
-            codes,
-            audit,
-            "needs_factor",
-            config.data_quality_min_ratio,
-            errors,
-        ),
-    }
-    if not quality["basic"]["valid"]:
-        errors.setdefault("basic", "股票基础信息快照检查失败")
-    if errors:
-        raise ValueError(_collection_error_message(errors))
+        result = sync_stock_basics(store, provider, snapshot_date)
+    quality = _basic_quality(store, snapshot_date)
+    if not quality["valid"]:
+        raise ValueError("TuShare 股票基础信息快照检查失败")
     return {
-        "mode": "daily",
         "provider": provider.name,
-        "startDate": start_date.isoformat(),
-        "endDate": end_date.isoformat(),
-        "researchCodes": len(codes),
-        "collection": collection,
+        "scope": "full-market",
+        "result": result,
         "dataQuality": quality,
     }
 
 
-def _collect_minute5_data(
+def _collect_daily(
     config: AppConfig,
     store: ParquetMarketStore,
+    stocks: pd.DataFrame,
+    codes: list[str],
     start_date: date,
     end_date: date,
-    requested_codes: list[str] | None,
 ) -> dict[str, object]:
-    try:
-        stocks = store.read_stock_basics()
-    except (OSError, ValueError, KeyError) as error:
-        raise ValueError("未找到股票基础信息；请先执行 stock-collect --daily") from error
-    codes = _collection_codes(stocks, start_date, end_date, requested_codes)
-    provider = market_provider(config, config.minute5_market_provider)
+    provider = market_provider(config, "tushare")
+    dates = trading_dates_between(store, provider, start_date, end_date)
+    if not dates:
+        raise ValueError("指定日期范围内没有交易日")
+    result = sync_daily(store, provider, stocks, codes, dates)
+    audit = audit_research_quality(store, stocks, codes, start_date, end_date)
+    quality = _component_quality(
+        "collect-daily",
+        codes,
+        audit,
+        "needs_daily",
+        config.data_quality_min_ratio,
+    )
+    return {
+        "provider": provider.name,
+        "researchCodes": len(codes),
+        "result": result,
+        "dataQuality": quality,
+    }
+
+
+def _collect_factor(
+    config: AppConfig,
+    store: ParquetMarketStore,
+    stocks: pd.DataFrame,
+    codes: list[str],
+    start_date: date,
+    end_date: date,
+) -> dict[str, object]:
+    provider = market_provider(config, "tushare")
+    dates = trading_dates_between(store, provider, start_date, end_date)
+    if not dates:
+        raise ValueError("指定日期范围内没有交易日")
+    result = sync_factors(store, provider, codes, dates)
+    audit = audit_research_quality(store, stocks, codes, start_date, end_date)
+    quality = _component_quality(
+        "collect-factor",
+        codes,
+        audit,
+        "needs_factor",
+        config.data_quality_min_ratio,
+    )
+    return {
+        "provider": provider.name,
+        "researchCodes": len(codes),
+        "result": result,
+        "dataQuality": quality,
+    }
+
+
+def _collect_minute5(
+    config: AppConfig,
+    store: ParquetMarketStore,
+    codes: list[str],
+    start_date: date,
+    end_date: date,
+) -> dict[str, object]:
+    provider = market_provider(config, "baostock")
     result = sync_minute5(store, provider, codes, start_date, end_date)
     require_full_end = _requires_complete_end_window(end_date)
     usable = sum(
@@ -225,14 +249,89 @@ def _collect_minute5_data(
         config.data_quality_min_ratio,
     )
     return {
-        "mode": "minute5",
         "provider": provider.name,
-        "startDate": start_date.isoformat(),
-        "endDate": end_date.isoformat(),
         "researchCodes": len(codes),
-        "collection": {"minute5": result},
-        "dataQuality": {"minute5": quality},
+        "result": result,
+        "dataQuality": quality,
     }
+
+
+def _collect_minute(
+    config: AppConfig,
+    store: ParquetMarketStore,
+    codes: list[str],
+    start_date: date,
+    end_date: date,
+) -> dict[str, object]:
+    provider = market_provider(config, "zxbroker")
+    result = sync_minute(store, provider, codes, start_date, end_date)
+    quality = require_data_quality(
+        "collect-minute",
+        len(codes),
+        len(store.minute1_codes_between(codes, start_date, end_date)),
+        config.data_quality_min_ratio,
+    )
+    return {
+        "provider": provider.name,
+        "researchCodes": len(codes),
+        "result": result,
+        "dataQuality": quality,
+    }
+
+
+def _local_stock_basics(store: ParquetMarketStore) -> pd.DataFrame:
+    try:
+        stocks = store.read_stock_basics()
+    except (OSError, ValueError, KeyError) as error:
+        raise ValueError(
+            "未找到本地股票基础信息；请先执行 stock-collect --type basic"
+        ) from error
+    if stocks.empty or "snapshot_date" not in stocks:
+        raise ValueError(
+            "本地股票基础信息无效；请先执行 stock-collect --type basic"
+        )
+    snapshot_dates = pd.to_datetime(
+        stocks["snapshot_date"], errors="coerce"
+    ).dropna()
+    if snapshot_dates.empty:
+        raise ValueError(
+            "本地股票基础信息缺少快照日期；请先执行 stock-collect --type basic"
+        )
+    snapshot_date = snapshot_dates.max().date()
+    today = shanghai_today()
+    if snapshot_date != today:
+        LOGGER.warning(
+            "本地股票基础信息不是今日快照，仍继续执行：快照=%s；今日=%s",
+            snapshot_date,
+            today,
+        )
+    return stocks
+
+
+def _basic_quality(
+    store: ParquetMarketStore, snapshot_date: date
+) -> dict[str, object]:
+    return {
+        "stage": "collect-basic",
+        "valid": bool(store.stock_basics_valid(snapshot_date)),
+        "snapshotDate": snapshot_date.isoformat(),
+    }
+
+
+def _component_quality(
+    stage: str,
+    codes: list[str],
+    audit: ResearchDataAudit,
+    missing_field: str,
+    threshold: float,
+) -> dict[str, object]:
+    missing = sum(bool(getattr(plan, missing_field)) for plan in audit.pending)
+    return require_data_quality(
+        stage,
+        len(codes),
+        len(codes) - missing,
+        threshold,
+    )
 
 
 def _collection_codes(
@@ -256,55 +355,9 @@ def _collection_codes(
     return available_codes
 
 
-def _basic_quality(
-    store: ParquetMarketStore, snapshot_date: date
-) -> dict[str, object]:
-    return {
-        "stage": "collect-basic",
-        "valid": bool(store.stock_basics_valid(snapshot_date)),
-        "snapshotDate": snapshot_date.isoformat(),
-    }
-
-
-def _component_quality(
-    stage: str,
-    codes: list[str],
-    audit: ResearchDataAudit,
-    missing_field: str,
-    threshold: float,
-    errors: dict[str, str],
-) -> dict[str, object]:
-    missing = sum(bool(getattr(plan, missing_field)) for plan in audit.pending)
-    try:
-        return require_data_quality(stage, len(codes), len(codes) - missing, threshold)
-    except ValueError as error:
-        errors[stage] = str(error)
-        return {
-            "stage": stage,
-            "expectedCodes": len(codes),
-            "usableCodes": len(codes) - missing,
-            "missingCodes": missing,
-            "coverageRate": (len(codes) - missing) / len(codes),
-            "threshold": threshold,
-        }
-
-
-def _record_collection_error(
-    errors: dict[str, str], component: str, error: Exception
-) -> None:
-    errors[component] = str(error)
-    LOGGER.error("采集阶段失败：类型=%s；原因=%s", component, error)
-
-
-def _collection_error_message(errors: dict[str, str]) -> str:
-    details = "；".join(
-        f"{component}={message}" for component, message in errors.items()
-    )
-    return f"daily 采集未完整成功，已保留成功写入的数据：{details}"
-
-
 def prepare_workflow(
     config: AppConfig,
+    spec: ModelSpec,
     start_date: date,
     end_date: date,
     force: bool = False,
@@ -314,7 +367,9 @@ def prepare_workflow(
     try:
         stocks = store.read_stock_basics()
     except (OSError, ValueError, KeyError) as error:
-        raise ValueError("未找到股票基础信息；请先执行 stock-collect --daily") from error
+        raise ValueError(
+            "未找到股票基础信息；请先执行 stock-collect --type basic"
+        ) from error
     codes = research_codes(stocks, start_date, end_date)
     if not codes:
         raise ValueError("股票基础信息中没有满足当前日期范围的研究股票")
@@ -334,6 +389,20 @@ def prepare_workflow(
         end_date,
         require_full_end=_requires_complete_end_window(end_date),
     )
+    if spec.feature_frequency == "minute1":
+        minute1_codes = store.valid_minute1_codes(
+            ready_codes,
+            start_date,
+            end_date,
+            MINUTE1_MIN_TRAINING_DAYS,
+        )
+        require_data_quality(
+            "prepare-minute1",
+            len(ready_codes),
+            len(minute1_codes),
+            config.data_quality_min_ratio,
+        )
+        ready_codes = minute1_codes
     quality = require_data_quality(
         "prepare",
         len(codes),
@@ -341,7 +410,7 @@ def prepare_workflow(
         config.data_quality_min_ratio,
         audit,
     )
-    prepared = QlibBinaryStore(store, config.qlib_dir).prepare(
+    prepared = create_research_model(config, spec).prepare(
         ready_codes, start_date, end_date, force=force
     )
     LOGGER.info(
@@ -352,6 +421,7 @@ def prepare_workflow(
         prepared["endDate"],
     )
     return {
+        "modelId": spec.model_id,
         "startDate": start_date.isoformat(),
         "endDate": end_date.isoformat(),
         "researchCodes": len(ready_codes),
@@ -421,20 +491,30 @@ def sync_order_workflow(
     return result
 
 
-def rank_workflow(config: AppConfig, prediction_date: date) -> dict[str, object]:
+def rank_workflow(
+    config: AppConfig, spec: ModelSpec, prediction_date: date
+) -> dict[str, object]:
     """校验当日采集结果，生成完整横截面排名并导入 SQLite。"""
     LOGGER.info("开始生成完整横截面预测：预测日期=%s", prediction_date)
     state_store = StateStore(config.state_db_path)
-    _assert_task_success(state_store, "COLLECT_MINUTE5", prediction_date)
+    if spec.feature_frequency == "minute5":
+        _assert_task_success(state_store, "COLLECT_MINUTE5", prediction_date)
+    elif spec.feature_frequency == "minute1":
+        _assert_task_success(state_store, "COLLECT_MINUTE", prediction_date)
     store = ParquetMarketStore(config.data_dir)
-    qlib = QlibBinaryStore(store, config.qlib_dir)
+    model = create_research_model(config, spec)
     stocks = store.read_stock_basics()
     metadata_codes = live_codes(stocks, prediction_date)
-    current_codes = store.minute5_codes_on(metadata_codes, prediction_date)
+    if spec.feature_frequency == "minute5":
+        current_codes = store.minute5_codes_on(metadata_codes, prediction_date)
+    elif spec.feature_frequency == "minute1":
+        current_codes = store.minute1_codes_on(metadata_codes, prediction_date)
+    else:
+        current_codes = metadata_codes
     expected_instruments = {
         normalize_instrument(code) for code in current_codes
     }
-    available_instruments = qlib.available_instruments(prediction_date)
+    available_instruments = model.available_instruments(prediction_date)
     if available_instruments is None:
         raise ValueError(
             f"Qlib 未覆盖目标日期：{prediction_date.isoformat()}；"
@@ -447,8 +527,11 @@ def rank_workflow(config: AppConfig, prediction_date: date) -> dict[str, object]
         len(ready_instruments),
         config.data_quality_min_ratio,
     )
-    model_dir = resolve_current_model_dir(model_root(config.artifact_dir))
-    activation = activate_trained_model(config, model_dir)
+    model_dir = model_directory(config.artifact_dir, spec)
+    if not model_artifacts_valid(model_dir, spec):
+        raise ValueError(
+            f"模型制品不存在或不完整：{spec.model_id}；请先执行 stock-train"
+        )
     prediction_path = prediction_artifact_path(model_dir, prediction_date)
     existing = _existing_prediction_summary(
         model_dir,
@@ -457,11 +540,8 @@ def rank_workflow(config: AppConfig, prediction_date: date) -> dict[str, object]
         ready_instruments,
     )
     if existing is None:
-        prediction = predict_alpha158_lightgbm(
-            config.qlib_dir,
-            model_dir,
-            prediction_date,
-            eligible_instruments=ready_instruments,
+        prediction = model.rank(
+            prediction_date, eligible_instruments=ready_instruments
         )
         state = state_store.import_prediction_artifact(
             model_dir, Path(str(prediction["path"]))
@@ -493,8 +573,8 @@ def rank_workflow(config: AppConfig, prediction_date: date) -> dict[str, object]
         prediction["path"],
     )
     return {
+        "modelId": spec.model_id,
         "prediction": prediction,
-        "activation": activation,
         "state": state,
         "dataQuality": quality,
     }
@@ -516,6 +596,7 @@ def _existing_prediction_summary(
         return None
     metrics = json.loads((model_dir / "metrics.json").read_text(encoding="utf-8"))
     return {
+        "modelId": metrics.get("modelId", "legacy"),
         "model": metrics["model"],
         "featureSet": metrics["featureSet"],
         "predictionDate": prediction_date.isoformat(),
@@ -534,7 +615,7 @@ def _existing_prediction_summary(
 
 
 def trading_workflow(
-    config: AppConfig, business_date: date, side: str
+    config: AppConfig, spec: ModelSpec, business_date: date, side: str
 ) -> dict[str, object]:
     """选择实时交易目标并逐个执行，返回可供 CLI 输出的完整摘要。"""
     if side not in {"BUY", "SELL"}:
@@ -572,9 +653,10 @@ def trading_workflow(
         account_snapshot["frozen_amount"],
     )
     execution = OrderExecutionOrchestrator(config, store, broker)
-    selection = LiveTradingOrchestrator(config, store, broker).select_targets(
-        business_date, side
-    )
+    model = create_research_model(config, spec)
+    selection = LiveTradingOrchestrator(
+        config, store, broker, spec.model_id, model.qlib_dir
+    ).select_targets(business_date, side)
     executed: list[dict[str, object]] = []
     for target in selection["targets"]:
         result = execution.execute_target(business_date, target)
@@ -586,6 +668,7 @@ def trading_workflow(
         len(executed),
     )
     return {
+        "modelId": spec.model_id,
         "businessDate": business_date.isoformat(),
         "mode": mode,
         "strategy": config.trading_execution_strategy,
@@ -596,20 +679,25 @@ def trading_workflow(
 
 
 def review_workflow(
-    config: AppConfig, business_date: date
+    config: AppConfig, spec: ModelSpec, business_date: date
 ) -> dict[str, object]:
     """汇总已实现收益并判断模型是否需要重训。"""
     store = StateStore(config.state_db_path)
     _assert_task_success(store, "ORDER", business_date)
     business_key = store.start_task("REVIEW", business_date)
     try:
-        profit = RealizedProfitService(store).summarize(business_date)
-        review = ModelReviewService(config, store).review(business_date)
+        profit = RealizedProfitService(store).summarize(
+            spec.model_id, business_date
+        )
+        review = ModelReviewService(config, store).review(
+            spec.model_id, business_date
+        )
     except BaseException as error:
         store.finish_task(business_key, False, error)
         raise
     store.finish_task(business_key, True)
     return {
+        "modelId": spec.model_id,
         "businessDate": business_date.isoformat(),
         "profit": profit,
         "monthlyProfit": review["monthlyProfit"],
@@ -636,4 +724,4 @@ def _build_broker(config: AppConfig) -> ZXBrokerClient:
     return ZXBrokerClient(config, captcha_solver=BaiduCaptchaSolver(config).solve)
 
 
-# AI_GENERATE_END ------------------------------
+# AI_GENERATE_END----- ---------------------------------

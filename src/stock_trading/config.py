@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------------------------------------------------------
+# AI_GENERATE_START --------------------------------------------------------
 from __future__ import annotations
 
 import logging
@@ -53,6 +53,7 @@ class AppConfig:
     baostock_proxy: str | None
     daily_market_provider: str
     minute5_market_provider: str
+    minute_market_provider: str
     market_history_days: int
     bark_device_key: str
     broker_base_url: str
@@ -74,6 +75,7 @@ class AppConfig:
     broker_history_page_size: int
     broker_history_max_records: int
     broker_history_request_interval_seconds: float
+    minute_market_request_interval_seconds: float
     trading_min_price: float
     trading_max_price: float
     trading_order_fee: float
@@ -110,9 +112,16 @@ class AppConfig:
         state_db_path = runtime_dir / "state" / "trading.db"
         tushare_token = _optional_env("TUSHARE_TOKEN")
         baostock_proxy = _optional_env("BAOSTOCK_PROXY")
-        daily_market_provider = _market_provider("DAILY_MARKET_PROVIDER", "tushare")
+        daily_market_provider = _market_provider(
+            "DAILY_MARKET_PROVIDER", "tushare", {"tushare", "baostock"}
+        )
         minute5_market_provider = _market_provider(
-            "MINUTE5_MARKET_PROVIDER", "baostock"
+            "MINUTE5_MARKET_PROVIDER", "baostock", {"tushare", "baostock"}
+        )
+        minute_market_provider = _market_provider(
+            "MINUTE_MARKET_PROVIDER",
+            "zxbroker",
+            {"tushare", "baostock", "zxbroker"},
         )
         broker_token = _optional_env("ZXBROKER_TOKEN")
         return cls(
@@ -124,6 +133,7 @@ class AppConfig:
             baostock_proxy=baostock_proxy,
             daily_market_provider=daily_market_provider,
             minute5_market_provider=minute5_market_provider,
+            minute_market_provider=minute_market_provider,
             market_history_days=min(
                 365 * 5,
                 max(365, _env_int("STOCK_TRADING_HISTORY_DAYS", 365 * 3)),
@@ -174,6 +184,10 @@ class AppConfig:
             broker_history_request_interval_seconds=max(
                 0.0,
                 _env_float("ZXBROKER_HISTORY_REQUEST_INTERVAL_SECONDS", 0.2),
+            ),
+            minute_market_request_interval_seconds=max(
+                1.5,
+                _env_float("MINUTE_MARKET_REQUEST_INTERVAL_SECONDS", 1.5),
             ),
             trading_min_price=TRADING_MIN_PRICE,
             trading_max_price=TRADING_MAX_PRICE,
@@ -301,9 +315,10 @@ def _env_float(name: str, default: float) -> float:
         raise ValueError(f"环境变量 {name} 必须是数字") from None
 
 
-def _market_provider(name: str, default: str) -> str:
+def _market_provider(name: str, default: str, allowed: set[str]) -> str:
     value = os.getenv(name, default).strip().lower()
-    if value not in {"tushare", "baostock"}:
-        raise ValueError(f"环境变量 {name} 只能是 tushare 或 baostock")
+    if value not in allowed:
+        choices = "、".join(sorted(allowed))
+        raise ValueError(f"环境变量 {name} 只能是 {choices}")
     return value
-# AI_GENERATE_END ------------------------------------------------------
+# AI_GENERATE_END --------------------------------------------------------

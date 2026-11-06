@@ -1,4 +1,4 @@
-# AI_GENERATE_START ----------------------------------------------------
+# AI_GENERATE_START -----------------------------------------------------
 from __future__ import annotations
 
 from datetime import date, timedelta
@@ -108,4 +108,14 @@ def sync_minute5(
     return provider.sync_minute5(store, codes, start_date, end_date)
 
 
-# AI_GENERATE_END ----------------------------------------------------
+def sync_minute(
+    store: ParquetMarketStore,
+    provider: MarketDataProvider,
+    codes: list[str],
+    start_date: date,
+    end_date: date,
+) -> dict[str, object]:
+    return provider.sync_minute(store, codes, start_date, end_date)
+
+
+# AI_GENERATE_END -----------------------------------------------------

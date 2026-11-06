@@ -1,4 +1,4 @@
-# AI_GENERATE_START -------------------------------
+# AI_GENERATE_START- --------------------------------
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -25,7 +25,7 @@ COMMAND_GROUPS = (
     (
         "数据与模型",
         (
-            ("stock-collect", "采集日线研究数据或5分钟行情。"),
+            ("stock-collect", "按类型采集基础、日线、复权和分钟行情。"),
             ("stock-prepare", "从现有原始数据增量、幂等准备 Qlib。"),
             ("stock-train", "使用现有 Qlib 数据训练、评估并回测模型。"),
         ),
@@ -97,11 +97,14 @@ def train() -> None:
         train_command,
         "使用现有 Qlib 数据训练、评估并回测模型。",
         (
-            "已有完整模型制品时直接启用并跳过训练。",
+            "已有同一模型 ID 的完整制品时直接复用并跳过训练。",
             "训练、验证和测试数据按交易日顺序确定性切分。",
             "只有显式指定 --force 时才重新训练。",
         ),
-        ("stock-train", "stock-train --force --split 6:3:1"),
+        (
+            "stock-train --model v2.1",
+            "stock-train --model LightGBM --force --split 6:3:1",
+        ),
         (
             "默认训练、验证和测试比例为 70:15:15。",
             "训练失败或中断不会覆盖当前可用模型。",
@@ -113,22 +116,22 @@ def collect() -> None:
     _run(
         "stock-collect",
         collect_command,
-        "采集日线研究数据或5分钟行情。",
+        "按类型采集基础、日线、复权和分钟行情。",
         (
-            "无模式参数时默认按 --daily 执行，一次采集基础信息、日线和复权因子。",
-            "--minute5 采集5分钟线并生成上午观察、下午卖出和下午买入窗口。",
-            "--date 指定日期或日期范围，--code 可限制一个或多个股票。",
+            "--type 支持 basic、daily、factor、minute5、minute 逗号多选。",
+            "--codes 默认全市场；--date 默认当天，也支持日期范围。",
+            "basic、daily、factor 使用 TuShare，minute5 使用 BaoStock，minute 使用券商接口。",
         ),
         (
-            "stock-collect",
-            "stock-collect --daily --date 2026-11-03",
-            "stock-collect --minute5 --date 2026-11-03",
-            "stock-collect --date 2026-11-03 --code sh.600000",
-            "stock-collect --date 2023-11-02:2026-11-02",
+            "stock-collect --type basic",
+            "stock-collect --type daily,factor --date 2026-11-03",
+            "stock-collect --type minute5 --date 2026-11-03",
+            "stock-collect --type minute --date 2026-11-03 --codes 600000,000001",
+            "stock-collect --type daily,factor --date 2023-11-02:2026-11-02",
         ),
         (
             "命令不准备 Qlib、不执行模型训练或排名。",
-            "日线数据和5分钟线使用独立数据源配置并写入统一字段。",
+            "各类型独立执行；basic 始终维护今日全市场快照。",
         ),
     )
 
@@ -145,6 +148,7 @@ def prepare() -> None:
         ),
         (
             "stock-prepare",
+            "stock-prepare --model v1.2",
             "stock-prepare --date 2023-11-02:2026-11-02",
             "stock-prepare --force",
         ),
@@ -164,7 +168,10 @@ def rank() -> None:
             "校验同一业务日的 stock-collect 已成功且 Qlib 已由 stock-prepare 覆盖。",
             "完整排名供交易阶段结合资金、权限和实时价格继续筛选。",
         ),
-        ("stock-rank", "stock-rank --date 2026-11-02"),
+        (
+            "stock-rank --model v2.1",
+            "stock-rank --model v1 --date 2026-11-02",
+        ),
         (
             "只生成排名，不提交交易委托。",
             "需要已有可用模型和对应日期的 Qlib 数据。",
@@ -181,10 +188,14 @@ def _trading_command(
         bool,
         typer.Option("--sell", help="只执行卖出。"),
     ] = False,
+    model_value: Annotated[
+        str | None,
+        typer.Option("--model", help="模型完整 ID、版本前缀或算法前缀。"),
+    ] = None,
 ) -> None:
     if buy == sell:
         raise typer.BadParameter("必须且只能指定 --sell 或 --buy")
-    trading_command("B" if buy else "S")
+    trading_command("B" if buy else "S", model_value)
 
 
 def trading() -> None:
@@ -198,8 +209,8 @@ def trading() -> None:
             "从Top5依次检查允许前缀、已确认权限和实时价格范围。",
         ),
         (
-            "stock-trading --sell",
-            "stock-trading --buy",
+            "stock-trading --sell --model v1.2",
+            "stock-trading --buy --model v2.1",
         ),
         (
             "必须且只能指定一个方向，两个窗口由调度分别调用。",
@@ -240,7 +251,7 @@ def review() -> None:
             "按卖出月份汇总已经完成的真实交易闭环。",
             "根据月度毛收益、盈利月份比例和毛回撤形成模型判断。",
         ),
-        ("stock-review", "stock-review --date 2026-11-02"),
+        ("stock-review --model v2.1", "stock-review --model v1 --date 2026-11-02"),
         (
             "应在同一业务日 stock-order 成功后执行。",
             "账户权益、浮动盈亏及入金出金不属于策略收益。",
@@ -288,4 +299,4 @@ def sync() -> None:
             "服务器连接只读取 SERVER_IP、SERVER_USER 和 SERVER_PASS。",
         ),
     )
-# AI_GENERATE_END -------------------------------
+# AI_GENERATE_END- --------------------------------

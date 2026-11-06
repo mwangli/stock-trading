@@ -1,8 +1,8 @@
-# AI_GENERATE_START -------
+# AI_GENERATE_START --------
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 
@@ -74,4 +74,29 @@ class FiveLevelQuote:
     price: Decimal | None
     bids: tuple[Decimal, Decimal, Decimal, Decimal, Decimal]
     asks: tuple[Decimal, Decimal, Decimal, Decimal, Decimal]
-# AI_GENERATE_END -------
+
+
+@dataclass(frozen=True)
+class BrokerMinutePoint:
+    """券商分时协议还原出的单分钟价点。"""
+
+    timestamp: datetime
+    price: Decimal
+    average_price: Decimal
+    volume_lots: int
+    amount: Decimal
+    lead: int | None = None
+
+
+@dataclass(frozen=True)
+class BrokerMinuteSeries:
+    """单只证券单个交易日的券商分钟序列。"""
+
+    stock_code: str
+    trade_date: date
+    pre_close: Decimal
+    open_price: Decimal
+    points: tuple[BrokerMinutePoint, ...]
+
+
+# AI_GENERATE_END --------

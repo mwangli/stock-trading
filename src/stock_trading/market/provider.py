@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---
+# AI_GENERATE_START ----
 from __future__ import annotations
 
 from datetime import date
@@ -42,4 +42,12 @@ class MarketDataProvider(Protocol):
         start_date: date,
         end_date: date,
     ) -> dict[str, object]: ...
-# AI_GENERATE_END ---
+
+    def sync_minute(
+        self,
+        store: ParquetMarketStore,
+        codes: list[str],
+        start_date: date,
+        end_date: date,
+    ) -> dict[str, object]: ...
+# AI_GENERATE_END ----

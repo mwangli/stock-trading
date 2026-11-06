@@ -1,22 +1,27 @@
-# AI_GENERATE_START -----
+# AI_GENERATE_START--- --------
 from __future__ import annotations
 
 import logging
 import time
 from collections import defaultdict
 from contextlib import contextmanager
-from datetime import date
+from datetime import date, time as datetime_time
 from decimal import Decimal
+from urllib.error import HTTPError, URLError
 
 import pandas as pd
 
+from stock_trading.broker.client import ZXBrokerClient
+from stock_trading.broker.models import BrokerMinuteSeries
 from stock_trading.config import AppConfig
 from stock_trading.market.baostock_client import BaoStockClient, BaoStockError
-from stock_trading.market.models import CumulativeAdjustmentFactor, DailyBar
+from stock_trading.market.models import CumulativeAdjustmentFactor, DailyBar, MinuteBar
 from stock_trading.market.provider import MarketDataProvider
 from stock_trading.market.storage import ParquetMarketStore
 from stock_trading.market.tushare_client import TushareClient
+from stock_trading.utils.instruments import to_broker_code
 from stock_trading.utils.logging_utils import log_context, set_log_context
+from stock_trading.utils.time_utils import shanghai_today
 
 LOGGER = logging.getLogger(__name__)
 WRITE_BATCH_DAYS = 100
@@ -27,6 +32,8 @@ def market_provider(config: AppConfig, name: str) -> MarketDataProvider:
         return TushareMarketProvider(config.tushare_token)
     if name == "baostock":
         return BaoStockMarketProvider(config.baostock_proxy)
+    if name == "zxbroker":
+        return ZXBrokerMarketProvider(config)
     raise ValueError(f"不支持的行情数据源：{name}")
 
 
@@ -124,6 +131,16 @@ class TushareMarketProvider:
             "当前 TuShare 适配器未启用分钟行情权限；请设置 "
             "MINUTE5_MARKET_PROVIDER=baostock"
         )
+
+    def sync_minute(
+        self,
+        store: ParquetMarketStore,
+        codes: list[str],
+        start_date: date,
+        end_date: date,
+    ) -> dict[str, object]:
+        del store, codes, start_date, end_date
+        raise ValueError("TuShare 适配器不提供本项目使用的 1 分钟行情")
 
 
 class BaoStockMarketProvider:
@@ -226,6 +243,16 @@ class BaoStockMarketProvider:
             "failureSamples": dict(list(failures.items())[:20]),
         }
 
+    def sync_minute(
+        self,
+        store: ParquetMarketStore,
+        codes: list[str],
+        start_date: date,
+        end_date: date,
+    ) -> dict[str, object]:
+        del store, codes, start_date, end_date
+        raise ValueError("BaoStock 适配器只提供项目使用的 5 分钟行情")
+
     @contextmanager
     def _client(self):
         active: BaoStockClient | None = None
@@ -254,9 +281,166 @@ class BaoStockMarketProvider:
             active.__exit__(None, None, None)
 
 
+class ZXBrokerMarketProvider:
+    """将券商分时价点转换并保存为统一 1 分钟标准行情。"""
+
+    name = "zxbroker"
+
+    def __init__(self, config: AppConfig) -> None:
+        self._client = ZXBrokerClient(config)
+        self._request_interval_seconds = config.minute_market_request_interval_seconds
+        self._last_request_started_at = 0.0
+
+    def sync_stock_basics(
+        self, store: ParquetMarketStore, snapshot_date: date
+    ) -> dict[str, object]:
+        del store, snapshot_date
+        raise ValueError("券商行情适配器不提供股票基础信息")
+
+    def trading_dates(self, start_date: date, end_date: date) -> list[date]:
+        del start_date, end_date
+        raise ValueError("券商行情适配器不提供交易日历")
+
+    def sync_daily(
+        self,
+        store: ParquetMarketStore,
+        stocks: pd.DataFrame,
+        codes: list[str],
+        dates: list[date],
+    ) -> dict[str, object]:
+        del store, stocks, codes, dates
+        raise ValueError("券商行情适配器不提供日线")
+
+    def sync_factors(
+        self,
+        store: ParquetMarketStore,
+        codes: list[str],
+        dates: list[date],
+    ) -> dict[str, object]:
+        del store, codes, dates
+        raise ValueError("券商行情适配器不提供复权因子")
+
+    def sync_minute5(
+        self,
+        store: ParquetMarketStore,
+        codes: list[str],
+        start_date: date,
+        end_date: date,
+    ) -> dict[str, object]:
+        del store, codes, start_date, end_date
+        raise ValueError("券商适配器只提供 1 分钟行情")
+
+    def sync_minute(
+        self,
+        store: ParquetMarketStore,
+        codes: list[str],
+        start_date: date,
+        end_date: date,
+    ) -> dict[str, object]:
+        today = shanghai_today()
+        if start_date != today or end_date != today:
+            raise ValueError(
+                "券商 1 分钟行情仅支持当天采集；历史回填必须使用支持历史分钟线的数据源"
+            )
+        completed = 0
+        skipped = 0
+        rows = 0
+        minute_points = 0
+        failures: dict[str, str] = {}
+        for index, code in enumerate(codes, start=1):
+            set_log_context(progress=f"{index}/{len(codes)}", target=code)
+            try:
+                if today in store.minute1_complete_dates(code, today, today):
+                    completed += 1
+                    skipped += 1
+                    continue
+                series = self._get_minute_series(code, today)
+                minute_points += len(series.points)
+                values = _to_minute_bars(code, series)
+                if not values:
+                    raise ValueError("券商分钟行情没有可写入的 1 分钟数据")
+                store.write_minute1_history(code, values)
+                completed += 1
+                rows += len(values)
+            except HTTPError as error:
+                if error.code in {403, 429}:
+                    raise RuntimeError(
+                        f"券商分钟行情触发访问限制，已停止采集：HTTP {error.code}"
+                    ) from error
+                failures[code] = str(error)
+                LOGGER.warning("1分钟线采集失败：股票=%s；原因=%s", code, error)
+            except Exception as error:
+                failures[code] = str(error)
+                LOGGER.warning("1分钟线采集失败：股票=%s；原因=%s", code, error)
+        return {
+            "provider": self.name,
+            "rows": rows,
+            "minutePoints": minute_points,
+            "codes": completed,
+            "skippedCodes": skipped,
+            "failedCodes": len(failures),
+            "requestIntervalSeconds": self._request_interval_seconds,
+            "failureSamples": dict(list(failures.items())[:20]),
+        }
+
+    def _get_minute_series(
+        self, code: str, trade_date: date
+    ) -> BrokerMinuteSeries:
+        for attempt in range(2):
+            elapsed = time.monotonic() - self._last_request_started_at
+            remaining = self._request_interval_seconds - elapsed
+            if self._last_request_started_at and remaining > 0:
+                time.sleep(remaining)
+            self._last_request_started_at = time.monotonic()
+            try:
+                return self._client.get_minute_series(
+                    to_broker_code(code), trade_date
+                )
+            except (HTTPError, URLError, TimeoutError) as error:
+                if attempt == 1:
+                    raise
+                LOGGER.warning(
+                    "券商分钟行情网络请求失败，准备重试：股票=%s；日期=%s；原因=%s",
+                    code,
+                    trade_date,
+                    error,
+                )
+                time.sleep(10)
+        raise RuntimeError("券商分钟行情重试流程异常结束")
+
+
 def _group_daily(values: list[DailyBar]) -> dict[str, list[DailyBar]]:
     grouped: dict[str, list[DailyBar]] = defaultdict(list)
     for value in values:
         grouped[value.code].append(value)
     return grouped
-# AI_GENERATE_END -----
+
+
+def _to_minute_bars(
+    code: str, series: BrokerMinuteSeries
+) -> list[MinuteBar]:
+    regular = [
+        point
+        for point in series.points
+        if (
+            datetime_time(9, 30) <= point.timestamp.time() <= datetime_time(11, 30)
+            or datetime_time(13, 0) <= point.timestamp.time() <= datetime_time(15, 0)
+        )
+        and point.price > 0
+    ]
+    return [
+        MinuteBar(
+            trade_date=series.trade_date,
+            bar_end=point.timestamp,
+            code=code,
+            open=point.price,
+            high=point.price,
+            low=point.price,
+            close=point.price,
+            volume=Decimal(point.volume_lots * 100),
+            amount=point.amount,
+            interval_minutes=1,
+        )
+        for point in regular
+    ]
+# AI_GENERATE_END--- --------

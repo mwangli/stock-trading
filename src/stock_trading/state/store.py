@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------------------------------------------------------------------------
+# AI_GENERATE_START ----------------------------------------------------------------------------
 from __future__ import annotations
 
 import hashlib
@@ -103,7 +103,7 @@ CREATE TABLE IF NOT EXISTS model_version (
     artifact_hash TEXT NOT NULL UNIQUE, -- 模型文件 SHA-256，用于识别同一制品。
     model_name TEXT NOT NULL, -- 模型算法或训练方案名称。
     feature_set TEXT NOT NULL, -- 模型使用的特征集名称。
-    status TEXT NOT NULL, -- 模型状态，例如 CANDIDATE、ACTIVE、RETIRED、REJECTED、DEGRADED。
+    status TEXT NOT NULL, -- 制品状态；新链路固定 READY，历史状态原样保留。
     artifact_path TEXT NOT NULL, -- 模型制品在本机的绝对或项目内路径。
     metrics_json TEXT NOT NULL, -- 训练和评估指标的完整 JSON 快照。
     created_at TEXT NOT NULL -- 模型首次登记时间，UTC ISO-8601 字符串。
@@ -147,7 +147,7 @@ CREATE TABLE IF NOT EXISTS model_evaluation (
     FOREIGN KEY(model_version_id) REFERENCES model_version(id)
 );
 
--- 重训请求：由 RETRAIN 评估产生，成功激活新模型后完成。
+-- 重训请求：由 RETRAIN 评估产生，同一模型 ID 的新制品登记后完成。
 CREATE TABLE IF NOT EXISTS training_request (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     model_id TEXT NOT NULL DEFAULT 'legacy',
@@ -450,34 +450,10 @@ class StateStore(SQLiteStateDatabase):
         return {
             "businessKey": business_key,
             "status": "SUCCESS",
+            "modelId": metrics["modelId"],
+            "modelVersionId": model_id,
             "predictions": prediction_rows,
         } | self.summary()
-
-    def activate_model_version(self, model_dir: Path) -> dict[str, Any]:
-        """原子停用旧活动模型并激活指定模型制品。"""
-        self.initialize()
-        artifact_hash = hashlib.sha256((model_dir / "model.pkl").read_bytes()).hexdigest()
-        with self._connect() as connection:
-            model = connection.execute(
-                "SELECT id FROM model_version WHERE artifact_hash = ?",
-                (artifact_hash,),
-            ).fetchone()
-            if model is None:
-                raise ValueError(f"模型尚未登记，无法激活: {model_dir}")
-            model_id = int(model["id"])
-            retired = connection.execute(
-                "UPDATE model_version SET status = 'RETIRED' "
-                "WHERE status = 'ACTIVE' AND id <> ?",
-                (model_id,),
-            ).rowcount
-            connection.execute(
-                "UPDATE model_version SET status = 'ACTIVE' WHERE id = ?",
-                (model_id,),
-            )
-            active = connection.execute(
-                "SELECT * FROM model_version WHERE id = ?", (model_id,)
-            ).fetchone()
-        return {"activeModel": dict(active), "retiredModels": retired}
 
     def upsert_broker_orders(self, orders: tuple[BrokerOrder, ...]) -> dict[str, int]:
         """增量保存券商成交事实，不删除本次接口未返回的历史事实。"""
@@ -864,49 +840,44 @@ class StateStore(SQLiteStateDatabase):
     def latest_prediction_candidates(
         self,
         through_business_date: str,
+        model_id: str,
         limit: int | None = None,
-        model_version_id: int | None = None,
     ) -> list[dict[str, Any]]:
-        """用途：读取目标日及之前最近一批排名；输入：截止日期、可选数量和模型；输出：排序列表。"""
+        """读取指定模型 ID 在目标日期前最近一次完整排名。"""
         self.initialize()
         with self._connect() as connection:
-            if model_version_id is None:
-                prediction_date = connection.execute(
-                    "SELECT MAX(prediction_date) FROM prediction_rank WHERE prediction_date <= ?",
-                    (through_business_date,),
-                ).fetchone()[0]
-            else:
-                prediction_date = connection.execute(
-                    """
-                    SELECT MAX(prediction_date) FROM prediction_rank
-                    WHERE prediction_date <= ? AND model_version_id = ?
-                    """,
-                    (through_business_date, model_version_id),
-                ).fetchone()[0]
+            prediction_date = connection.execute(
+                """
+                SELECT MAX(p.prediction_date)
+                FROM prediction_rank p
+                JOIN model_version mv ON mv.id = p.model_version_id
+                WHERE p.prediction_date <= ? AND mv.model_id = ?
+                """,
+                (through_business_date, model_id),
+            ).fetchone()[0]
             if prediction_date is None:
                 return []
-            model_id = model_version_id
-            if model_id is None:
-                model_id = connection.execute(
-                    """
-                    SELECT model_version_id
-                    FROM prediction_rank
-                    WHERE prediction_date = ?
-                    GROUP BY model_version_id
-                    ORDER BY MAX(created_at) DESC, model_version_id DESC
-                    LIMIT 1
-                    """,
-                    (prediction_date,),
-                ).fetchone()[0]
+            model_version_id = connection.execute(
+                """
+                SELECT MAX(p.model_version_id)
+                FROM prediction_rank p
+                JOIN model_version mv ON mv.id = p.model_version_id
+                WHERE p.prediction_date = ? AND mv.model_id = ?
+                """,
+                (prediction_date, model_id),
+            ).fetchone()[0]
             query = """
                 SELECT p.model_version_id, p.prediction_date, p.instrument, p.rank, p.score,
-                       mv.status AS model_status
+                       mv.model_id, mv.status AS model_status
                 FROM prediction_rank p
                 JOIN model_version mv ON mv.id = p.model_version_id
                 WHERE p.prediction_date = ? AND p.model_version_id = ?
                 ORDER BY p.rank ASC, p.instrument ASC
             """
-            parameters: tuple[object, ...] = (prediction_date, model_id)
+            parameters: tuple[object, ...] = (
+                prediction_date,
+                model_version_id,
+            )
             if limit is not None:
                 query += " LIMIT ?"
                 parameters += (max(1, limit),)
@@ -1113,37 +1084,24 @@ class StateStore(SQLiteStateDatabase):
         LOGGER.info("委托状态匹配完成：活动意图=%d；成功匹配=%d；全部意图=%d", len(intents), len(matched_clients), len(rows))
         return [dict(row) for row in rows]
 
-    def active_model_id(self) -> int | None:
-        """用途：查询最新活动模型；输入：无；输出：模型主键或空值。"""
+    def latest_model_version_id(self, model_id: str) -> int | None:
+        """返回稳定模型 ID 最近一次实际训练制品主键。"""
         self.initialize()
         with self._connect() as connection:
             row = connection.execute(
                 """
                 SELECT id FROM model_version
-                WHERE status = 'ACTIVE'
+                WHERE model_id = ?
                 ORDER BY id DESC LIMIT 1
-                """
+                """,
+                (model_id,),
             ).fetchone()
         return int(row["id"]) if row else None
 
-    def performance_model_id(self, business_date: str) -> int | None:
-        """读取截止当日最近已闭环交易的模型，否则返回当前活动模型。"""
-        self.initialize()
-        with self._connect() as connection:
-            row = connection.execute(
-                """
-                SELECT model_version_id FROM realized_trade
-                WHERE sell_date <= ? AND model_version_id IS NOT NULL
-                ORDER BY sell_date DESC, sell_time DESC LIMIT 1
-                """,
-                (business_date,),
-            ).fetchone()
-        if row is not None:
-            return int(row["model_version_id"])
-        return self.active_model_id()
-
-    def realized_performance(self, business_date: date) -> dict[str, Any]:
-        """直接汇总指定卖出日的已实现交易，不再保存重复绩效快照。"""
+    def realized_performance(
+        self, model_id: str, business_date: date
+    ) -> dict[str, Any]:
+        """汇总指定模型配置和卖出日的已实现交易。"""
         self.initialize()
         with self._connect() as connection:
             row = connection.execute(
@@ -1159,9 +1117,11 @@ class StateStore(SQLiteStateDatabase):
                     COALESCE(SUM(net_profit), 0) AS net_pnl,
                     SUM(gross_profit) / NULLIF(SUM(cost_basis), 0) AS gross_return,
                     SUM(net_profit) / NULLIF(SUM(cost_basis) + SUM(buy_fee), 0) AS net_return
-                FROM realized_trade WHERE sell_date = ?
+                FROM realized_trade rt
+                JOIN model_version mv ON mv.id = rt.model_version_id
+                WHERE rt.sell_date = ? AND mv.model_id = ?
                 """,
-                (business_date.isoformat(),),
+                (business_date.isoformat(), model_id),
             ).fetchone()
         return dict(row)
 
@@ -1190,7 +1150,7 @@ class StateStore(SQLiteStateDatabase):
         return [dict(row) for row in rows]
 
     def recent_monthly_realized_performance(
-        self, model_version_id: int | None, business_date: date, limit: int
+        self, model_id: str, business_date: date, limit: int
     ) -> list[dict[str, Any]]:
         """按卖出月份汇总最近的已实现闭环，费用字段保留但不影响毛收益。"""
         self.initialize()
@@ -1207,20 +1167,22 @@ class StateStore(SQLiteStateDatabase):
                         SUM(gross_profit) / NULLIF(SUM(cost_basis), 0) AS gross_return,
                         SUM(net_profit) / NULLIF(SUM(cost_basis) + SUM(buy_fee), 0)
                             AS net_return
-                    FROM realized_trade
-                    WHERE model_version_id IS ?
-                      AND substr(sell_date, 1, 7) < substr(?, 1, 7)
+                    FROM realized_trade rt
+                    JOIN model_version mv ON mv.id = rt.model_version_id
+                    WHERE mv.model_id = ?
+                      AND substr(rt.sell_date, 1, 7) < substr(?, 1, 7)
                     GROUP BY substr(sell_date, 1, 7)
                     ORDER BY business_month DESC LIMIT ?
                 )
                 SELECT * FROM monthly ORDER BY business_month
                 """,
-                (model_version_id, business_date.isoformat(), max(1, limit)),
+                (model_id, business_date.isoformat(), max(1, limit)),
             ).fetchall()
         return [dict(row) for row in rows]
 
     def save_model_evaluation(
         self,
+        model_id: str,
         model_version_id: int | None,
         business_date: str,
         window_observations: int,
@@ -1235,20 +1197,17 @@ class StateStore(SQLiteStateDatabase):
         """保存已实现收益观测窗口的模型评估结论。"""
         self.initialize()
         with self._connect() as connection:
-            model_id = model_version_id
-            if model_id is None and decision not in {"WARMUP", "TRAIN_REQUIRED"}:
-                decision = "TRAIN_REQUIRED"
-                reason = f"没有 ACTIVE 模型；{reason}"
-            business_key = f"MODEL_EVALUATION:{model_id or 'NONE'}:{business_date}"
+            business_key = f"MODEL_EVALUATION:{model_id}:{business_date}"
             connection.execute(
                 """
                 INSERT INTO model_evaluation(
-                    business_key, model_version_id, business_date,
+                    business_key, model_id, model_version_id, business_date,
                     window_observations, observations, positive_period_ratio,
                     total_gross_return,
                     total_net_return, max_drawdown, decision, reason, created_at
-                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(business_key) DO UPDATE SET
+                    model_id = excluded.model_id,
                     model_version_id = excluded.model_version_id,
                     window_observations = excluded.window_observations,
                     observations = excluded.observations,
@@ -1263,6 +1222,7 @@ class StateStore(SQLiteStateDatabase):
                 (
                     business_key,
                     model_id,
+                    model_version_id,
                     business_date,
                     window_observations,
                     observations,
@@ -1283,10 +1243,11 @@ class StateStore(SQLiteStateDatabase):
                 connection.execute(
                     """
                     INSERT INTO training_request(
-                        evaluation_key, requested_model_version_id, status,
+                        model_id, evaluation_key, requested_model_version_id, status,
                         requested_at, completed_model_version_id, completed_at
-                    ) VALUES(?, ?, 'PENDING', ?, NULL, NULL)
+                    ) VALUES(?, ?, ?, 'PENDING', ?, NULL, NULL)
                     ON CONFLICT(evaluation_key) DO UPDATE SET
+                        model_id = excluded.model_id,
                         requested_model_version_id = excluded.requested_model_version_id,
                         status = CASE
                             WHEN training_request.status = 'COMPLETED'
@@ -1299,7 +1260,7 @@ class StateStore(SQLiteStateDatabase):
                             ELSE excluded.requested_at
                         END
                     """,
-                    (business_key, model_id, _now()),
+                    (model_id, business_key, model_version_id, _now()),
                 )
             else:
                 connection.execute(
@@ -1313,7 +1274,7 @@ class StateStore(SQLiteStateDatabase):
         LOGGER.info(
             "模型评估保存完成：日期=%s；模型版本=%s；样本=%d/%d；决策=%s",
             business_date,
-            model_id,
+            model_version_id,
             observations,
             window_observations,
             decision,
@@ -1321,7 +1282,7 @@ class StateStore(SQLiteStateDatabase):
         return dict(evaluation)
 
     def pending_training_requests(self) -> list[dict[str, Any]]:
-        """返回尚未由新模型激活完成的重训请求。"""
+        """返回尚未由同一模型 ID 新制品完成的重训请求。"""
         self.initialize()
         with self._connect() as connection:
             rows = connection.execute(
@@ -1333,8 +1294,10 @@ class StateStore(SQLiteStateDatabase):
             ).fetchall()
         return [dict(row) for row in rows]
 
-    def complete_training_requests(self, model_version_id: int) -> int:
-        """在新模型成功激活后完成此前所有待处理重训请求。"""
+    def complete_training_requests(
+        self, model_id: str, model_version_id: int
+    ) -> int:
+        """仅完成同一稳定模型 ID 的待处理重训请求。"""
         self.initialize()
         with self._connect() as connection:
             completed = connection.execute(
@@ -1342,9 +1305,9 @@ class StateStore(SQLiteStateDatabase):
                 UPDATE training_request
                 SET status = 'COMPLETED', completed_model_version_id = ?,
                     completed_at = ?
-                WHERE status = 'PENDING'
+                WHERE status = 'PENDING' AND model_id = ?
                 """,
-                (model_version_id, _now()),
+                (model_version_id, _now(), model_id),
             ).rowcount
         return completed
 
@@ -1379,7 +1342,7 @@ class StateStore(SQLiteStateDatabase):
             ).fetchone()
             latest_model = connection.execute(
                 """
-                SELECT model_name, feature_set, status, artifact_hash
+                SELECT model_id, model_name, feature_set, status, artifact_hash
                 FROM model_version ORDER BY id DESC LIMIT 1
                 """
             ).fetchone()
@@ -1547,25 +1510,22 @@ class StateStore(SQLiteStateDatabase):
         """用途：按制品哈希登记或更新模型；输入：连接、模型目录和指标；输出：模型主键。"""
         model_path = model_dir / "model.pkl"
         artifact_hash = hashlib.sha256(model_path.read_bytes()).hexdigest()
-        default_status = "CANDIDATE"
+        configured_model_id = str(metrics.get("modelId") or "legacy")
+        default_status = "READY" if configured_model_id != "legacy" else "LEGACY"
         existing = connection.execute(
             "SELECT id, status FROM model_version WHERE artifact_hash = ?",
             (artifact_hash,),
         ).fetchone()
         if existing is not None:
-            existing_status = str(existing["status"])
-            next_status = status or (
-                existing_status
-                if existing_status in {"ACTIVE", "RETIRED", "DEGRADED"}
-                else default_status
-            )
+            next_status = status or default_status
             connection.execute(
                 """
                 UPDATE model_version
-                SET status = ?, artifact_path = ?, metrics_json = ?
+                SET model_id = ?, status = ?, artifact_path = ?, metrics_json = ?
                 WHERE id = ?
                 """,
                 (
+                    configured_model_id,
                     next_status,
                     str(model_path),
                     json.dumps(metrics, ensure_ascii=False),
@@ -1577,11 +1537,12 @@ class StateStore(SQLiteStateDatabase):
         connection.execute(
             """
             INSERT INTO model_version(
-                artifact_hash, model_name, feature_set, status,
+                model_id, artifact_hash, model_name, feature_set, status,
                 artifact_path, metrics_json, created_at
-            ) VALUES(?, ?, ?, ?, ?, ?, ?)
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
+                configured_model_id,
                 artifact_hash,
                 metrics["model"],
                 metrics["featureSet"],
@@ -1658,4 +1619,4 @@ def _broker_order_matches_intent(order: BrokerOrder, intent: sqlite3.Row) -> boo
         and order.order_quantity == int(intent["quantity"])
         and order.order_price == Decimal(str(intent["price"]))
     )
-# AI_GENERATE_END ------------------------------------------------------------------------
+# AI_GENERATE_END ----------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---------------------------------------------------------------------------------------------------------------------------------------
+# AI_GENERATE_START-- ----------------------------------------------------------------------------------------------------------------------------------------
 from __future__ import annotations
 
 import json
@@ -18,15 +18,15 @@ from stock_trading.utils.logging_utils import (
     log_context,
     set_log_context,
 )
-from stock_trading.market.storage import ParquetMarketStore
-from stock_trading.market.trade_calendar import latest_completed_trade_date
 from stock_trading.utils.notifications import push_system_failure
-from stock_trading.research.qlib_store import QlibBinaryStore
+from stock_trading.research.model_adapter import create_research_model
+from stock_trading.research.model_config import ModelSpec, resolve_model_spec
 from stock_trading.research.training import (
     run_training_pipeline,
 )
-from stock_trading.utils.time_utils import shanghai_now, shanghai_today
+from stock_trading.utils.time_utils import shanghai_today
 from stock_trading.utils.workflows import (
+    COLLECTION_TYPES,
     cleanup_workflow,
     collect_workflow,
     prepare_workflow,
@@ -108,49 +108,42 @@ def order_command(
 
 
 def collect_command(
-    daily: Annotated[
-        bool,
-        typer.Option("--daily", help="采集基础信息、日线和复权因子。"),
-    ] = False,
-    minute5: Annotated[
-        bool,
-        typer.Option("--minute5", help="采集5分钟线并生成上午和下午交易窗口。"),
-    ] = False,
+    type_value: Annotated[
+        str,
+        typer.Option(
+            "--type",
+            help="采集类型，支持 basic,daily,factor,minute5,minute 逗号多选。",
+        ),
+    ],
     date_value: Annotated[
         str | None,
-        typer.Option("--date", help="采集日期或日期范围，默认最近交易日。"),
+        typer.Option("--date", help="采集日期或日期范围，默认当天。"),
     ] = None,
-    code_value: Annotated[
+    codes_value: Annotated[
         str | None,
-        typer.Option("--code", help="股票代码，多个代码使用逗号分隔。"),
+        typer.Option("--codes", help="股票代码，多个代码使用逗号分隔，默认全市场。"),
     ] = None,
 ) -> None:
-    if daily and minute5:
-        raise typer.BadParameter("--daily 和 --minute5 不能同时指定")
-    mode = "minute5" if minute5 else "daily"
-    selected_codes = _parse_stock_codes(code_value) if code_value else None
+    selected_types = _parse_collection_types(type_value)
+    selected_codes = _parse_stock_codes(codes_value) if codes_value else None
 
     def run(config: AppConfig) -> dict[str, object]:
-        latest = latest_completed_trade_date(shanghai_now())
-        default_date = shanghai_today() if mode == "minute5" else latest
-        start, end = _parse_date_expression(date_value, default_date, default_date)
+        today = shanghai_today()
+        start, end = _parse_date_expression(date_value, today, today)
         return collect_workflow(
             config,
             start,
             end,
-            latest,
+            selected_types,
             requested_codes=selected_codes,
-            mode=mode,
         )
 
     result = _execute(
         "collect",
         {
-            "mode": mode,
-            "daily": daily,
-            "minute5": minute5,
+            "type": list(selected_types),
             "date": date_value,
-            "code": code_value,
+            "codes": codes_value,
         },
         run,
     )
@@ -166,13 +159,16 @@ def prepare_command(
         bool,
         typer.Option("--force", help="忽略现有 Qlib 并从原始 Parquet 全量重建。"),
     ] = False,
+    model_value: Annotated[
+        str | None,
+        typer.Option("--model", help="模型完整 ID、版本前缀或算法前缀。"),
+    ] = None,
 ) -> None:
     def run(config: AppConfig) -> dict[str, object]:
+        spec = _resolve_model(model_value)
         latest = shanghai_today()
-        qlib = QlibBinaryStore(
-            ParquetMarketStore(config.data_dir), config.qlib_dir
-        )
-        existing = qlib.date_range()
+        model = create_research_model(config, spec)
+        existing = model.date_range()
         if date_value is None:
             start = (
                 existing[0]
@@ -185,11 +181,11 @@ def prepare_command(
             if existing is not None and not force:
                 start = min(start, existing[0])
                 end = max(end, existing[1])
-        return prepare_workflow(config, start, end, force=force)
+        return prepare_workflow(config, spec, start, end, force=force)
 
     result = _execute(
         "prepare",
-        {"date": date_value, "force": force},
+        {"date": date_value, "force": force, "model": model_value},
         run,
     )
     _print_json(result)
@@ -204,6 +200,10 @@ def train_command(
         bool,
         typer.Option("--force", help="忽略已有可用模型并重新训练。"),
     ] = False,
+    model_value: Annotated[
+        str | None,
+        typer.Option("--model", help="模型完整 ID、版本前缀或算法前缀。"),
+    ] = None,
 ) -> None:
     load_project_environment()
     configure_logging()
@@ -213,9 +213,10 @@ def train_command(
     try:
         _execute(
             "train",
-            {"split": split, "force": force},
+            {"split": split, "force": force, "model": model_value},
             lambda config: run_training_pipeline(
                 config,
+                _resolve_model(model_value),
                 _parse_model_split(split) if split else None,
                 force=force,
             ),
@@ -229,12 +230,18 @@ def rank_command(
         str | None,
         typer.Option("--date", help="排名业务日期，默认当天。"),
     ] = None,
+    model_value: Annotated[
+        str | None,
+        typer.Option("--model", help="模型完整 ID、版本前缀或算法前缀。"),
+    ] = None,
 ) -> None:
     business_date = _business_date(prediction_date)
     result = _execute(
         "rank",
-        {"date": prediction_date},
-        lambda config: rank_workflow(config, business_date),
+        {"date": prediction_date, "model": model_value},
+        lambda config: rank_workflow(
+            config, _resolve_model(model_value), business_date
+        ),
     )
     _print_json(result)
 
@@ -244,6 +251,10 @@ def trading_command(
         str,
         typer.Option("--type"),
     ],
+    model_value: Annotated[
+        str | None,
+        typer.Option("--model", help="模型完整 ID、版本前缀或算法前缀。"),
+    ] = None,
 ) -> None:
     if trade_type not in {"B", "S"}:
         raise typer.BadParameter("--type 只能是 B 或 S")
@@ -251,8 +262,14 @@ def trading_command(
     business_date = shanghai_today()
     result = _execute(
         "trading",
-        {"side": side, "businessDate": business_date.isoformat()},
-        lambda config: trading_workflow(config, business_date, side),
+        {
+            "side": side,
+            "businessDate": business_date.isoformat(),
+            "model": model_value,
+        },
+        lambda config: trading_workflow(
+            config, _resolve_model(model_value), business_date, side
+        ),
     )
     _print_json(result)
 
@@ -262,12 +279,18 @@ def review_command(
         str | None,
         typer.Option("--date", help="复盘业务日期，默认当天。"),
     ] = None,
+    model_value: Annotated[
+        str | None,
+        typer.Option("--model", help="模型完整 ID、版本前缀或算法前缀。"),
+    ] = None,
 ) -> None:
     target_date = _business_date(business_date)
     _execute(
         "review",
-        {"date": business_date},
-        lambda config: review_workflow(config, target_date),
+        {"date": business_date, "model": model_value},
+        lambda config: review_workflow(
+            config, _resolve_model(model_value), target_date
+        ),
         result_logger=_log_review_summary,
     )
 
@@ -337,6 +360,13 @@ def _business_date(value: str | None) -> date:
     )
 
 
+def _resolve_model(value: str | None) -> ModelSpec:
+    try:
+        return resolve_model_spec(value, warning=LOGGER.warning)
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from None
+
+
 def _parse_date(value: str) -> date:
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
         raise typer.BadParameter(
@@ -374,11 +404,31 @@ def _parse_date_expression(
 
 
 
+def _parse_collection_types(value: str) -> tuple[str, ...]:
+    values = tuple(
+        dict.fromkeys(item.strip().lower() for item in value.split(","))
+    )
+    if not values or any(not item for item in values):
+        raise typer.BadParameter("--type 不能为空")
+    unknown = sorted(set(values) - set(COLLECTION_TYPES))
+    if unknown:
+        raise typer.BadParameter(
+            f"--type 包含未知类型：{','.join(unknown)}；"
+            f"可选值为 {','.join(COLLECTION_TYPES)}"
+        )
+    return values
+
+
 def _parse_stock_code(value: str) -> str:
     normalized = value.strip().lower()
+    if re.fullmatch(r"\d{6}", normalized):
+        if normalized.startswith("6"):
+            normalized = f"sh.{normalized}"
+        elif normalized.startswith(("0", "3")):
+            normalized = f"sz.{normalized}"
     if not re.fullmatch(r"(?:sh|sz)\.\d{6}", normalized):
         raise typer.BadParameter(
-            f"股票代码格式错误：{value}；示例：sh.600000 或 sz.000001"
+            f"股票代码格式错误：{value}；示例：600000、sh.600000 或 sz.000001"
         )
     return normalized
 
@@ -482,4 +532,4 @@ def _format_amount(value: object) -> str:
     return "-" if value is None else f"{float(value):,.2f}"
 
 
-# AI_GENERATE_END ---------------------------------------------------------------------------------------------------------------------------------------
+# AI_GENERATE_END-- ----------------------------------------------------------------------------------------------------------------------------------------

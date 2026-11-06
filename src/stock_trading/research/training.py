@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------------------------
+# AI_GENERATE_START -----------------------------
 from __future__ import annotations
 
 import json
@@ -9,18 +9,15 @@ from decimal import Decimal
 from pathlib import Path
 
 from stock_trading.config import AppConfig
-from stock_trading.market.quality import (
-    audit_research_quality,
-    require_data_quality,
-)
+from stock_trading.market.quality import audit_research_quality, require_data_quality
 from stock_trading.market.storage import ParquetMarketStore
 from stock_trading.market.sync import research_codes
 from stock_trading.market.trade_calendar import latest_completed_trade_date
 from stock_trading.research.artifacts import (
     model_artifacts_valid,
-    model_root,
-    resolve_current_model_dir,
-    train_model_candidate,
+    replace_model_directory,
+    staging_model_directory,
+    validate_model_artifacts,
 )
 from stock_trading.research.backtest import (
     backtest_artifact_valid,
@@ -28,7 +25,8 @@ from stock_trading.research.backtest import (
     run_portfolio_backtest,
 )
 from stock_trading.research.model import automatic_model_segments
-from stock_trading.research.qlib_store import QlibBinaryStore
+from stock_trading.research.model_adapter import create_research_model
+from stock_trading.research.model_config import ModelSpec
 from stock_trading.state.store import StateStore
 from stock_trading.utils.instruments import normalize_instrument
 from stock_trading.utils.logging_utils import set_log_context
@@ -39,7 +37,6 @@ EVALUATION_FILE = "evaluation.json"
 
 
 def default_training_range(config: AppConfig) -> tuple[date, date]:
-    """返回只依赖本地配置的默认研究日期范围。"""
     end_date = latest_completed_trade_date(shanghai_now())
     return end_date - timedelta(days=config.market_history_days), end_date
 
@@ -47,12 +44,13 @@ def default_training_range(config: AppConfig) -> tuple[date, date]:
 def default_training_codes(
     config: AppConfig, start_date: date, end_date: date
 ) -> list[str]:
-    """从本地股票基础信息确定默认研究股票池。"""
     store = ParquetMarketStore(config.data_dir)
     try:
         stocks = store.read_stock_basics()
     except (OSError, ValueError, KeyError) as error:
-        raise ValueError("未找到股票基础信息；请先执行 stock-collect --daily") from error
+        raise ValueError(
+            "未找到股票基础信息；请先执行 stock-collect --type basic"
+        ) from error
     codes = research_codes(stocks, start_date, end_date)
     if not codes:
         raise ValueError("股票基础信息中没有满足当前日期范围的研究股票")
@@ -61,59 +59,86 @@ def default_training_codes(
 
 def run_training_pipeline(
     config: AppConfig,
+    spec: ModelSpec,
     split: tuple[Decimal, Decimal, Decimal] | None,
     force: bool = False,
 ) -> dict[str, object]:
-    """校验现有 Qlib 后执行训练、评估、回测和发布。"""
-    qlib = QlibBinaryStore(
-        ParquetMarketStore(config.data_dir), config.qlib_dir
-    )
-    start_date, end_date = qlib.date_range() or default_training_range(config)
+    """训练、回测和评估一个模型 ID，成功后再原子替换当前制品。"""
+    model = create_research_model(config, spec)
+    start_date, end_date = model.date_range() or default_training_range(config)
     codes = default_training_codes(config, start_date, end_date)
     preparation = assert_training_data_ready(
-        config, codes, start_date, end_date
+        config, spec, codes, start_date, end_date
     )
     preparation_summary = _preparation_summary(preparation)
-    root = model_root(config.artifact_dir)
-    if not force:
-        try:
-            model_dir = resolve_current_model_dir(root)
-        except (OSError, ValueError):
-            pass
-        else:
-            activation = activate_trained_model(config, model_dir)
-            return {
-                "preparation": preparation_summary,
-                "training": {
-                    "skipped": True,
-                    "modelVersion": model_dir.name,
-                    "artifactPath": str(model_dir),
-                },
-                **activation,
-            }
-    lifecycle = train_prepared_model(config, split)
+    target = model.artifact_dir
+    store = StateStore(config.state_db_path)
+    if not force and complete_model_artifacts_valid(config, spec, target):
+        state = (
+            None
+            if store.model_artifacts_registered(target)
+            else store.import_model_artifacts(target)
+        )
+        return {
+            "modelId": spec.model_id,
+            "preparation": preparation_summary,
+            "training": {
+                "skipped": True,
+                "artifactPath": str(target),
+            },
+            "state": state,
+        }
+
+    calendar_path = model.qlib_dir / "calendars" / "day.txt"
+    if not calendar_path.is_file():
+        raise ValueError("模型 Qlib 数据不存在，无法训练")
+    segments = automatic_model_segments(
+        calendar_path,
+        split,
+        spec.training_window_days,
+    )
+    staging = staging_model_directory(target)
+    shutil.rmtree(staging, ignore_errors=True)
+    try:
+        training = model.train(staging, segments)
+        validate_model_artifacts(staging, spec)
+        backtest_run = run_backtest_scenarios(
+            config, model.qlib_dir, staging
+        )
+        evaluation = evaluate_candidate(config, spec, staging, backtest_run)
+        _write_evaluation(staging, evaluation)
+        if not complete_model_artifacts_valid(config, spec, staging):
+            raise ValueError("模型训练、回测或评估制品不完整")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        replace_model_directory(staging, target)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+
+    state = store.import_model_artifacts(target)
+    completed_requests = store.complete_training_requests(
+        spec.model_id, int(state["modelVersionId"])
+    )
     return {
+        "modelId": spec.model_id,
         "preparation": preparation_summary,
-        **lifecycle,
+        "training": training
+        | {"skipped": False, "artifactPath": str(target)},
+        "evaluation": evaluation,
+        "state": state,
+        "completedTrainingRequests": completed_requests,
     }
 
 
 def assert_training_data_ready(
     config: AppConfig,
+    spec: ModelSpec,
     codes: list[str],
     start_date: date,
     end_date: date,
 ) -> dict[str, object]:
-    """按统一覆盖率确认当前训练范围的原始数据和 Qlib。"""
     store = ParquetMarketStore(config.data_dir)
     stocks = store.read_stock_basics()
-    audit = audit_research_quality(
-        store,
-        stocks,
-        codes,
-        start_date,
-        end_date,
-    )
+    audit = audit_research_quality(store, stocks, codes, start_date, end_date)
     raw_quality = require_data_quality(
         "train-raw",
         len(codes),
@@ -122,16 +147,18 @@ def assert_training_data_ready(
         audit,
     )
     expected = {normalize_instrument(code) for code in audit.model_codes}
-    qlib = QlibBinaryStore(store, config.qlib_dir)
-    qlib_range = qlib.date_range()
-    available = qlib.available_instruments(end_date)
+    model = create_research_model(config, spec)
+    qlib_range = model.date_range()
+    available = model.available_instruments(end_date)
     if (
         qlib_range is None
         or qlib_range[0] > start_date + timedelta(days=15)
         or qlib_range[1] < end_date
         or available is None
     ):
-        raise ValueError("Qlib 数据未覆盖当前训练范围；请先执行 stock-prepare")
+        raise ValueError(
+            f"模型 {spec.model_id} 的 Qlib 数据未覆盖训练范围；请先执行 stock-prepare"
+        )
     ready = expected & available
     qlib_quality = require_data_quality(
         "train-qlib",
@@ -140,19 +167,18 @@ def assert_training_data_ready(
         config.data_quality_min_ratio,
     )
     return {
+        "modelId": spec.model_id,
         "startDate": start_date.isoformat(),
         "endDate": end_date.isoformat(),
         "codes": sorted(ready),
         "marketCodes": list(audit.model_codes),
-        "dataQuality": {
-            "raw": raw_quality,
-            "qlib": qlib_quality,
-        },
+        "dataQuality": {"raw": raw_quality, "qlib": qlib_quality},
     }
 
 
 def _preparation_summary(preparation: dict[str, object]) -> dict[str, object]:
     return {
+        "modelId": preparation["modelId"],
         "startDate": preparation["startDate"],
         "endDate": preparation["endDate"],
         "researchCodes": len(preparation["codes"]),
@@ -161,86 +187,11 @@ def _preparation_summary(preparation: dict[str, object]) -> dict[str, object]:
     }
 
 
-def train_prepared_model(
-    config: AppConfig,
-    split: tuple[Decimal, Decimal, Decimal] | None,
-) -> dict[str, object]:
-    """基于现有 Qlib 训练候选模型，制品完整后直接发布。"""
-    calendar_path = config.qlib_dir / "calendars" / "day.txt"
-    if not calendar_path.is_file():
-        raise ValueError("Qlib 数据不存在，无法训练")
-    segments = automatic_model_segments(calendar_path, split)
-    LOGGER.info(
-        "开始训练候选模型：训练=%s 至 %s；验证=%s 至 %s；测试=%s 至 %s",
-        segments.train_start,
-        segments.train_end,
-        segments.valid_start,
-        segments.valid_end,
-        segments.test_start,
-        segments.test_end,
-    )
-    root = model_root(config.artifact_dir)
-    training = train_model_candidate(
-        config.qlib_dir,
-        root,
-        segments,
-        config.model_feature_batch_days,
-    )
-    model_dir = Path(str(training["artifactPath"]))
-    store = StateStore(config.state_db_path)
-    state = import_training_state(store, model_dir, "CANDIDATE")
-    activation = store.activate_model_version(model_dir)
-    completed_requests = store.complete_training_requests(
-        int(activation["activeModel"]["id"])
-    )
-    LOGGER.info(
-        "候选模型训练完成并启用：版本=%s",
-        training["modelVersion"],
-    )
-
-    backtest_run = run_backtest_scenarios(config, model_dir)
-    evaluation = evaluate_candidate(config, model_dir, backtest_run)
-    _write_evaluation(model_dir, evaluation)
-    LOGGER.info(
-        "模型回测记录完成：版本=%s；五档平均毛收益率=%s",
-        training["modelVersion"],
-        evaluation["aggregate"]["averageGrossReturn"],
-    )
-    return {
-        "training": training,
-        "evaluation": evaluation,
-        "state": state,
-        "activation": activation,
-        "completedTrainingRequests": completed_requests,
-    }
-
-
-def activate_trained_model(
-    config: AppConfig, model_dir: Path
-) -> dict[str, object]:
-    """直接激活已有完整模型，必要时先补录 SQLite 状态。"""
-    store = StateStore(config.state_db_path)
-    state = None
-    try:
-        activation = store.activate_model_version(model_dir)
-    except ValueError:
-        state = import_training_state(store, model_dir, "CANDIDATE")
-        activation = store.activate_model_version(model_dir)
-    completed_requests = store.complete_training_requests(
-        int(activation["activeModel"]["id"])
-    )
-    LOGGER.info("已有完整模型制品已启用：版本=%s", model_dir.name)
-    return {
-        "state": state,
-        "activation": activation,
-        "completedTrainingRequests": completed_requests,
-    }
-
-
 def run_backtest_scenarios(
-    config: AppConfig, model_dir: Path
+    config: AppConfig,
+    qlib_dir: Path,
+    model_dir: Path,
 ) -> dict[str, dict[str, object]]:
-    """按固定资金档位顺序执行回测，保留失败前已完成的制品。"""
     results: dict[str, object] = {}
     errors: dict[str, object] = {}
     directories = backtest_directories(config, model_dir)
@@ -250,23 +201,9 @@ def run_backtest_scenarios(
             target=f"资金={cash}",
         )
         target = directories[str(cash)]
-        if backtest_artifact_valid(
-            target,
-            initial_cash=float(cash),
-            entry_rank=config.trading_entry_rank,
-            exit_rank=config.trading_exit_rank,
-            max_holding_days=config.trading_max_holding_days,
-            limit_down_lookback_days=config.trading_limit_down_lookback_days,
-            max_recent_limit_downs=config.trading_max_recent_limit_downs,
-        ):
-            LOGGER.info("资金档位回测已完成，复用现有制品")
-            results[str(cash)] = read_backtest_summary(target)
-            continue
-        LOGGER.info("开始资金档位回测")
-        shutil.rmtree(target, ignore_errors=True)
         try:
             results[str(cash)] = run_portfolio_backtest(
-                config, model_dir, target, cash
+                config, model_dir, target, cash, qlib_dir=qlib_dir
             )
         except Exception as error:
             errors[str(cash)] = str(error)
@@ -280,26 +217,24 @@ def run_backtest_scenarios(
 
 def evaluate_candidate(
     config: AppConfig,
+    spec: ModelSpec,
     model_dir: Path,
     backtest_run: dict[str, dict[str, object]],
 ) -> dict[str, object]:
-    """记录测试指标和五档回测结果，不形成模型启用门槛。"""
     metrics = json.loads((model_dir / "metrics.json").read_text(encoding="utf-8"))
     results = backtest_run["results"]
     scenario_results: dict[str, object] = {}
     gross_returns: list[float] = []
     net_returns: list[float] = []
     directories = backtest_directories(config, model_dir)
-
     for cash in config.backtest_capital_scenarios:
         key = str(cash)
         summary = results.get(key)
-        artifact_valid = backtest_artifact_valid(directories[key])
-        if summary is None or not artifact_valid:
+        if summary is None or not backtest_artifact_valid(directories[key]):
             scenario_results[key] = {"artifactValid": False}
             continue
-        net_return = float(summary["netReturn"])
         gross_return = float(summary["grossReturnBeforeFees"])
+        net_return = float(summary["netReturn"])
         gross_returns.append(gross_return)
         net_returns.append(net_return)
         scenario_results[key] = {
@@ -314,23 +249,19 @@ def evaluate_candidate(
             "averageHoldingDays": summary["averageHoldingDays"],
             "retainedDays": summary["retainedDays"],
         }
-
     required = len(config.backtest_capital_scenarios)
     completed = len(gross_returns)
-    average_gross_return = (
-        sum(gross_returns) / required if completed == required else None
-    )
-    average_net_return = (
-        sum(net_returns) / required if completed == required else None
-    )
-
     return {
         "createdAt": utc_now().isoformat(),
-        "modelVersion": model_dir.name,
+        "modelId": spec.model_id,
         "modelMetrics": metrics["metrics"],
         "aggregate": {
-            "averageGrossReturn": average_gross_return,
-            "averageNetReturn": average_net_return,
+            "averageGrossReturn": (
+                sum(gross_returns) / required if completed == required else None
+            ),
+            "averageNetReturn": (
+                sum(net_returns) / required if completed == required else None
+            ),
             "completedScenarios": completed,
             "requiredScenarios": required,
         },
@@ -339,15 +270,20 @@ def evaluate_candidate(
     }
 
 
-def training_artifacts_valid(model_dir: Path) -> bool:
-    """检查当前模型是否具备完整、可读取的训练制品。"""
-    return model_artifacts_valid(model_dir)
+def complete_model_artifacts_valid(
+    config: AppConfig, spec: ModelSpec, model_dir: Path
+) -> bool:
+    if not model_artifacts_valid(model_dir, spec, require_evaluation=True):
+        return False
+    return all(
+        backtest_artifact_valid(path)
+        for path in backtest_directories(config, model_dir).values()
+    )
 
 
 def read_backtest_summaries(
     config: AppConfig, model_dir: Path
 ) -> dict[str, object]:
-    """读取已完成的回测摘要，缺失回测不阻断模型使用。"""
     return {
         key: (
             read_backtest_summary(path)
@@ -361,20 +297,10 @@ def read_backtest_summaries(
 def backtest_directories(
     config: AppConfig, model_dir: Path
 ) -> dict[str, Path]:
-    """返回模型版本内固定资金档位对应的回测目录。"""
     return {
         str(cash): model_dir / "backtests" / f"cash-{cash}"
         for cash in config.backtest_capital_scenarios
     }
-
-
-def import_training_state(
-    store: StateStore,
-    model_dir: Path,
-    model_status: str | None = None,
-) -> dict[str, object]:
-    """登记模型和预测，不把回测明细复制进 SQLite。"""
-    return store.import_model_artifacts(model_dir, model_status=model_status)
 
 
 def _write_evaluation(model_dir: Path, evaluation: dict[str, object]) -> None:
@@ -383,4 +309,4 @@ def _write_evaluation(model_dir: Path, evaluation: dict[str, object]) -> None:
     )
 
 
-# AI_GENERATE_END --------------------------
+# AI_GENERATE_END -----------------------------

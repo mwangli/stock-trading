@@ -1,4 +1,4 @@
-# AI_GENERATE_START -
+# AI_GENERATE_START --
 from __future__ import annotations
 
 import logging
@@ -17,9 +17,11 @@ class RealizedProfitService:
     def __init__(self, state_store: StateStore) -> None:
         self._state_store = state_store
 
-    def summarize(self, business_date: date) -> dict[str, object]:
+    def summarize(
+        self, model_id: str, business_date: date
+    ) -> dict[str, object]:
         set_log_context(step="1/2", progress="-/-", target=str(business_date))
-        profit = self._state_store.realized_performance(business_date)
+        profit = self._state_store.realized_performance(model_id, business_date)
         LOGGER.info(
             "已实现收益汇总完成：闭环=%d；数量=%d；成本=%s；卖出额=%s；净收益=%s",
             profit["trade_count"],
@@ -38,14 +40,12 @@ class ModelReviewService:
         self._config = config
         self._state_store = state_store
 
-    def review(self, business_date: date) -> dict[str, object]:
+    def review(self, model_id: str, business_date: date) -> dict[str, object]:
         set_log_context(step="2/2", progress="-/-", target=str(business_date))
-        model_version_id = self._state_store.performance_model_id(
-            business_date.isoformat()
-        )
+        model_version_id = self._state_store.latest_model_version_id(model_id)
         window_observations = self._config.model_evaluation_observations
         rows = self._state_store.recent_monthly_realized_performance(
-            model_version_id, business_date, window_observations
+            model_id, business_date, window_observations
         )
         observations = len(rows)
         positive_period_ratio: float | None = None
@@ -77,6 +77,7 @@ class ModelReviewService:
                 decision = "RETRAIN"
                 reason = "月度毛收益、盈利月份比例或毛回撤未达标"
         saved = self._state_store.save_model_evaluation(
+            model_id=model_id,
             model_version_id=model_version_id,
             business_date=business_date.isoformat(),
             window_observations=window_observations,
@@ -113,4 +114,4 @@ def _max_drawdown(returns: list[float]) -> float:
         peak = max(peak, equity)
         drawdown = max(drawdown, 1.0 - equity / peak)
     return drawdown
-# AI_GENERATE_END -
+# AI_GENERATE_END --

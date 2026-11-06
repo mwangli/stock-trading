@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------------------------
+# AI_GENERATE_START --------------------------
 from __future__ import annotations
 
 import json
@@ -63,7 +63,7 @@ class Position:
 
 
 class PortfolioBacktester:
-    """按日排名保留强势持仓，只对跌出退出排名的单仓执行轮换。"""
+    """按上一交易日排名，下午买入并在下一交易日上午卖出的 T+1 回测。"""
 
     def __init__(
         self,
@@ -96,7 +96,7 @@ class PortfolioBacktester:
             for day, group in self._topk.groupby("datetime", sort=True)
         }
         first_prediction = min(ranked)
-        last_mature_prediction = self._calendar[-2]
+        last_buy_date = self._calendar[-2]
         simulation_dates = self._calendar[
             (self._calendar >= first_prediction) & (self._calendar <= self._calendar[-1])
         ]
@@ -115,52 +115,39 @@ class PortfolioBacktester:
         LOGGER.info("开始逐日模拟：交易日数=%d", total_dates)
         for index, timestamp in enumerate(simulation_dates, start=1):
             trade_date = timestamp.date()
-            prediction_timestamp = timestamp
+            prediction_timestamp = self._previous_calendar_day(timestamp)
             candidates = ranked.get(prediction_timestamp)
-            if (
-                position is not None
-                and trade_date > position.buy_date
-                and candidates is not None
-            ):
-                current_rank = self._candidate_rank(candidates, position.instrument)
+            if position is not None and trade_date > position.buy_date:
                 holding_days = self._holding_trade_days(
                     position.buy_date, trade_date
                 )
-                maximum_reached = holding_days >= self._config.max_holding_days
-                if (
-                    not maximum_reached
-                    and current_rank is not None
-                    and current_rank <= self._config.exit_rank
-                ):
-                    retained_days += 1
+                sale, sell_reject_reason = self._try_sell(position, trade_date)
+                if sale is None:
+                    rejects.append(
+                        _reject_record(
+                            trade_date,
+                            position.instrument,
+                            sell_reject_reason or "SELL_UNAVAILABLE",
+                        )
+                    )
                 else:
-                    sale, sell_reject_reason = self._try_sell(position, trade_date)
-                    if sale is None:
-                        rejects.append(
-                            _reject_record(
-                                trade_date,
-                                position.instrument,
-                                sell_reject_reason or "SELL_UNAVAILABLE",
-                                current_rank,
-                            )
-                        )
-                    else:
-                        cash += sale["sellNotional"]
-                        trade = _trade_record(
-                            position,
-                            sale,
-                            current_rank,
-                            holding_days,
-                            "MAX_HOLDING_DAYS" if maximum_reached else "RANK_EXIT",
-                        )
-                        trades.append(trade)
-                        realized_gross_profit += float(trade["grossPnl"])
-                        realized_net_profit += float(trade["netPnl"])
-                        position = None
+                    cash += sale["sellNotional"]
+                    trade = _trade_record(
+                        position,
+                        sale,
+                        None,
+                        holding_days,
+                        "T1_MORNING_EXIT" if holding_days == 1 else "T1_RETRY_EXIT",
+                    )
+                    trades.append(trade)
+                    realized_gross_profit += float(trade["grossPnl"])
+                    realized_net_profit += float(trade["netPnl"])
+                    position = None
 
             if (
                 position is None
-                and prediction_timestamp <= last_mature_prediction
+                and timestamp <= last_buy_date
+                and prediction_timestamp is not None
                 and candidates is not None
             ):
                 purchase, candidate_rejects = self._try_buy(
@@ -479,6 +466,7 @@ def run_portfolio_backtest(
     model_dir: Path,
     artifact_dir: Path,
     initial_cash: Decimal | int | float,
+    qlib_dir: Path | None = None,
 ) -> dict[str, object]:
     """使用统一交易配置执行一个资金档位的组合回测。"""
     backtest_config = BacktestConfig(
@@ -495,7 +483,7 @@ def run_portfolio_backtest(
     )
     return PortfolioBacktester(
         ParquetMarketStore(config.data_dir),
-        config.qlib_dir / "calendars" / "day.txt",
+        (qlib_dir or config.qlib_dir) / "calendars" / "day.txt",
         model_dir / "test_predictions.parquet",
         backtest_config,
     ).run(artifact_dir)
@@ -642,4 +630,4 @@ def read_backtest_summary(directory: Path) -> dict[str, object]:
     """读取一个资金场景的回测摘要。"""
     return json.loads((directory / "summary.json").read_text(encoding="utf-8"))
 
-# AI_GENERATE_END ------------------------
+# AI_GENERATE_END --------------------------

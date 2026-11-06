@@ -1,4 +1,4 @@
-# AI_GENERATE_START -------
+# AI_GENERATE_START --------
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
@@ -168,6 +168,7 @@ class MinuteBar:
     close: Decimal
     volume: Decimal
     amount: Decimal
+    interval_minutes: int = 5
 
     @classmethod
     def from_baostock(cls, row: dict[str, str]) -> "MinuteBar":
@@ -188,10 +189,11 @@ class MinuteBar:
 
     @property
     def bar_start(self) -> datetime:
-        return self.bar_end - timedelta(minutes=5)
+        return self.bar_end - timedelta(minutes=self.interval_minutes)
 
     def as_record(self) -> dict[str, object]:
         record = asdict(self)
+        record.pop("interval_minutes")
         record["trade_date"] = self.trade_date.isoformat()
         record["bar_start"] = self.bar_start.isoformat()
         record["bar_end"] = self.bar_end.isoformat()
@@ -213,4 +215,4 @@ def _optional_iso_date(value: object) -> date | None:
 def _tushare_code(value: object) -> str:
     symbol, exchange = str(value or "").strip().split(".", maxsplit=1)
     return f"{exchange.lower()}.{symbol}"
-# AI_GENERATE_END -------
+# AI_GENERATE_END --------

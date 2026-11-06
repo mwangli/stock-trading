@@ -1,4 +1,4 @@
-# AI_GENERATE_START -
+# AI_GENERATE_START --
 from __future__ import annotations
 
 from datetime import time
@@ -7,17 +7,17 @@ import pandas as pd
 
 MORNING_START = time(9, 30)
 MORNING_END = time(11, 30)
-SELL_START = time(13, 0)
-SELL_END = time(14, 0)
-BUY_START = time(14, 0)
-BUY_END = time(15, 0)
+SELL_START = time(9, 35)
+SELL_END = time(11, 25)
+BUY_START = time(13, 5)
+BUY_END = time(14, 54)
 EXPECTED_MORNING_BARS = 24
-EXPECTED_SELL_BARS = 12
-EXPECTED_BUY_BARS = 12
+EXPECTED_SELL_BARS = 22
+EXPECTED_BUY_BARS = 21
 
 
 def summarize_trading_windows(minutes: pd.DataFrame) -> pd.DataFrame:
-    """聚合上午观察、下午卖出和下午买入三个固定执行窗口。"""
+    """聚合上午观察、次日上午卖出和下午买入三个固定执行窗口。"""
     if minutes.empty:
         return _empty_summary()
     frame = minutes.copy()
@@ -161,4 +161,4 @@ def _empty_summary() -> pd.DataFrame:
             ]
         )
     return pd.DataFrame(columns=columns)
-# AI_GENERATE_END -
+# AI_GENERATE_END --

@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---------
+# AI_GENERATE_START ----------
 from __future__ import annotations
 
 import json
@@ -37,7 +37,11 @@ class TushareClient:
             {"exchange": "", "list_status": "L"},
             "ts_code,symbol,name,market,list_status,list_date,delist_date",
         )
-        return [StockBasic.from_tushare(row, snapshot_date) for row in rows]
+        return [
+            StockBasic.from_tushare(row, snapshot_date)
+            for row in rows
+            if str(row.get("ts_code") or "").upper().endswith((".SH", ".SZ"))
+        ]
 
     def fetch_trade_dates(self, start_date: date, end_date: date) -> list[date]:
         rows = self._request(
@@ -138,4 +142,4 @@ class TushareClient:
 def _normalized_code(value: object) -> str:
     symbol, exchange = str(value or "").split(".", maxsplit=1)
     return f"{exchange.lower()}.{symbol}"
-# AI_GENERATE_END ---------
+# AI_GENERATE_END ----------
