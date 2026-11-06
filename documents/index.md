@@ -18,6 +18,8 @@ source_paths:
 
 本目录面向项目开发者和希望了解实现方式的读者，说明当前功能、技术方案、业务策略、运行边界和部署方法。文档以 `stock-trading` 分支的 Python 交易主线为业务事实来源，同时说明 `stock-web` 分支提供的 Java/React 只读控制台。
 
+当前产品版本为 **V5.4.1**，由 `stock-trading/v5.4.1` 与 `stock-web/v5.4.1` 两个分支基线标签共同定义。
+
 不再把历史 Java 交易后台、MySQL/MongoDB 主链、Quartz、旧多模型平台或可写交易 Agent 描述为现行能力。历史内容只保留仍能解释当前取舍的部分。
 
 ## 当前项目组成
@@ -51,6 +53,7 @@ flowchart LR
 | 本地体验或生产安装 | [快速部署手册](04-operations/quick-deployment-guide.md) |
 | 理解发布和调度 | [部署、发布与数据挂载](04-operations/deployment-and-data-mounts.md) |
 | 理解关键架构取舍 | [Python 交易权威 ADR](05-decisions/adr-python-only-t1.md) |
+| 查看版本与技术栈演进 | [历史版本说明](06-history/version-history.md) |
 | 查看历史方案如何收口 | [历史设计演进](06-history/retained-design-evolution.md) |
 
 ## 文档证据等级

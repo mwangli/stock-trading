@@ -1,7 +1,7 @@
 ---
 id: history-design-evolution
 title: 历史设计演进与保留结论
-sidebar_position: 10
+sidebar_position: 20
 owner: history
 type: history
 status: HISTORICAL
@@ -16,6 +16,8 @@ source_paths:
 ---
 
 # 历史设计演进与保留结论
+
+版本时间线、代表标签和各代技术栈见[历史版本说明](version-history.md)。本文只记录跨版本仍有效的设计结论，以及已经明确退出当前主线的方向。
 
 ## 文档处理原则
 
