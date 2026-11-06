@@ -11,32 +11,37 @@
 
 ## PC 端工作台
 
-桌面端提供完整导航与高信息密度视图，适合持续观察账户表现、模型结果和系统运行情况。
+桌面端围绕智能分析、项目文档与运行观测提供完整工作台，适合持续查看交易系统状态并追溯结论依据。
+
+### Agent 智能对话
+
+Agent 基于交易数据库、任务状态、模型结果和项目文档进行只读分析，回答会区分事实、推断与不确定项，并标注数据来源。
 
 <p align="center">
-  <img src="documents/images/readme/pc-console.png" alt="PC 端控制台" width="80%" />
+  <img src="documents/images/readme/pc-agent-conversation.png" alt="PC 端 Agent 智能对话" width="80%" />
 </p>
 
-深色主题适合长时间查看任务运行状态与实时日志。
+### 文档工作台
+
+内置文档工作台集中呈现系统架构、业务设计、代码说明、部署运维和架构决策，并提供目录导航、章节索引与源码关联入口。
+
+<p align="center">
+  <img src="documents/images/readme/pc-documentation.png" alt="PC 端文档工作台" width="80%" />
+</p>
+
+### 运行状态与日志
+
+深色主题适合长时间查看任务状态和实时日志，辅助定位数据、模型与调度链路中的异常。
 
 <p align="center">
   <img src="documents/images/readme/pc-console-dark.png" alt="PC 端深色运行日志" width="80%" />
 </p>
 
-## Agent 智能对话
-
-Agent 不是脱离业务数据的通用聊天机器人，而是基于交易数据库、任务状态、模型结果和项目文档进行只读分析：
-
-- 分析当天是否产生任务、预测与交易结果。
-- 解释没有生成信号或执行记录的具体原因。
-- 给出查询范围、数据日期和事实来源，避免脱离数据回答。
-- 保持分析与真实交易执行隔离，不生成可审批的交易计划。
-
 ## 移动端体验
 
 移动端聚焦高频查看场景，通过底部导航快速切换收益、交易、Agent 对话和运行日志。
 
-<table>
+<table cellpadding="8">
   <tr>
     <td width="25%" align="center"><strong>收益总览</strong></td>
     <td width="25%" align="center"><strong>交易记录</strong></td>
@@ -44,10 +49,10 @@ Agent 不是脱离业务数据的通用聊天机器人，而是基于交易数�
     <td width="25%" align="center"><strong>运行日志</strong></td>
   </tr>
   <tr>
-    <td width="25%" valign="top"><img src="documents/images/readme/mobile-dashboard.png" alt="移动端收益总览" width="100%" /></td>
-    <td width="25%" valign="top"><img src="documents/images/readme/mobile-trades.png" alt="移动端交易记录" width="100%" /></td>
-    <td width="25%" valign="top"><img src="documents/images/readme/mobile-agent.png" alt="移动端 Agent 智能对话" width="100%" /></td>
-    <td width="25%" valign="top"><img src="documents/images/readme/mobile-logs.png" alt="移动端运行日志" width="100%" /></td>
+    <td width="25%" valign="top" align="center"><img src="documents/images/readme/mobile-dashboard.png" alt="移动端收益总览" width="88%" /></td>
+    <td width="25%" valign="top" align="center"><img src="documents/images/readme/mobile-trades.png" alt="移动端交易记录" width="88%" /></td>
+    <td width="25%" valign="top" align="center"><img src="documents/images/readme/mobile-agent.png" alt="移动端 Agent 智能对话" width="88%" /></td>
+    <td width="25%" valign="top" align="center"><img src="documents/images/readme/mobile-logs.png" alt="移动端运行日志" width="88%" /></td>
   </tr>
 </table>
 
