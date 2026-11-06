@@ -1,4 +1,4 @@
-# AI_GENERATE_START--- --------
+# AI_GENERATE_START---- --------
 from __future__ import annotations
 
 import logging
@@ -337,48 +337,76 @@ class ZXBrokerMarketProvider:
         start_date: date,
         end_date: date,
     ) -> dict[str, object]:
-        today = shanghai_today()
-        if start_date != today or end_date != today:
-            raise ValueError(
-                "券商 1 分钟行情仅支持当天采集；历史回填必须使用支持历史分钟线的数据源"
-            )
-        completed = 0
-        skipped = 0
+        completed_code_dates = 0
+        skipped_code_dates = 0
         rows = 0
         minute_points = 0
         failures: dict[str, str] = {}
+        target_code_dates = 0
         for index, code in enumerate(codes, start=1):
             set_log_context(progress=f"{index}/{len(codes)}", target=code)
-            try:
-                if today in store.minute1_complete_dates(code, today, today):
-                    completed += 1
-                    skipped += 1
-                    continue
-                series = self._get_minute_series(code, today)
-                minute_points += len(series.points)
-                values = _to_minute_bars(code, series)
-                if not values:
-                    raise ValueError("券商分钟行情没有可写入的 1 分钟数据")
-                store.write_minute1_history(code, values)
-                completed += 1
-                rows += len(values)
-            except HTTPError as error:
-                if error.code in {403, 429}:
-                    raise RuntimeError(
-                        f"券商分钟行情触发访问限制，已停止采集：HTTP {error.code}"
-                    ) from error
-                failures[code] = str(error)
-                LOGGER.warning("1分钟线采集失败：股票=%s；原因=%s", code, error)
-            except Exception as error:
-                failures[code] = str(error)
-                LOGGER.warning("1分钟线采集失败：股票=%s；原因=%s", code, error)
+            trade_dates = _minute_trade_dates_for_code(
+                store, code, start_date, end_date
+            )
+            target_code_dates += len(trade_dates)
+            complete_dates = store.minute1_complete_dates(
+                code, start_date, end_date
+            )
+            missing_dates = [
+                trade_date
+                for trade_date in trade_dates
+                if trade_date not in complete_dates
+            ]
+            skipped_code_dates += len(trade_dates) - len(missing_dates)
+            if not missing_dates:
+                continue
+            LOGGER.info(
+                "券商分钟行情缺口检查：股票=%s；目标日期=%d；已有完整日期=%d；待采日期=%d",
+                code,
+                len(trade_dates),
+                len(trade_dates) - len(missing_dates),
+                len(missing_dates),
+            )
+            for trade_date in missing_dates:
+                failure_key = f"{code}@{trade_date.isoformat()}"
+                try:
+                    series = self._get_minute_series(code, trade_date)
+                    minute_points += len(series.points)
+                    values = _to_minute_bars(code, series)
+                    if not values:
+                        raise ValueError("券商分钟行情没有可写入的 1 分钟数据")
+                    store.write_minute1_history(code, values)
+                    completed_code_dates += 1
+                    rows += len(values)
+                except HTTPError as error:
+                    if error.code in {403, 429}:
+                        raise RuntimeError(
+                            "券商分钟行情触发访问限制，已停止采集："
+                            f"HTTP {error.code}"
+                        ) from error
+                    failures[failure_key] = str(error)
+                    LOGGER.warning(
+                        "1分钟线采集失败：股票=%s；日期=%s；原因=%s",
+                        code,
+                        trade_date,
+                        error,
+                    )
+                except Exception as error:
+                    failures[failure_key] = str(error)
+                    LOGGER.warning(
+                        "1分钟线采集失败：股票=%s；日期=%s；原因=%s",
+                        code,
+                        trade_date,
+                        error,
+                    )
         return {
             "provider": self.name,
             "rows": rows,
             "minutePoints": minute_points,
-            "codes": completed,
-            "skippedCodes": skipped,
-            "failedCodes": len(failures),
+            "targetCodeDates": target_code_dates,
+            "completedCodeDates": completed_code_dates,
+            "skippedCodeDates": skipped_code_dates,
+            "failedCodeDates": len(failures),
             "requestIntervalSeconds": self._request_interval_seconds,
             "failureSamples": dict(list(failures.items())[:20]),
         }
@@ -416,6 +444,35 @@ def _group_daily(values: list[DailyBar]) -> dict[str, list[DailyBar]]:
     return grouped
 
 
+def _minute_trade_dates_for_code(
+    store: ParquetMarketStore,
+    code: str,
+    start_date: date,
+    end_date: date,
+) -> list[date]:
+    try:
+        daily = store.read_daily_history(code)
+    except (OSError, ValueError, KeyError) as error:
+        if start_date == end_date:
+            return [start_date]
+        raise ValueError(
+            f"股票 {code} 缺少日线，无法确定历史分钟交易日"
+        ) from error
+    dates = daily["trade_date"].dt.date
+    selected = daily[(dates >= start_date) & (dates <= end_date)]
+    if "tradestatus" in selected:
+        selected = selected[selected["tradestatus"].astype(str).eq("1")]
+    if "volume" in selected:
+        selected = selected[
+            pd.to_numeric(selected["volume"], errors="coerce").fillna(0).gt(0)
+        ]
+    trade_dates = sorted(set(selected["trade_date"].dt.date))
+    today = shanghai_today()
+    if start_date <= today <= end_date and today not in trade_dates:
+        trade_dates.append(today)
+    return sorted(trade_dates)
+
+
 def _to_minute_bars(
     code: str, series: BrokerMinuteSeries
 ) -> list[MinuteBar]:
@@ -443,4 +500,4 @@ def _to_minute_bars(
         )
         for point in regular
     ]
-# AI_GENERATE_END--- --------
+# AI_GENERATE_END---- --------
