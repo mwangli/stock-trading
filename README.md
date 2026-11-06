@@ -76,7 +76,7 @@ Linux 部署使用 `.venv/bin/` 下的同名命令。项目可通过 Cron 串行
 
 ## 技术概览
 
-`Python` · `Qlib` · `LightGBM` · `Parquet` · `SQLite` · `Typer` · 券商 HTTP 协议
+`Python` · `Qlib` · `LightGBM` · `Parquet` · `SQLite` · `Typer`
 
 运行数据、模型制品和交易状态均保存在本地目录中；实时资金、持仓、委托与成交结果以券商返回为准。
 
