@@ -1,10 +1,10 @@
-<!-- AI_GENERATE_START---------------- -->
+<!-- AI_GENERATE_START----------------- -->
 # 智能股票交易系统
 
 面向个人量化交易场景的只读 Web 控制台，将账户收益、市场行情、交易记录、模型预测、运行状态与 Agent 智能分析集中在一个简洁的工作台中。
 
 <p align="center">
-  <a href="http://117.72.216.67/"><strong>在线体验：117.72.216.67</strong></a>
+  <a href="http://117.72.216.67/"><strong>在线体验</strong></a>
   &nbsp;&nbsp;·&nbsp;&nbsp;
   <a href="http://117.72.216.67/docs"><strong>文档工作台</strong></a>
 </p>
@@ -105,4 +105,4 @@ mvn -pl stock-server spring-boot:run
 ## License
 
 本项目许可证见 [LICENSE.txt](LICENSE.txt)。
-<!-- AI_GENERATE_END---------------- -->
+<!-- AI_GENERATE_END----------------- -->
