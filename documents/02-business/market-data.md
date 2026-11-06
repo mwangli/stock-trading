@@ -1,42 +1,57 @@
 ---
 id: business-market-data
-title: 市场数据与股票池
+title: 市场数据与质量
 sidebar_position: 10
 owner: business
 type: design
 status: SOURCE_VERIFIED
-last_verified: 2026-11-03
+last_verified: 2026-11-06
 slug: /business/market-data/
 source_paths:
-  - stock-server/src/main/java/com/stock/console/market/MarketRepository.java
-  - stock-server/src/main/java/com/stock/console/market/MarketController.java
+  - stock-trading@src/stock_trading/market/baostock_client.py
+  - stock-trading@src/stock_trading/market/storage.py
+  - stock-trading@src/stock_trading/market/sync.py
+  - stock-trading@src/stock_trading/market/quality.py
+  - stock-trading@src/stock_trading/market/minute_summary.py
 ---
 
-# 市场数据与股票池
+# 市场数据与质量
 
-## 业务目的
+## 数据用途
 
-市场数据用于回答三个问题：当前有哪些可交易股票、最近一个交易日的全市场表现如何、单只股票的历史日线或 5 分钟走势是什么。控制台只展示已经由上游采集并写入 Parquet 的事实，不在请求期间访问外部行情供应商。
+市场数据同时服务研究和交易：日线与复权因子用于 Qlib 特征，5 分钟线用于 T+1 标签与回测窗口，股票资料用于确定研究范围。真实交易报价不复用历史 Parquet，而是在每次委托前重新读取券商五档行情。
 
-## 当前文件契约
+## 采集与存储
 
-| 路径 | 内容 | 页面用途 |
-|---|---|---|
-| `market/instruments/stocks.parquet` | 股票代码、名称、交易状态、证券类型 | 股票资料与检索 |
-| `market/daily/trade_date=YYYY-MM-DD/bars.parquet` | 当日全市场行情 | 行情列表、市场统计、涨幅排名 |
-| `market/daily_history/code=sh.600000/bars.parquet` | 单股历史日线 | K 线与交易日历 |
-| `market/minute_5m/code=sh.600000/bars.parquet` | 单股 5 分钟行情 | 分钟图和 T+1 窗口研究 |
+stock-collect 通过 BaoStock 检查股票资料和指定日期范围，只补齐缺失数据；它不会准备 Qlib。股票列表和基础资料的有效证券数都必须达到 100，落盘快照还要求至少 100 只处于可交易状态；异常空响应会直接失败，不覆盖已有有效快照。主要文件包括：
 
-## 股票池规则
+| 路径 | 内容 |
+|---|---|
+| `data/market/instruments/stocks.parquet` | 股票代码、名称、上市/退市和交易状态 |
+| `data/market/daily_history/code=<code>/bars.parquet` | 单股历史日线 |
+| `data/market/adjustment_factor/code=<code>/factors.parquet` | 复权因子 |
+| `data/market/minute_5m/code=<code>/bars.parquet` | 原始 5 分钟行情 |
+| `data/market/minute_summary/code=<code>/windows.parquet` | 每日买入/卖出窗口聚合 |
 
-当前查询只选择 `security_type='1'`、状态正常且 `trade_status='1'` 的股票。代码格式必须为 `sh.######` 或 `sz.######`。股票资料与最新日线以内连接组合，缺少最新行情的股票不会出现在活跃股票分页中。
+股票代码在外部数据、Qlib、模型和券商协议间进行统一转换，不能直接混用 `sh.600000`、`SH600000` 等不同格式。
 
-## 历史设计保留
+## T+1 窗口
 
-历史 Python 重建确定 BaoStock 是首版研究数据源，原始日线和分钟线按不可变分区保存，并对 5 分钟数据执行根数、时间边界、聚合偏差和重复请求一致性审计。这些规则解释了当前 Parquet 目录的来源，但采集与审计实现不在本仓库中。
+BaoStock 5 分钟时间戳按 K 线结束时间解释。只有完整落入窗口且总成交量大于 0 时才生成有效 VWAP：
 
-## 质量边界
+- 下午买入窗口：`13:05-14:54`，预期 21 根 K 线。
+- 上午卖出窗口：`09:35-11:25`，预期 22 根 K 线。
 
-- 最新交易日由 `market/daily/` 下最大的 `trade_date=` 分区确定。
-- 5 分钟线不能被视为官方日线的精确拆分，研究时必须保留来源版本和审计结果。
-- 控制台读取失败时返回空集合，不伪造最新价格或交易日。
+窗口不完整时不能用于标签、回测成交或收益判断。
+
+## 质量与保留
+
+统一覆盖率由 `STOCK_TRADING_DATA_QUALITY_MIN_RATIO` 控制，默认 `0.8`。审计按股票生命周期检查日线、复权和分钟数据；达到阈值但仍有缺失时记录警告，低于阈值时终止当前阶段。
+
+- 原始 5 分钟行情保留 90 个自然日。
+- T+1 窗口聚合保留约 5 年。
+- 默认历史范围为 3 年，可通过 `STOCK_TRADING_HISTORY_DAYS` 调整，但上限为 5 年、下限为 1 年。
+
+## 控制台展示边界
+
+`stock-web` 只读取已落盘的 Parquet，不在页面请求期间调用 BaoStock。页面空数据可能表示文件缺失、分区未生成或真实业务为空，必须结合可用性字段、文件更新时间和 Python 日志判断。

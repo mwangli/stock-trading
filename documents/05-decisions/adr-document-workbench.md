@@ -5,7 +5,7 @@ sidebar_position: 20
 owner: decisions
 type: decision
 status: ACCEPTED
-last_verified: 2026-11-03
+last_verified: 2026-11-06
 slug: /decisions/document-workbench/
 source_paths:
   - stock-client/src/desktop/pages/documentation
@@ -16,21 +16,22 @@ source_paths:
 
 ## 背景
 
-历史设计信息分散在提交、阶段报告和多个模块文档中。仓库重构后，单纯恢复旧文件会把已删除模块误认为现行能力；只保留少量 README 又无法解释业务和代码。
+项目的业务主线和观察层位于不同 Git 分支，历史设计又散落在提交、阶段报告和旧模块文档中。只恢复旧文件会把已删除实现误认为现行能力，只保留 README 则不足以解释业务策略和技术取舍。
 
 ## 决策
 
-在 PC 控制台中恢复内置 Markdown 工作台，并重建根 `documents/` 作为统一文档源。工作台提供左侧目录树、全文搜索、右侧章节导航、源码链接、Mermaid 和相邻文档导航。
+在 `stock-web` PC 控制台内维护 Markdown 工作台，并以根 `documents/` 作为统一开发文档源。内容同时覆盖 `stock-trading` Python 主线与 `stock-web` 只读控制台，Front Matter 中用 `branch@path` 标识跨分支源码。
 
-入口只放在 PC 顶栏右上角，不加入业务侧边菜单；移动端不加载文档组件树。
+工作台提供目录树、全文搜索、章节导航、源码链接、Mermaid、代码复制和相邻文档导航。入口只放在 PC 顶栏，移动端不加载文档组件树。
 
 ## 内容治理
 
-- 当前源码和数据契约优先于历史描述。
-- 历史设计中仍有效的业务原则重新编排到现行主题中。
-- 与现有代码冲突的类名、接口、数据库和部署拓扑删除或明确标为历史。
-- Front Matter 提供稳定 ID、排序、状态、核对日期与源码路径。
+- 当前源码、配置和业务事实优先于历史描述。
+- 现行功能写入系统、业务、代码和运维章节。
+- 历史方案只保留仍能解释当前决策的结论。
+- 与当前实现冲突的类名、接口、数据库、调度和部署拓扑应删除。
+- 文档必须说明验证层级，不用源码检查替代编译、运行或生产证据。
 
 ## 后果
 
-Frontend 和 Backend 都消费同一文档目录：Frontend 用于可视化浏览，Backend 用于 API 与 Agent 检索。文档变更会影响前端构建制品，也可能改变 Agent 的证据内容，因此应像代码一样审查。
+文档变更会进入前端构建制品，也会改变 Backend 和 Agent 可检索的证据，因此需要像代码一样审查。Front Matter 必须保持在文件开头，不能添加会破坏解析的首行标记。

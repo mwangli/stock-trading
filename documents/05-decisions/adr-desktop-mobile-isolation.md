@@ -5,7 +5,7 @@ sidebar_position: 30
 owner: decisions
 type: decision
 status: ACCEPTED
-last_verified: 2026-11-03
+last_verified: 2026-11-06
 slug: /decisions/platform-isolation/
 source_paths:
   - stock-client/src/App.tsx

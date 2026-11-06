@@ -1,4 +1,4 @@
-// AI_GENERATE_START
+// AI_GENERATE_START -
 import { isValidElement, useMemo, useState, type ComponentPropsWithoutRef, type FC, type ReactNode } from 'react';
 import { Check, Copy, ExternalLink, FileClock, GitBranch, ShieldCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -11,8 +11,21 @@ import MermaidDiagram from './MermaidDiagram';
 import { extractDocumentationHeadings, resolveDocumentationLink, type DocumentationEntry } from './documentRegistry';
 
 type MarkdownHeadingProps = ComponentPropsWithoutRef<'h1'> & ExtraProps;
-const GITHUB_SOURCE_BASE = 'https://github.com/mwangli/stock-trading/blob/master/';
+const GITHUB_REPOSITORY_BASE = 'https://github.com/mwangli/stock-trading/blob/';
+const DEFAULT_SOURCE_BRANCH = 'stock-web';
 const supportedLanguages = new Set<Language>(['bash', 'css', 'java', 'javascript', 'json', 'jsx', 'markup', 'sql', 'tsx', 'typescript', 'yaml']);
+
+const sourceReference = (reference: string) => {
+  const separator = reference.indexOf('@');
+  if (separator <= 0) return { branch: DEFAULT_SOURCE_BRANCH, path: reference };
+  return { branch: reference.slice(0, separator), path: reference.slice(separator + 1) };
+};
+
+const sourceHref = (reference: string) => {
+  const source = sourceReference(reference);
+  const encodedPath = source.path.split('/').map(encodeURIComponent).join('/');
+  return `${GITHUB_REPOSITORY_BASE}${encodeURIComponent(source.branch)}/${encodedPath}`;
+};
 
 const childrenToText = (children: ReactNode): string => {
   if (typeof children === 'string' || typeof children === 'number') return String(children);
@@ -93,7 +106,7 @@ const MarkdownDocument: FC<{ document: DocumentationEntry; previous?: Documentat
         {document.metadata.sourcePaths.length > 0 && (
           <div className="documentation-source-links">
             <strong>关联源码</strong>
-            {document.metadata.sourcePaths.map((path) => <a key={path} href={`${GITHUB_SOURCE_BASE}${path}`} target="_blank" rel="noreferrer">{path}<ExternalLink size={13} /></a>)}
+            {document.metadata.sourcePaths.map((path) => <a key={path} href={sourceHref(path)} target="_blank" rel="noreferrer">{path}<ExternalLink size={13} /></a>)}
           </div>
         )}
       </header>
@@ -109,4 +122,4 @@ const MarkdownDocument: FC<{ document: DocumentationEntry; previous?: Documentat
 };
 
 export default MarkdownDocument;
-// AI_GENERATE_END
+// AI_GENERATE_END -

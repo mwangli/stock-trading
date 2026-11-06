@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------------------
+// AI_GENERATE_START -------------------
 package com.stock.console.facts;
 
 import com.stock.console.config.ConsoleProperties;
@@ -137,7 +137,7 @@ public class TradingFacts {
             FROM trading.model_version model
             LEFT JOIN (
                 SELECT model_version_id, count(*) AS prediction_count
-                FROM trading.prediction GROUP BY model_version_id
+                FROM trading.prediction_rank GROUP BY model_version_id
             ) prediction_stats ON prediction_stats.model_version_id = model.id
             LEFT JOIN (
                 SELECT model_version_id, count(*) AS realized_trade_count,
@@ -156,7 +156,7 @@ public class TradingFacts {
                    model.id AS model_version_id, model.model_name,
                    model.feature_set, model.status AS model_status,
                    prediction.created_at
-            FROM trading.prediction prediction
+            FROM trading.prediction_rank prediction
             JOIN trading.model_version model ON model.id = prediction.model_version_id
             ORDER BY prediction.prediction_date DESC, prediction.rank ASC
             """;
@@ -347,12 +347,12 @@ public class TradingFacts {
     public List<Map<String, Object>> agentPredictionRanking(LocalDate predictionDate, int limit) {
         String sql = predictionDate == null ? """
                 SELECT prediction_date, instrument, rank, score, label, model_version_id, created_at
-                FROM trading.prediction
-                WHERE prediction_date = (SELECT max(prediction_date) FROM trading.prediction)
+                FROM trading.prediction_rank
+                WHERE prediction_date = (SELECT max(prediction_date) FROM trading.prediction_rank)
                 ORDER BY rank, instrument
                 """ : """
                 SELECT prediction_date, instrument, rank, score, label, model_version_id, created_at
-                FROM trading.prediction
+                FROM trading.prediction_rank
                 WHERE CAST(prediction_date AS DATE) = CAST(? AS DATE)
                 ORDER BY rank, instrument
                 """;
@@ -711,4 +711,4 @@ public class TradingFacts {
         return message == null || message.isBlank() ? "SQLite 数据源无法读取" : message;
     }
 }
-// AI_GENERATE_END ------------------
+// AI_GENERATE_END -------------------

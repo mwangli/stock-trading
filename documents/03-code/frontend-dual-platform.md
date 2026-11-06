@@ -5,7 +5,7 @@ sidebar_position: 20
 owner: code
 type: implementation
 status: SOURCE_VERIFIED
-last_verified: 2026-11-03
+last_verified: 2026-11-06
 slug: /code/frontend-dual-platform/
 source_paths:
   - stock-client/src/App.tsx

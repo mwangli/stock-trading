@@ -5,43 +5,50 @@ sidebar_position: 40
 owner: business
 type: design
 status: SOURCE_VERIFIED
-last_verified: 2026-11-03
+last_verified: 2026-11-06
 slug: /business/performance-evaluation/
 source_paths:
-  - stock-server/src/main/java/com/stock/console/facts/TradingFacts.java
-  - stock-server/src/main/java/com/stock/console/dashboard/DashboardController.java
-  - stock-client/src/desktop/pages/dashboard/index.tsx
+  - stock-trading@src/stock_trading/trading/broker_sync.py
+  - stock-trading@src/stock_trading/trading/review.py
+  - stock-trading@src/stock_trading/state/store.py
+  - stock-trading@src/stock_trading/research/backtest.py
 ---
 
 # 收益与模型评估
 
-## 页面目标
+## 两套收益口径
 
-收益总览把账户持仓、已实现交易绩效和交易排名集中展示。它用于回答“当前还有什么持仓、哪些交易已经闭环、实际收益如何”，而不是预测未来收益。
+研究回测与真实交易必须分开解释：
 
-## 当前收益口径
+- 回测同时输出毛收益和净收益；模型能力判断主要观察不扣固定费用的毛收益、毛回撤等指标。
+- 真实交易只统计券商成交事实形成的完整买卖闭环；浮动盈亏、未卖持仓、账户总资产和入金出金不计入策略收益。
 
-`realized_trade` 保存买卖价格、数量、费用、成本、卖出金额、毛利、净利、毛收益率和净收益率。控制台把这些事实映射为绩效序列与收益排名，并按模型版本关联真实交易表现。
+## 已实现交易
+
+`stock-order` 同步历史成交订单，并使用 FIFO 按成交数量匹配买入和卖出。部分卖出只确认已匹配数量对应的收益，未卖出的买入继续保留为待闭环交易。
 
 ```text
-毛利润 = 卖出金额 - 成本
+毛利润 = 卖出金额 - 买入成本
 净利润 = 毛利润 - 买入费用 - 卖出费用
-净收益率 = 净利润 / 含费用的实际成本口径
+毛收益率 = 毛利润 / 买入成本
+净收益率 = 净利润 / 含费用成本
 ```
 
-具体计算由上游写入，控制台不重新改写历史结果；Java 查询只负责字段映射和聚合。
+券商没有返回费用时，每笔成交委托使用 5 元基础费用并标记 `BUSINESS_ZERO`；解析到真实聚合费用或明细时标记 `BROKER_ACTUAL`，存在聚合总费用时不重复叠加明细。
 
-## 历史评估设计
+## 月度模型复盘
 
-阶段 09 曾定义滚动评估的四类决策：样本不足继续观察、保持当前模型、模型退化请求重训、没有生产模型时请求首次训练。有效的设计原则仍然保留：
+`stock-review` 先汇总指定业务日已实现收益，再按卖出月份聚合最近 6 个有效月份的毛收益：
 
-- 模型切换前后的收益不能混入同一评估窗口。
-- 入金或出金属于外部现金流，不能计为模型利润。
-- 毛收益用于观察策略边际，净收益用于判断真实业务收益。
-- 最大回撤、正收益日比例和窗口收益应同时解释，不能只看单个指标。
+- 样本不足：`WARMUP`。
+- 总复合毛收益大于 0、盈利月份比例不低于 60%、最大毛回撤不高于 10%：`KEEP`。
+- 样本充足但任一指标不达标：`RETRAIN`，并生成待处理训练请求。
 
-历史真实交易开关和复杂准入门禁在阶段 12 被删除，文档不再把它们描述为当前控制条件。
+复盘命令本身不会直接训练模型。训练由独立 `stock-train` 命令完成，避免评估、资源消耗和模型切换形成隐式链路。
 
-## 展示边界
+## 解释边界
 
-控制台当前持仓价格使用已知成交成本作为保守占位，不代表实时市值；页面必须结合字段时间和市场行情判断时效。没有真实已实现交易时，模型评估不能被解释为生产盈利证明。
+- 模型切换前后的真实收益按模型版本分别归属。
+- 没有足够已实现月份时，不能把 `WARMUP` 解释为模型通过。
+- 控制台持仓展示不是实时市值证明，最终资金与持仓仍应以券商查询为准。
+- 页面统计和 SQLite 结果只证明已经记录的事实，不证明未来收益。

@@ -1,43 +1,52 @@
 ---
 id: adr-python-only-t1
-title: ADR：Python 交易核心与 Java 高级能力分层
+title: ADR：Python 交易主线为唯一业务权威
 sidebar_position: 10
 owner: decisions
 type: decision
 status: ACCEPTED
-last_verified: 2026-11-04
+last_verified: 2026-11-06
 slug: /decisions/python-only-t1/
 source_paths:
+  - stock-trading@src/stock_trading
+  - stock-trading@pyproject.toml
+  - stock-trading@.github/config/stock-trading.cron
   - stock-server/src/main/java/com/stock/console/facts/TradingFacts.java
   - stock-server/src/main/java/com/stock/console/agent/AgentReadTools.java
-  - stock-server/src/main/java/com/stock/console/agent/DevelopmentTaskService.java
-  - stock-server/src/main/java/com/stock/console/config/ConsoleProperties.java
 ---
 
-# ADR：Python T+1 为交易权威
+# ADR：Python 交易主线为唯一业务权威
 
 ## 背景
 
-历史系统经历过纯 Java 四层、多模块 Maven、模型服务、Agent 平台和前后端一体化演进。功能逐步增加后，训练、排名、调度、交易、数据治理和页面形成多条并行权威路径，验证成本过高。
+历史系统先后存在 Java 多模块交易后台、MySQL/MongoDB、Quartz、多个模型实现、Agent 平台和前后端一体化方案。多条路径同时管理数据、任务、模型和交易状态，导致同一业务事实可能有多个解释，部署与验证成本持续增加。
 
 ## 决策
 
-Python 收敛为最核心的交易执行层：负责市场数据和模型产物落盘、候选生成、交易前最终校验、风险控制、幂等和券商执行。Java 负责高级能力：运营问答、确定性统计工具、模型与任务分析、只读交易决策证据、文档增强和受限 GitHub 自动修复。Java 通过 Parquet、SQLite、日志和 Markdown 读取事实，不调用 Python CLI，不写 `trading.db`，不持有券商凭据。
+`stock-trading` 分支的 Python 应用是当前唯一业务权威：
+
+- BaoStock 和 Parquet 管理市场原始数据。
+- Qlib、Alpha158 和 LightGBM 管理研究与完整排名。
+- SQLite 管理任务、模型、预测排名、账户快照、委托、券商事实和复盘状态。
+- Python 确定性逻辑管理 T+1 时序、Rank5/Rank15、资金、报价、撤单、幂等与恢复。
+- 券商管理实时账户、持仓、委托和成交终态。
+
+`stock-web` 分支只提供可选观察与辅助能力。Java 可以读取 Python 产生的 SQLite、Parquet、日志和文档，但不得写交易库、调用 Python CLI、持有券商凭据或建立第二套交易状态。
 
 ## 保留原则
 
-- 模型排名、订单状态和真实成交必须可追溯。
-- 原始市场数据按不可变分区保存并进行质量审计。
-- 重跑必须幂等，订单尝试必须有唯一业务键。
-- 真实收益只按成交事实计算。
-- 自动化失败时保留可解释状态，不伪造成交或成功。
-- Java Agent 的决策输出只具有咨询性质，不能新增 Python 候选、生成委托字段或绕过 Python 风控。
-- GitHub 开发 Agent 是唯一 Java 写能力，且其写入目标仅限配置的代码仓库和目标分支。
+- 原始数据、模型制品、运行状态和券商事实分层保存。
+- 模型排名、委托状态和真实成交必须可追溯。
+- 重跑通过业务键、事务和唯一约束保持幂等。
+- 未确认结果必须显式记录，不能伪造成交或成功。
+- 真实收益只使用完整成交闭环计算。
+- 调度放在操作系统层，应用命令保持独立和可人工复核。
+- Agent 只提供说明或受限代码写入，不进入交易执行链。
 
 ## 被替代方案
 
-七模块 Java 交易后台、Quartz 交易调度、MySQL/MongoDB 主链、独立模型服务、旧策略模式、Python 独立 Agent/Wheel 和可写交易 Agent 工具均不再是当前实现。它们的设计经验只在历史文档中保留。
+以下内容不再用于指导当前开发：七模块 Maven 交易后台、Java 交易写接口、Quartz 交易任务、MySQL/MongoDB 主链、Redis Pub/Sub、DJL/PyTorch 推理、Ranking LSTM、MASTER、Mengzi、独立 RAG 服务和可写交易 Agent。
 
 ## 后果
 
-高级能力可以在 Java 中快速演进，同时核心交易路径仍保持单一权威。代价是 Java 依赖上游 SQLite 与 Parquet 契约稳定；新增分析工具时必须先核对上游数据结构，不能在控制台中创建第二套交易状态，也不能把咨询结果直接当作订单。
+业务事实和故障边界更清晰，Python 可以独立部署和验证，Web 控制台可以独立演进。代价是两个分支之间必须维护稳定的数据契约和路径约定；控制台发现字段不一致时，应先核对 Python 源码和实际数据，不能通过写入或迁移上游数据库来兼容。

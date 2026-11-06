@@ -1,50 +1,61 @@
 ---
 id: documentation-home
-title: 系统文档工作台
+title: 项目文档中心
 sidebar_position: 1
 owner: system
 type: overview
 status: SOURCE_VERIFIED
-last_verified: 2026-11-04
+last_verified: 2026-11-06
 slug: /
 source_paths:
-  - stock-client/src/desktop/pages/documentation/index.tsx
-  - stock-server/src/main/java/com/stock/console/documents/DocumentService.java
+  - stock-trading@README.md
+  - stock-trading@src/stock_trading
+  - stock-server/src/main/java/com/stock/console
+  - stock-client/src/desktop/pages/documentation
 ---
 
-# 股票交易只读控制台文档工作台
+# 股票交易项目文档中心
 
-本目录是当前系统的业务与代码说明。它吸收了历史提交中的系统架构、市场数据、模型、交易、Agent、前端、部署和阶段报告，但只保留仍能解释当前源码与数据契约的内容。已经删除的七模块 Java 交易后台、MongoDB/MySQL 主链、Quartz 交易调度、旧模型服务和独立 RAG 平台只作为历史演进记录，不再描述为现行能力。
+本目录面向项目开发者和希望了解实现方式的读者，说明当前功能、技术方案、业务策略、运行边界和部署方法。文档以 `stock-trading` 分支的 Python 交易主线为业务事实来源，同时说明 `stock-web` 分支提供的 Java/React 只读控制台。
 
-## 当前系统定位
+不再把历史 Java 交易后台、MySQL/MongoDB 主链、Quartz、旧多模型平台或可写交易 Agent 描述为现行能力。历史内容只保留仍能解释当前取舍的部分。
 
-当前仓库是一个 **Java + React 的运营控制台与高级 Agent**。Java 不执行核心交易、训练或交易状态修复，而是读取 Python 核心产生的 SQLite、Parquet 和日志文件，提供确定性统计、模型与任务分析、文档增强问答和受限 GitHub 自动修复；最终风险校验和券商执行仍由 Python 负责。
+## 当前项目组成
+
+| 分支 | 定位 | 主要职责 |
+|---|---|---|
+| `stock-trading` | 业务主线与生产权威 | BaoStock 采集、Parquet、Qlib、Alpha158、LightGBM、完整排名、T+1 交易、订单同步与结算、模型复盘、数据同步和 Wheel/Cron 发布 |
+| `stock-web` | 可选只读控制台 | 读取 Python 产生的 SQLite、Parquet 和日志，提供 PC/移动端展示、文档工作台、只读 Agent 和受限 GitHub 开发 Agent |
 
 ```mermaid
 flowchart LR
-  P[外部 Python T+1 系统] -->|SQLite / Parquet / Log| B[Spring Boot 只读控制台]
-  D[documents Markdown] --> B
-  B --> API[只读 REST API]
-  API --> PC[PC 完整工作台]
-  API --> M[移动端 4 个高频页面]
-  B --> A[Java 高级 Agent]
-  D --> W[PC 文档工作台]
+  M[BaoStock] --> P[Python 数据与研究链路]
+  P --> R[完整横截面排名]
+  R --> T[Rank5 买入 / Rank15 轮换]
+  T --> B[ZX 券商]
+  B --> S[(SQLite 事实与已实现收益)]
+  P --> F[(Parquet / 模型制品)]
+  S --> W[可选 Java/React 只读控制台]
+  F --> W
+  D[documents Markdown] --> W
 ```
 
-## 阅读路径
+## 推荐阅读路径
 
-| 目标 | 建议入口 |
+| 阅读目标 | 建议入口 |
 |---|---|
-| 快速理解系统边界 | [系统总览](01-system/system-overview.md) |
-| 理解数据如何进入页面 | [数据流与事实边界](01-system/data-flow.md) |
-| 理解 T+1 业务 | [T+1 交易闭环](02-business/t1-trading-loop.md) |
-| 理解前后端代码 | [Java 只读控制台](03-code/java-readonly-console.md)、[PC 与移动端隔离](03-code/frontend-dual-platform.md) |
-| 理解部署和挂载 | [部署与数据挂载](04-operations/deployment-and-data-mounts.md) |
-| 理解为什么采用当前方案 | [架构决策](05-decisions/adr-python-only-t1.md) |
-| 查看历史设计如何收口 | [设计演进与取舍](06-history/retained-design-evolution.md) |
+| 十分钟理解项目 | [系统总览](01-system/system-overview.md) |
+| 理解数据和事实边界 | [数据流与事实边界](01-system/data-flow.md) |
+| 理解行情、模型与交易策略 | [市场数据与质量](02-business/market-data.md)、[模型与完整排名](02-business/model-and-ranking.md)、[T+1 交易闭环](02-business/t1-trading-loop.md) |
+| 理解代码组织 | [Python 核心实现](03-code/python-core-implementation.md)、[Java 只读控制台](03-code/java-readonly-console.md) |
+| 本地体验或生产安装 | [快速部署手册](04-operations/quick-deployment-guide.md) |
+| 理解发布和调度 | [部署、发布与数据挂载](04-operations/deployment-and-data-mounts.md) |
+| 理解关键架构取舍 | [Python 交易权威 ADR](05-decisions/adr-python-only-t1.md) |
+| 查看历史方案如何收口 | [历史设计演进](06-history/retained-design-evolution.md) |
 
-## 证据等级
+## 文档证据等级
 
-- `SOURCE_VERIFIED`：已按当前源码、配置和历史提交进行文件级核对。
-- `HISTORICAL`：只用于解释历史决策，不代表当前仍有对应实现。
-- 本次文档重建未执行编译、测试、启动、容器或生产验证。
+- `SOURCE_VERIFIED`：已按当前两个分支的源码、配置和发布脚本进行文件级核对。
+- `ACCEPTED`：已经采用并仍约束当前实现的架构决策。
+- `HISTORICAL`：只解释历史背景，不代表仍有对应运行代码。
+- 本次核对只进行了源码和文件检查，未执行编译、测试、启动、真实交易或生产验证。

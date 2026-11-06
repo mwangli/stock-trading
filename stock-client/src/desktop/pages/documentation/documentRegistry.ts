@@ -1,4 +1,4 @@
-// AI_GENERATE_START
+// AI_GENERATE_START -
 export interface DocumentationFrontMatter {
   id: string;
   title: string;
@@ -27,7 +27,7 @@ export interface DocumentationHeading {
 }
 
 const DOCUMENT_MARKER = '/documents/';
-const GITHUB_SOURCE_BASE = 'https://github.com/mwangli/stock-trading/blob/master/';
+const GITHUB_SOURCE_BASE = 'https://github.com/mwangli/stock-trading/blob/stock-web/';
 const rawDocuments = import.meta.glob<string>('../../../../../documents/**/*.md', {
   eager: true,
   query: '?raw',
@@ -208,4 +208,4 @@ export const extractDocumentationHeadings = (body: string): DocumentationHeading
   }
   return headings;
 };
-// AI_GENERATE_END
+// AI_GENERATE_END -

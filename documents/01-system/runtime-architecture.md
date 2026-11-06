@@ -5,51 +5,79 @@ sidebar_position: 20
 owner: system
 type: architecture
 status: SOURCE_VERIFIED
-last_verified: 2026-11-03
+last_verified: 2026-11-06
 slug: /system/runtime-architecture/
 source_paths:
+  - stock-trading@pyproject.toml
+  - stock-trading@.github/config/stock-trading.cron
+  - stock-trading@.github/script/scheduler.sh
+  - stock-trading@.github/script/install-release.sh
   - docker-compose.yml
-  - stock-client/Dockerfile
-  - stock-server/Dockerfile
-  - stock-client/nginx.conf
+  - stock-server/src/main/resources/application.yml
 ---
 
 # 运行架构与组件边界
 
-## 容器拓扑
+## Python 生产运行
 
-生产 Compose 只包含 `stock-frontend` 和 `stock-backend` 两个应用容器。Frontend 使用 Nginx 暴露浏览器入口，Backend 仅绑定到宿主机回环地址；外部访问统一经过 Frontend 反向代理。
+生产主线不是常驻 Web 服务，而是一组安装在同一 Python 3.12 虚拟环境中的独立 CLI。Cron 在北京时间调用 `scheduler.sh`，脚本使用同一个非阻塞 `flock` 锁，避免行情、排名、交易、订单同步和复盘并发改写业务状态。
 
 ```mermaid
 flowchart LR
-  U[用户浏览器] --> F[stock-frontend :80]
-  F -->|静态资源| U
-  F -->|/api| B[stock-backend :8080]
-  B --> V1[/data/stock-trading 只读/]
-  B --> V2[/var/log/stock-trading 只读/]
-  B --> V3[/app/documents 只读/]
-  B --> V4[/data/stock-trading-documents 只读/]
+  CRON[Cron] --> SCH[scheduler.sh + flock]
+  SCH --> CLI[stock-* CLI]
+  CLI --> DATA[~/stock-trading/data]
+  CLI --> LOG[~/stock-trading/logs/run.log]
+  CLI --> NET[BaoStock / ZX / Bark / SSH]
+  REL[GitHub Release Wheel] --> VENV[~/stock-trading/venv]
+  VENV --> CLI
 ```
 
-## 配置入口
+Linux 目录保持稳定：
 
-`ConsoleProperties` 把运行配置收敛为五类：数据目录、任务日志、文档根目录、认证、Agent。默认本地数据目录为 `D:/stock-trading4/data`，容器环境通过 `STOCK_TRADING_VAR_DIR=/data/stock-trading` 替换。
+```text
+~/stock-trading/
+├── venv/       # 当前运行环境
+├── releases/   # 最近三个发布版本
+├── data/       # 业务数据与状态
+├── config/     # scheduler、Cron 与 logrotate 配置
+├── *.env       # 按文件名顺序加载的环境配置
+└── logs/       # 统一运行日志
+```
 
-| 环境变量 | 作用 |
-|---|---|
-| `STOCK_TRADING_VAR_DIR` | SQLite 与市场数据根目录 |
-| `STOCK_TASK_LOG` | 系统日志文件 |
-| `STOCK_DOCUMENT_ROOTS` | 多个 Markdown 根目录 |
-| `CONSOLE_USERNAME` / `CONSOLE_PASSWORD_HASH` | 控制台认证 |
-| `AGENT_ENABLED` / `DEEPSEEK_*` | Agent Provider 配置 |
+## 公开命令边界
 
-## 构建边界
+`pyproject.toml` 暴露以下公开入口：
 
-- Backend Dockerfile 使用 Maven 生成单个 `app.jar`，运行镜像为 Java 17 JRE。
-- Frontend Dockerfile使用 Node 构建 Vite 资源，再复制到 Nginx。
-- 前端构建阶段必须同时复制根 `documents/`，因为 PC 文档工作台通过 `import.meta.glob` 把 Markdown 编入只读前端资源。
-- Backend 运行时还会索引挂载的文档，供文档 API 和 Agent 检索使用。
+- 数据与模型：`stock-collect`、`stock-prepare`、`stock-train`。
+- 排名与交易：`stock-rank`、`stock-trading`。
+- 订单与复盘：`stock-order`、`stock-review`。
+- 维护与帮助：`stock-clean`、`stock-sync`、`stock-help`。
+
+项目没有 `stock-init`。除 `stock-trading` 无参数时固定先卖后买、`stock-order` 内部完成订单同步与 FIFO 结算、`stock-review` 内部完成收益汇总与模型判断外，命令不会隐式启动其他业务阶段。
+
+`stock-sync` 使用 SSH/SCP 同步 `market`、`qlib`、`model` 和只允许拉取的 `state`；它是运维数据搬运入口，不改变交易规则。
+
+## 可选 Web 控制台拓扑
+
+`stock-web` 分支使用两个容器：Nginx/React 对外提供页面和只读数据文件入口，Spring Boot 只绑定宿主机回环地址并读取 Python 数据与日志。
+
+```mermaid
+flowchart LR
+  U[浏览器] --> F[stock-frontend]
+  F -->|/api| J[stock-backend]
+  F -->|/data-files/| DF[/root/stock-trading/data 只读/]
+  J --> DB[/root/stock-trading/data 只读/]
+  J --> LG[/root/stock-trading/logs 只读/]
+  J --> DOC[/app/documents/]
+```
+
+控制台通过 `STOCK_TRADING_VAR_DIR=/data/stock-trading` 对齐 Python 的 `data/`。本地默认值仍是历史路径 `D:/stock-trading4/var`，跨分支本地开发时应显式覆盖为实际 Python `data` 目录。
 
 ## 失败边界
 
-数据文件缺失时接口返回空集合或 `available=false`，不把控制台启动失败等同于交易系统失败。Agent Provider 未配置或调用失败时会降级为本地只读摘要，但不会改变任何交易事实。
+- 某个 CLI 失败只记录对应任务与日志，不应伪造后续步骤成功。
+- 数据质量低于统一阈值时，采集、准备、训练或排名在各自边界终止。
+- 控制台缺少数据文件时返回空集合或不可用状态，不修复上游数据。
+- Agent Provider 失败不改变 Python 交易事实。
+- 发布成功只证明新版本已安装；行情、模型和真实交易仍需独立业务证据。
