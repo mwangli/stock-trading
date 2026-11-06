@@ -1,4 +1,4 @@
-/* AI_GENERATE_START -- */
+/* AI_GENERATE_START --- */
 @import "tailwindcss";
 
 :root,
@@ -1457,6 +1457,22 @@ button,
 }
 
 @media (max-width: 991px) {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  input,
+  textarea,
+  select,
+  .ant-input,
+  .ant-input-number-input,
+  .ant-select-selection-search-input,
+  .ant-picker-input > input {
+    font-size: 16px !important;
+    touch-action: manipulation;
+  }
+
   .app-sidebar,
   .app-sidebar-backdrop { display: none !important; }
 
@@ -1528,4 +1544,4 @@ button,
     border-bottom: 0;
   }
 }
-/* AI_GENERATE_END -- */
+/* AI_GENERATE_END --- */
