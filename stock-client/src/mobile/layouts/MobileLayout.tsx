@@ -1,5 +1,6 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 import React, {
+  useEffect,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -14,10 +15,12 @@ import {
   CheckOutlined,
   DesktopOutlined,
   FileTextOutlined,
+  LeftOutlined,
   LineChartOutlined,
   MenuUnfoldOutlined,
   MessageOutlined,
   MoonOutlined,
+  RightOutlined,
   SunOutlined,
   UserOutlined,
 } from '@ant-design/icons';
@@ -60,6 +63,11 @@ interface SwipeState {
   startedAt: number;
 }
 
+interface EdgeFeedback {
+  side: 'start' | 'end';
+  sequence: number;
+}
+
 const MobileLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -68,9 +76,11 @@ const MobileLayout: React.FC = () => {
   const { user, logout } = useAuth();
   const reduceMotion = useReducedMotion();
   const swipeStateRef = useRef<SwipeState | null>(null);
+  const edgeFeedbackTimerRef = useRef<number | null>(null);
   const [navigationOpen, setNavigationOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [swipeDirection, setSwipeDirection] = useState(1);
+  const [edgeFeedback, setEdgeFeedback] = useState<EdgeFeedback | null>(null);
   const [pageHeader, setPageHeader] = useState<PageHeaderState | null>(null);
 
   const menuItems: MobileMenuItem[] = [
@@ -81,8 +91,25 @@ const MobileLayout: React.FC = () => {
   ];
   const pageIndex = MOBILE_ROUTES.findIndex((route) => route === location.pathname);
 
-  const navigateToPage = (nextIndex: number) => {
-    if (nextIndex < 0 || nextIndex >= MOBILE_ROUTES.length || nextIndex === pageIndex) return;
+  const showEdgeFeedback = (side: EdgeFeedback['side']) => {
+    if (edgeFeedbackTimerRef.current !== null) window.clearTimeout(edgeFeedbackTimerRef.current);
+    setEdgeFeedback({ side, sequence: performance.now() });
+    edgeFeedbackTimerRef.current = window.setTimeout(() => {
+      setEdgeFeedback(null);
+      edgeFeedbackTimerRef.current = null;
+    }, 900);
+  };
+
+  useEffect(() => () => {
+    if (edgeFeedbackTimerRef.current !== null) window.clearTimeout(edgeFeedbackTimerRef.current);
+  }, []);
+
+  const navigateToPage = (nextIndex: number, showBoundary = false) => {
+    if (nextIndex < 0 || nextIndex >= MOBILE_ROUTES.length) {
+      if (showBoundary) showEdgeFeedback(nextIndex < 0 ? 'start' : 'end');
+      return;
+    }
+    if (nextIndex === pageIndex) return;
     setSwipeDirection(nextIndex > pageIndex ? 1 : -1);
     navigate(MOBILE_ROUTES[nextIndex]);
     setNavigationOpen(false);
@@ -131,14 +158,14 @@ const MobileLayout: React.FC = () => {
     const duration = Math.max(1, performance.now() - state.startedAt);
     const velocityX = Math.abs(distanceX) / duration * 1000;
     if (Math.abs(distanceX) <= Math.abs(distanceY) * 1.25 || (Math.abs(distanceX) < 56 && velocityX < 450)) return;
-    navigateToPage(distanceX < 0 ? pageIndex + 1 : pageIndex - 1);
+    navigateToPage(distanceX < 0 ? pageIndex + 1 : pageIndex - 1, true);
   };
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
     if (pageIndex < 0 || (event.target as HTMLElement).closest(SWIPE_EXCLUSION_SELECTOR)) return;
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
     event.preventDefault();
-    navigateToPage(pageIndex + (event.key === 'ArrowRight' ? 1 : -1));
+    navigateToPage(pageIndex + (event.key === 'ArrowRight' ? 1 : -1), true);
   };
 
   const userMenuItems: MenuProps['items'] = [
@@ -204,42 +231,54 @@ const MobileLayout: React.FC = () => {
             onPointerCancel={() => { swipeStateRef.current = null; }}
             onKeyDown={handleKeyDown}
           >
-            <AnimatePresence initial={false} custom={swipeDirection} mode="popLayout">
-              <motion.div
-                className="app-route-page"
-                key={location.pathname}
-                custom={swipeDirection}
-                variants={{
-                  enter: (direction: number) => ({ x: reduceMotion ? 0 : direction > 0 ? '14%' : '-14%', opacity: reduceMotion ? 1 : 0.7 }),
-                  center: { x: 0, opacity: 1 },
-                  exit: (direction: number) => ({ x: reduceMotion ? 0 : direction > 0 ? '-10%' : '10%', opacity: reduceMotion ? 1 : 0.55 }),
-                }}
-                initial="enter"
-                animate="center"
-                exit="exit"
-                transition={{ duration: reduceMotion ? 0 : 0.22, ease: [0.22, 1, 0.36, 1] }}
-              >
-                <Outlet />
-              </motion.div>
+            <motion.div
+              className="app-route-boundary-shell"
+              animate={{
+                x: reduceMotion || !edgeFeedback
+                  ? 0
+                  : edgeFeedback.side === 'start'
+                    ? [0, 14, -3, 0]
+                    : [0, -14, 3, 0],
+              }}
+              transition={{ duration: reduceMotion ? 0 : 0.34, ease: 'easeOut' }}
+            >
+              <AnimatePresence initial={false} custom={swipeDirection} mode="popLayout">
+                <motion.div
+                  className="app-route-page"
+                  key={location.pathname}
+                  custom={swipeDirection}
+                  variants={{
+                    enter: (direction: number) => ({ x: reduceMotion ? 0 : direction > 0 ? '14%' : '-14%', opacity: reduceMotion ? 1 : 0.7 }),
+                    center: { x: 0, opacity: 1 },
+                    exit: (direction: number) => ({ x: reduceMotion ? 0 : direction > 0 ? '-10%' : '10%', opacity: reduceMotion ? 1 : 0.55 }),
+                  }}
+                  initial="enter"
+                  animate="center"
+                  exit="exit"
+                  transition={{ duration: reduceMotion ? 0 : 0.22, ease: [0.22, 1, 0.36, 1] }}
+                >
+                  <Outlet />
+                </motion.div>
+              </AnimatePresence>
+            </motion.div>
+            <AnimatePresence>
+              {edgeFeedback && (
+                <motion.div
+                  key={edgeFeedback.sequence}
+                  className={`app-swipe-edge-feedback is-${edgeFeedback.side}`}
+                  role="status"
+                  aria-live="polite"
+                  initial={{ opacity: 0, x: reduceMotion ? 0 : edgeFeedback.side === 'start' ? -18 : 18, scale: reduceMotion ? 1 : 0.92 }}
+                  animate={{ opacity: 1, x: 0, scale: 1 }}
+                  exit={{ opacity: 0, scale: reduceMotion ? 1 : 0.96 }}
+                  transition={{ duration: reduceMotion ? 0 : 0.18 }}
+                >
+                  {edgeFeedback.side === 'start' ? <LeftOutlined /> : <RightOutlined />}
+                  <span>{edgeFeedback.side === 'start' ? '已经到最左' : '已经到最右'}</span>
+                </motion.div>
+              )}
             </AnimatePresence>
           </Content>
-          <nav className="app-mobile-bottom-nav" aria-label="主要页面">
-            {menuItems.map((item) => {
-              const active = item.key === location.pathname;
-              return (
-                <button
-                  key={item.key}
-                  type="button"
-                  className={`app-mobile-bottom-nav-item${active ? ' is-active' : ''}`}
-                  aria-current={active ? 'page' : undefined}
-                  onClick={() => selectPage(item.key)}
-                >
-                  <span className="app-mobile-bottom-nav-icon" aria-hidden="true">{item.icon}</span>
-                  <span>{item.label}</span>
-                </button>
-              );
-            })}
-          </nav>
         </Layout>
         <Drawer rootClassName="app-mobile-navigation-drawer" title={t('layout.title')} placement="left" size="min(82vw, 300px)" open={navigationOpen} onClose={() => setNavigationOpen(false)}>
           <Menu
@@ -258,4 +297,4 @@ const MobileLayout: React.FC = () => {
 };
 
 export default MobileLayout;
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

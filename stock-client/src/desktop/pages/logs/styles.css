@@ -1,4 +1,6 @@
-/* Hallmark · checked: 2026-11-02 · app screen · Blue Ledger · AI_GENERATE_START ------ */
+/* Hallmark · checked: 2026-11-02 · app screen · Blue Ledger · AI_GENERATE_START ---------- */
+:root[data-theme='light'] { --logs-console-bg: #ffffff; --logs-console-fg: #111827; --logs-console-divider: #e5e7eb; --logs-console-scrollbar: #cbd5e1; }
+:root[data-theme='dark'] { --logs-console-bg: #000000; --logs-console-fg: #ffffff; --logs-console-divider: #1f2937; --logs-console-scrollbar: #475569; }
 .logs-page { width: calc(100% + 48px); height: calc(100dvh - 64px); min-height: 0 !important; gap: 0; margin: -24px; overflow: hidden; }
 .logs-toolbar { min-height: 56px; justify-content: space-between !important; border-bottom: 1px solid var(--border-color); padding: 8px 16px; background: var(--panel-bg); }
 .logs-toolbar::before { color: var(--text-secondary); font-size: 12px; content: '运行状态'; }
@@ -6,12 +8,16 @@
 .logs-desktop-actions .ant-space,
 .logs-desktop-actions .ant-btn { min-height: 34px; border-radius: 3px; background: var(--panel-bg); }
 .logs-desktop-actions .logs-toolbar-bottom-button.ant-btn { width: 36px; min-width: 36px; height: 36px; color: var(--brand); }
-.logs-console { min-height: 0; border: 0; border-radius: 0; padding: 0; background: var(--panel-bg); color: var(--text-primary); box-shadow: none; }
-.logs-scroll-viewport { max-width: 100%; overflow-x: hidden; overflow-y: auto; padding: 8px 0 52px; touch-action: pan-y; scrollbar-color: var(--border-color) transparent; scrollbar-width: thin; }
-.logs-line { width: 100%; min-width: 0; min-height: 36px; border-bottom: 1px solid var(--border-soft); padding: 8px 16px; transition: background-color 140ms ease; }
+.logs-console { position: relative; min-height: 0; border: 0; border-radius: 0; padding: 0; overflow: hidden; background: var(--logs-console-bg); color: var(--logs-console-fg); box-shadow: inset 0 1px 0 var(--logs-console-divider); font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; }
+.logs-console::before,
+.logs-console::after { position: absolute; z-index: 2; right: 0; left: 0; height: 24px; content: ''; pointer-events: none; }
+.logs-console::before { top: 0; background: linear-gradient(180deg, var(--logs-console-bg) 0%, transparent 100%); }
+.logs-console::after { bottom: 0; background: linear-gradient(0deg, var(--logs-console-bg) 0%, transparent 100%); }
+.logs-scroll-viewport { position: relative; z-index: 1; max-width: 100%; overflow-x: hidden; overflow-y: auto; padding: 14px 0 52px; touch-action: pan-y; scrollbar-color: var(--logs-console-scrollbar) transparent; scrollbar-width: thin; }
+.logs-line { width: 100%; min-width: 0; min-height: 24px; border-bottom: 1px solid var(--logs-console-divider); padding: 3px 18px; transition: background-color 140ms ease; }
 .logs-line:last-child { border-bottom: 0; }
 .logs-line:hover { background: var(--brand-soft); }
-.logs-line-content { display: block; min-width: 0; max-width: 100%; color: var(--text-secondary); font-size: 12px; font-weight: 400; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
+.logs-line-content { display: block; min-width: 0; max-width: 100%; color: var(--logs-console-fg); font-size: 12px; font-weight: 400; line-height: 1.4; letter-spacing: 0; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
 .logs-page button:focus-visible,
 .logs-page .ant-switch:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 .logs-page button:active { background-color: var(--brand-soft); }
@@ -26,7 +32,7 @@
 .logs-search-input:focus { border-color: var(--brand); box-shadow: 0 0 0 2px var(--brand-soft); }
 .logs-search-count { min-width: 52px; color: var(--text-muted); font-size: 11px; text-align: right; white-space: nowrap; }
 .logs-search-bar .ant-btn { width: 40px; min-width: 40px; height: 40px; padding: 0; color: var(--text-secondary); }
-.logs-search-highlight { border-radius: 2px; background: #facc15; color: #111827; padding-inline: 1px; }
+.logs-console .logs-search-highlight { border-radius: 2px; background: #facc15; color: #111827; padding-inline: 1px; }
 .logs-search-highlight.is-active { background: #f97316; color: #ffffff; box-shadow: 0 0 0 1px color-mix(in srgb, #f97316 55%, transparent); }
 
 @media (max-width: 600px) {
@@ -35,4 +41,4 @@
   .logs-search-input { padding-inline: 8px; font-size: 12px; }
   .logs-search-count { min-width: 42px; font-size: 10px; }
 }
-/* AI_GENERATE_END ------ */
+/* AI_GENERATE_END ---------- */

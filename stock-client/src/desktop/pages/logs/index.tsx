@@ -1,7 +1,7 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START --------
 import './styles.css';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Button, Space, Switch, Tag } from 'antd';
+import { Button, Space, Switch } from 'antd';
 import { ArrowDownOutlined, PauseCircleOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { usePageHeader } from '../../layouts/PageHeaderContext';
@@ -115,13 +115,6 @@ const Logs: React.FC = () => {
     setShowScrollToBottom(false);
   }, []);
 
-  const status = {
-    offline: { color: 'red', label: t('logs.offline') },
-    missing: { color: 'gold', label: t('logs.missing') },
-    empty: { color: 'default', label: t('logs.empty') },
-    live: { color: 'blue', label: t('logs.live') },
-    error: { color: 'red', label: t('logs.error') },
-  }[logState];
   const emptyMessage = logState === 'offline'
     ? t('logs.offlineHint')
     : logState === 'missing'
@@ -135,7 +128,6 @@ const Logs: React.FC = () => {
   return (
     <div className="app-page logs-page h-full min-h-[520px]">
       <div className="logs-toolbar flex flex-wrap items-center justify-end gap-3">
-        <Tag color={status.color}>{status.label}</Tag>
         <div className="logs-desktop-actions">
           <LogSearchButton search={logSearch} />
           <Space className="rounded border border-[var(--border-color)] px-3 py-1.5">
@@ -187,4 +179,4 @@ const Logs: React.FC = () => {
 };
 
 export default Logs;
-// AI_GENERATE_END -----
+// AI_GENERATE_END --------

@@ -1,7 +1,7 @@
-// AI_GENERATE_START -------
+// AI_GENERATE_START --------
 import './styles.css';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Button, Tag } from 'antd';
+import { Button } from 'antd';
 import { ArrowDownOutlined, CaretRightOutlined, PauseOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { usePageHeader } from '../../layouts/PageHeaderContext';
@@ -25,12 +25,6 @@ let globalLogError = '';
 
 const MAX_LOG_LINES = 1000;
 const BOTTOM_FOLLOW_THRESHOLD = 24;
-const logTone = (line: string) => {
-  if (/\|\s*ERROR\s*\|/.test(line)) return ' is-error';
-  if (/\|\s*WARN(?:ING)?\s*\|/.test(line)) return ' is-warning';
-  return '';
-};
-
 const Logs: React.FC = () => {
   const { t } = useTranslation();
   const [logs, setLogs] = useState<string[]>(() => globalLogsBuffer);
@@ -127,13 +121,6 @@ const Logs: React.FC = () => {
     setShowScrollToBottom(false);
   }, []);
 
-  const status = {
-    offline: { color: 'red', label: t('logs.offline') },
-    missing: { color: 'gold', label: t('logs.missing') },
-    empty: { color: 'default', label: t('logs.empty') },
-    live: { color: 'blue', label: t('logs.live') },
-    error: { color: 'red', label: t('logs.error') },
-  }[logState];
   const emptyMessage = logState === 'offline'
     ? t('logs.offlineHint')
     : logState === 'missing'
@@ -148,7 +135,6 @@ const Logs: React.FC = () => {
     <div className="app-page logs-page h-full min-h-[520px]">
       <div className="logs-toolbar flex flex-wrap items-center justify-end gap-3">
         <div className="logs-mobile-actions">
-          <Tag color={status.color}>{status.label}</Tag>
           <LogSearchButton search={logSearch} />
           <Button
             className="logs-pause-button"
@@ -186,7 +172,7 @@ const Logs: React.FC = () => {
           {logs.map((log, index) => (
             <div
               key={`${index}-${log.slice(0, 16)}`}
-              className={`logs-line${logTone(log)}`}
+              className="logs-line"
             >
               <span className="logs-line-content">{logSearch.renderHighlightedLine(log, index)}</span>
             </div>
@@ -198,4 +184,4 @@ const Logs: React.FC = () => {
 };
 
 export default Logs;
-// AI_GENERATE_END -------
+// AI_GENERATE_END --------
