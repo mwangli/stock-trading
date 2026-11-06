@@ -7,7 +7,7 @@
 
 从行情数据、模型训练、股票排名到实盘交易、订单结算与收益复盘，以一组清晰的命令完成完整交易闭环。
 
-[项目源码](https://github.com/mwangli/stock-trading/tree/stock-trading) · [版本发布](https://github.com/mwangli/stock-trading/releases)
+[文档工作台](http://117.72.216.67/docs) · [项目源码](https://github.com/mwangli/stock-trading/tree/stock-trading) · [版本发布](https://github.com/mwangli/stock-trading/releases)
 
 </div>
 
