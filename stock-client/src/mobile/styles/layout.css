@@ -1,4 +1,4 @@
-/* AI_GENERATE_START ----- */
+/* AI_GENERATE_START ------ */
 .app-header {
   min-height: calc(60px + env(safe-area-inset-top));
   padding: env(safe-area-inset-top) 10px 0;
@@ -19,40 +19,20 @@
 
 .app-content {
   position: relative;
-  padding: 12px 12px max(12px, env(safe-area-inset-bottom));
+  min-width: 0;
+  padding: 0;
 }
 
 .app-route-boundary-shell {
+  width: 100%;
+  min-width: 0;
   min-height: 100%;
+  overflow-x: clip;
 }
 
-.app-swipe-edge-feedback {
-  position: fixed;
-  z-index: 26;
-  top: calc(50% - 20px);
-  display: inline-flex;
-  min-height: 40px;
-  align-items: center;
-  gap: 7px;
-  border: 1px solid color-mix(in srgb, var(--brand) 32%, var(--border-color));
-  border-radius: 4px;
-  padding: 8px 10px;
-  background: color-mix(in srgb, var(--panel-bg) 92%, transparent);
-  box-shadow: 0 8px 24px color-mix(in srgb, #000 16%, transparent);
-  color: var(--brand);
-  font-size: 12px;
-  font-weight: 650;
-  line-height: 1;
-  pointer-events: none;
-  backdrop-filter: blur(12px);
-}
-
-.app-swipe-edge-feedback.is-start {
-  left: max(8px, env(safe-area-inset-left));
-}
-
-.app-swipe-edge-feedback.is-end {
-  right: max(8px, env(safe-area-inset-right));
+.app-route-page {
+  width: 100%;
+  min-width: 0;
 }
 
 .app-mobile-navigation-drawer .ant-drawer-content,
@@ -132,4 +112,4 @@
   padding-inline: 10px !important;
   font-size: 14px;
 }
-/* AI_GENERATE_END ----- */
+/* AI_GENERATE_END ------ */

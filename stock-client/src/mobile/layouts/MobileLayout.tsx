@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 import React, {
   useEffect,
   useRef,
@@ -15,12 +15,10 @@ import {
   CheckOutlined,
   DesktopOutlined,
   FileTextOutlined,
-  LeftOutlined,
   LineChartOutlined,
   MenuUnfoldOutlined,
   MessageOutlined,
   MoonOutlined,
-  RightOutlined,
   SunOutlined,
   UserOutlined,
 } from '@ant-design/icons';
@@ -97,7 +95,7 @@ const MobileLayout: React.FC = () => {
     edgeFeedbackTimerRef.current = window.setTimeout(() => {
       setEdgeFeedback(null);
       edgeFeedbackTimerRef.current = null;
-    }, 900);
+    }, 360);
   };
 
   useEffect(() => () => {
@@ -233,14 +231,15 @@ const MobileLayout: React.FC = () => {
           >
             <motion.div
               className="app-route-boundary-shell"
+              data-edge-feedback-sequence={edgeFeedback?.sequence}
               animate={{
                 x: reduceMotion || !edgeFeedback
                   ? 0
                   : edgeFeedback.side === 'start'
-                    ? [0, 14, -3, 0]
-                    : [0, -14, 3, 0],
+                    ? [0, 12, -8, 5, -2, 0]
+                    : [0, -12, 8, -5, 2, 0],
               }}
-              transition={{ duration: reduceMotion ? 0 : 0.34, ease: 'easeOut' }}
+              transition={{ duration: reduceMotion ? 0 : 0.32, ease: 'easeOut' }}
             >
               <AnimatePresence initial={false} custom={swipeDirection} mode="popLayout">
                 <motion.div
@@ -261,23 +260,6 @@ const MobileLayout: React.FC = () => {
                 </motion.div>
               </AnimatePresence>
             </motion.div>
-            <AnimatePresence>
-              {edgeFeedback && (
-                <motion.div
-                  key={edgeFeedback.sequence}
-                  className={`app-swipe-edge-feedback is-${edgeFeedback.side}`}
-                  role="status"
-                  aria-live="polite"
-                  initial={{ opacity: 0, x: reduceMotion ? 0 : edgeFeedback.side === 'start' ? -18 : 18, scale: reduceMotion ? 1 : 0.92 }}
-                  animate={{ opacity: 1, x: 0, scale: 1 }}
-                  exit={{ opacity: 0, scale: reduceMotion ? 1 : 0.96 }}
-                  transition={{ duration: reduceMotion ? 0 : 0.18 }}
-                >
-                  {edgeFeedback.side === 'start' ? <LeftOutlined /> : <RightOutlined />}
-                  <span>{edgeFeedback.side === 'start' ? '已经到最左' : '已经到最右'}</span>
-                </motion.div>
-              )}
-            </AnimatePresence>
           </Content>
         </Layout>
         <Drawer rootClassName="app-mobile-navigation-drawer" title={t('layout.title')} placement="left" size="min(82vw, 300px)" open={navigationOpen} onClose={() => setNavigationOpen(false)}>
@@ -297,4 +279,4 @@ const MobileLayout: React.FC = () => {
 };
 
 export default MobileLayout;
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

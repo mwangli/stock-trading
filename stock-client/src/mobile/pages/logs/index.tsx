@@ -1,4 +1,4 @@
-// AI_GENERATE_START --------
+// AI_GENERATE_START ---------
 import './styles.css';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from 'antd';
@@ -7,7 +7,6 @@ import { useTranslation } from 'react-i18next';
 import { usePageHeader } from '../../layouts/PageHeaderContext';
 import request from '@shared/utils/request';
 import type { ApiResponse } from '@shared/utils/api';
-import LogSearchBar, { LogSearchButton, useLogSearch } from '@shared/components/LogSearch';
 
 type LogState = 'offline' | 'missing' | 'empty' | 'live' | 'error';
 
@@ -35,10 +34,6 @@ const Logs: React.FC = () => {
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const logsContainerRef = useRef<HTMLDivElement | null>(null);
   const mobileFollowRef = useRef(true);
-  const suspendLogFollowing = useCallback(() => {
-    mobileFollowRef.current = false;
-  }, []);
-  const logSearch = useLogSearch({ logs, containerRef: logsContainerRef, onNavigate: suspendLogFollowing });
 
   useEffect(() => {
     if (paused) return undefined;
@@ -135,7 +130,6 @@ const Logs: React.FC = () => {
     <div className="app-page logs-page h-full min-h-[520px]">
       <div className="logs-toolbar flex flex-wrap items-center justify-end gap-3">
         <div className="logs-mobile-actions">
-          <LogSearchButton search={logSearch} />
           <Button
             className="logs-pause-button"
             type="text"
@@ -159,7 +153,6 @@ const Logs: React.FC = () => {
           )}
         </div>
       </div>
-      <LogSearchBar search={logSearch} />
       <div className="logs-console relative flex min-h-0 flex-1 flex-col overflow-hidden font-mono text-sm">
         <div
           ref={logsContainerRef}
@@ -174,7 +167,7 @@ const Logs: React.FC = () => {
               key={`${index}-${log.slice(0, 16)}`}
               className="logs-line"
             >
-              <span className="logs-line-content">{logSearch.renderHighlightedLine(log, index)}</span>
+              <span className="logs-line-content">{log}</span>
             </div>
           ))}
         </div>
@@ -184,4 +177,4 @@ const Logs: React.FC = () => {
 };
 
 export default Logs;
-// AI_GENERATE_END --------
+// AI_GENERATE_END ---------

@@ -1,4 +1,4 @@
-/* Hallmark · checked: 2026-11-02 · app screen · Blue Ledger · AI_GENERATE_START --- */
+/* Hallmark · checked: 2026-11-02 · app screen · Blue Ledger · AI_GENERATE_START ---- */
 .order-records-shell { min-width: 0; overflow: hidden; border-radius: 0 !important; padding: 0 16px 16px; }
 .order-records-shell .ant-tabs-nav { min-height: 52px; margin-bottom: 16px; border-bottom: 1px solid var(--border-color); }
 .order-records-shell .ant-tabs-nav::before { border-bottom: 0; }
@@ -32,7 +32,7 @@
 .order-records-shell button:active { background-color: var(--brand-soft); }
 
 @media (max-width: 991px) {
-  .order-records-shell { width: calc(100% + 24px); margin-inline: -12px; padding: 0 0 20px; border: 0 !important; background: transparent !important; }
+  .order-records-shell { width: 100%; margin-inline: 0; padding: 0 0 20px; border: 0 !important; background: transparent !important; }
   .order-records-shell .ant-tabs-nav { margin: 0; padding-inline: 16px; background: var(--panel-bg); }
   .order-records-shell .ant-tabs-tab { min-height: 50px; }
   .order-records-shell .ant-tabs-content-holder { margin-top: 4px; }
@@ -71,4 +71,4 @@
 @media (prefers-reduced-motion: reduce) {
   .order-records-shell * { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
 }
-/* AI_GENERATE_END --- */
+/* AI_GENERATE_END ---- */

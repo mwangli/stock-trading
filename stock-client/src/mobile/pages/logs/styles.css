@@ -1,7 +1,7 @@
-/* Hallmark · checked: 2026-11-02 · app screen · Blue Ledger · AI_GENERATE_START ------------- */
+/* Hallmark · checked: 2026-11-02 · app screen · Blue Ledger · AI_GENERATE_START --------------- */
 :root[data-theme='light'] { --logs-console-bg: #ffffff; --logs-console-fg: #111827; --logs-console-divider: #e5e7eb; --logs-console-scrollbar: #cbd5e1; }
 :root[data-theme='dark'] { --logs-console-bg: #000000; --logs-console-fg: #ffffff; --logs-console-divider: #1f2937; --logs-console-scrollbar: #475569; }
-.logs-page { width: calc(100% + 24px); height: calc(100dvh - 85px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); min-height: 0 !important; gap: 0; margin-inline: -12px; overflow: hidden; padding-bottom: 0; }
+.logs-page { width: 100%; height: 100%; min-height: 0 !important; gap: 0; margin-inline: 0; overflow: hidden; padding-bottom: 0; }
 .logs-toolbar { display: flex; min-height: 52px; flex: 0 0 auto; align-items: center; justify-content: flex-start !important; border-bottom: 1px solid var(--border-color); padding: 4px 8px 4px 12px; background: var(--panel-bg); }
 .logs-toolbar::before { color: var(--text-secondary); font-size: 13px; font-weight: 650; content: '日志流'; }
 .logs-mobile-actions { display: flex; align-items: center; gap: 2px; margin-left: auto; }
@@ -19,13 +19,4 @@
 @media (prefers-reduced-motion: reduce) {
   .logs-page * { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
 }
-.logs-search-toggle.ant-btn { width: 44px; min-width: 44px; height: 44px; color: var(--brand); }
-.logs-search-bar { display: grid; min-height: 48px; flex: 0 0 auto; grid-template-columns: 12px minmax(48px, 1fr) auto repeat(3, 40px); align-items: center; gap: 2px; border-bottom: 1px solid var(--border-color); padding: 4px 6px; background: var(--panel-bg); }
-.logs-search-prefix { color: var(--brand); font-weight: 700; text-align: center; }
-.logs-search-input { width: 100%; min-width: 0; height: 36px; border: 1px solid var(--border-color); border-radius: 3px; outline: 0; padding: 0 8px; background: var(--app-bg); color: var(--text-primary); font: inherit; font-size: 16px; touch-action: manipulation; }
-.logs-search-input:focus { border-color: var(--brand); box-shadow: 0 0 0 2px var(--brand-soft); }
-.logs-search-count { min-width: 42px; color: var(--text-muted); font-size: 10px; text-align: right; white-space: nowrap; }
-.logs-search-bar .ant-btn { width: 40px; min-width: 40px; height: 40px; padding: 0; color: var(--text-secondary); }
-.logs-console .logs-search-highlight { border-radius: 2px; background: #facc15; color: #111827; padding-inline: 1px; }
-.logs-search-highlight.is-active { background: #f97316; color: #ffffff; box-shadow: 0 0 0 1px color-mix(in srgb, #f97316 55%, transparent); }
-/* AI_GENERATE_END ------------- */
+/* AI_GENERATE_END --------------- */
