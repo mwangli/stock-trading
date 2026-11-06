@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------
+# AI_GENERATE_START -------
 from __future__ import annotations
 
 import json
@@ -7,15 +7,32 @@ import os
 import re
 import socket
 import urllib.request
+from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
 from stock_trading.config import AppConfig
+from stock_trading.state.store import StateStore
 from stock_trading.utils.time_utils import shanghai_now
 
 LOGGER = logging.getLogger(__name__)
 BARK_PUSH_URL = "https://api.day.app/push"
 SYSTEM_FAILURE_TTL_SECONDS = 30 * 24 * 60 * 60
+SYSTEM_RETENTION_DAYS = 30
+TRADE_RETENTION_DAYS = 183
+
+
+@dataclass(frozen=True)
+class NotificationMessage:
+    category: str
+    level: str
+    title: str
+    content: str
+    source: str
+    group: str
+    retention_days: int
+    event_key: str | None = None
+    bark_ttl_seconds: int | None = None
 
 
 def push_execution_result(
@@ -42,12 +59,18 @@ def push_execution_result(
                 f"尝试次数：{len(attempts)}",
             )
         )
-        _push_bark(
+        _publish(
             config,
-            f"[交易] {action}成交完成",
-            body,
-            "交易",
-            ttl_seconds=None,
+            NotificationMessage(
+                category="TRADE",
+                level="SUCCESS",
+                title=f"[交易] {action}成交完成",
+                content=body,
+                source="trading",
+                group="交易",
+                retention_days=TRADE_RETENTION_DAYS,
+                event_key=_trade_event_key(business_date, last, status),
+            ),
         )
         return
     if status not in {"REJECTED", "UNKNOWN", "STOPPED"}:
@@ -61,12 +84,18 @@ def push_execution_result(
             f"原因：{safe_error_text(last.get('errorMessage'))}",
         )
     )
-    _push_bark(
+    _publish(
         config,
-        f"[交易] {action}执行未完成",
-        body,
-        "交易异常",
-        ttl_seconds=None,
+        NotificationMessage(
+            category="TRADE",
+            level="WARNING" if status == "STOPPED" else "ERROR",
+            title=f"[交易] {action}执行未完成",
+            content=body,
+            source="trading",
+            group="交易异常",
+            retention_days=TRADE_RETENTION_DAYS,
+            event_key=_trade_event_key(business_date, last, status),
+        ),
     )
 
 
@@ -81,13 +110,54 @@ def push_system_failure(
             f"原因：{safe_error_text(error)}",
         )
     )
+    _publish(
+        config,
+        NotificationMessage(
+            category="SYSTEM",
+            level="ERROR",
+            title="[系统] 任务执行异常",
+            content=body,
+            source=command,
+            group="系统异常",
+            retention_days=SYSTEM_RETENTION_DAYS,
+            bark_ttl_seconds=SYSTEM_FAILURE_TTL_SECONDS,
+        ),
+    )
+
+
+def _publish(config: AppConfig | None, message: NotificationMessage) -> None:
+    if config is not None:
+        try:
+            StateStore(config.state_db_path).append_notification(
+                category=message.category,
+                level=message.level,
+                title=message.title,
+                content=message.content,
+                source=message.source,
+                retention_days=message.retention_days,
+                event_key=message.event_key,
+            )
+        except Exception as error:
+            LOGGER.warning(
+                "通知表写入失败，不影响业务：分类=%s；标题=%s；原因=%s",
+                message.category,
+                message.title,
+                error,
+            )
     _push_bark(
         config,
-        "[系统] 任务执行异常",
-        body,
-        "系统异常",
-        ttl_seconds=SYSTEM_FAILURE_TTL_SECONDS,
+        message.title,
+        message.content,
+        message.group,
+        message.bark_ttl_seconds,
     )
+
+
+def _trade_event_key(
+    business_date: date, attempt: dict[str, object], status: str
+) -> str:
+    client_order_id = attempt.get("clientOrderId") or attempt.get("client_order_id")
+    return f"TRADE:{business_date.isoformat()}:{client_order_id or 'UNKNOWN'}:{status}"
 
 
 def safe_error_text(value: object) -> str:
@@ -138,4 +208,4 @@ def _push_bark(
         LOGGER.debug("Bark 推送请求完成：分组=%s；标题=%s", group, title)
     except Exception as error:
         LOGGER.warning("Bark 推送失败，不影响业务：分组=%s；原因=%s", group, error)
-# AI_GENERATE_END ------
+# AI_GENERATE_END -------

@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----------------------------------------------------------------------
+# AI_GENERATE_START ------------------------------------------------------------------------
 from __future__ import annotations
 
 import hashlib
@@ -63,10 +63,24 @@ ORDER_TRANSITIONS = {
     "REJECTED": set(),
 }
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 6
+_MODEL_ID_MIGRATION = """
+ALTER TABLE model_version ADD COLUMN model_id TEXT NOT NULL DEFAULT 'legacy';
+ALTER TABLE model_evaluation ADD COLUMN model_id TEXT NOT NULL DEFAULT 'legacy';
+ALTER TABLE training_request ADD COLUMN model_id TEXT NOT NULL DEFAULT 'legacy';
+CREATE INDEX IF NOT EXISTS idx_model_version_config
+ON model_version(model_id, id);
+CREATE INDEX IF NOT EXISTS idx_model_evaluation_config
+ON model_evaluation(model_id, business_date);
+CREATE INDEX IF NOT EXISTS idx_training_request_config
+ON training_request(model_id, status, requested_at);
+"""
 SCHEMA_MIGRATIONS = {
-    version: "ALTER TABLE prediction RENAME TO prediction_rank;"
-    for version in (1, 2, 3)
+    1: "ALTER TABLE prediction RENAME TO prediction_rank;" + _MODEL_ID_MIGRATION,
+    2: "ALTER TABLE prediction RENAME TO prediction_rank;" + _MODEL_ID_MIGRATION,
+    3: "ALTER TABLE prediction RENAME TO prediction_rank;" + _MODEL_ID_MIGRATION,
+    4: _MODEL_ID_MIGRATION,
+    5: "",
 }
 
 SCHEMA = """
@@ -85,6 +99,7 @@ CREATE TABLE IF NOT EXISTS task_run (
 -- 模型版本：登记模型制品、特征集、评估指标和当前生命周期状态。
 CREATE TABLE IF NOT EXISTS model_version (
     id INTEGER PRIMARY KEY AUTOINCREMENT, -- 模型版本本地主键。
+    model_id TEXT NOT NULL DEFAULT 'legacy', -- 稳定模型配置 ID，旧记录统一标记 legacy。
     artifact_hash TEXT NOT NULL UNIQUE, -- 模型文件 SHA-256，用于识别同一制品。
     model_name TEXT NOT NULL, -- 模型算法或训练方案名称。
     feature_set TEXT NOT NULL, -- 模型使用的特征集名称。
@@ -93,6 +108,9 @@ CREATE TABLE IF NOT EXISTS model_version (
     metrics_json TEXT NOT NULL, -- 训练和评估指标的完整 JSON 快照。
     created_at TEXT NOT NULL -- 模型首次登记时间，UTC ISO-8601 字符串。
 );
+
+CREATE INDEX IF NOT EXISTS idx_model_version_config
+ON model_version(model_id, id);
 
 -- 预测结果：保存模型在交易日维度产生的候选排名和后验标签。
 CREATE TABLE IF NOT EXISTS prediction_rank (
@@ -114,6 +132,7 @@ ON prediction_rank(prediction_date, model_version_id, rank);
 -- 模型滚动评估：保存固定已实现收益观测窗口内的指标和决策。
 CREATE TABLE IF NOT EXISTS model_evaluation (
     business_key TEXT PRIMARY KEY, -- 模型与业务日期组合形成的评估幂等键。
+    model_id TEXT NOT NULL DEFAULT 'legacy', -- 被评估的稳定模型配置 ID。
     model_version_id INTEGER, -- 被评估的模型版本；无法绑定时为空。
     business_date TEXT NOT NULL, -- 评估截止交易日，格式 YYYY-MM-DD。
     window_observations INTEGER NOT NULL, -- 配置要求的有效收益观测数量。
@@ -131,6 +150,7 @@ CREATE TABLE IF NOT EXISTS model_evaluation (
 -- 重训请求：由 RETRAIN 评估产生，成功激活新模型后完成。
 CREATE TABLE IF NOT EXISTS training_request (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    model_id TEXT NOT NULL DEFAULT 'legacy',
     evaluation_key TEXT NOT NULL UNIQUE,
     requested_model_version_id INTEGER,
     status TEXT NOT NULL CHECK(status IN ('PENDING','COMPLETED','CANCELLED')),
@@ -141,6 +161,11 @@ CREATE TABLE IF NOT EXISTS training_request (
     FOREIGN KEY(requested_model_version_id) REFERENCES model_version(id),
     FOREIGN KEY(completed_model_version_id) REFERENCES model_version(id)
 );
+
+CREATE INDEX IF NOT EXISTS idx_model_evaluation_config
+ON model_evaluation(model_id, business_date);
+CREATE INDEX IF NOT EXISTS idx_training_request_config
+ON training_request(model_id, status, requested_at);
 
 -- 券商成交事实：只保存券商已成交订单及其模型归因。
 CREATE TABLE IF NOT EXISTS broker_order (
@@ -263,6 +288,26 @@ CREATE TABLE IF NOT EXISTS account_snapshot (
     frozen_amount REAL NOT NULL,
     captured_at TEXT NOT NULL
 );
+
+-- PC 通知中心消息：Python 负责写入，Java 控制台只读查询。
+CREATE TABLE IF NOT EXISTS notify_msg (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    category TEXT NOT NULL CHECK(category IN ('SYSTEM','TRADE')),
+    level TEXT NOT NULL CHECK(level IN ('INFO','SUCCESS','WARNING','ERROR')),
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    source TEXT NOT NULL,
+    event_key TEXT UNIQUE,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_notify_msg_created
+ON notify_msg(created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_notify_msg_category
+ON notify_msg(category, id DESC);
+CREATE INDEX IF NOT EXISTS idx_notify_msg_expires
+ON notify_msg(expires_at);
 """
 
 
@@ -273,11 +318,54 @@ class StateStore(SQLiteStateDatabase):
         """创建或校验当前状态库结构。"""
         self.initialize_schema(SCHEMA, SCHEMA_VERSION, SCHEMA_MIGRATIONS)
 
+    def append_notification(
+        self,
+        category: str,
+        level: str,
+        title: str,
+        content: str,
+        source: str,
+        retention_days: int,
+        event_key: str | None = None,
+    ) -> bool:
+        """保存通知；交易通知可通过 event_key 幂等去重。"""
+        if category not in {"SYSTEM", "TRADE"}:
+            raise ValueError(f"不支持的通知分类: {category}")
+        if level not in {"INFO", "SUCCESS", "WARNING", "ERROR"}:
+            raise ValueError(f"不支持的通知级别: {level}")
+        if retention_days <= 0:
+            raise ValueError("通知保留天数必须大于 0")
+        self.initialize()
+        created_at = utc_now()
+        expires_at = created_at + timedelta(days=retention_days)
+        with self._connect() as connection:
+            inserted = connection.execute(
+                """
+                INSERT INTO notify_msg(
+                    category, level, title, content, source, event_key,
+                    created_at, expires_at
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(event_key) DO NOTHING
+                """,
+                (
+                    category,
+                    level,
+                    title,
+                    content,
+                    source,
+                    event_key,
+                    created_at.isoformat(),
+                    expires_at.isoformat(),
+                ),
+            ).rowcount
+        return inserted == 1
+
     def cleanup(self, reference_date: date) -> dict[str, object]:
         """按数据价值分级清理 SQLite，并保留活动委托和长期基础事实。"""
         self.initialize()
         task_cutoff = (reference_date - timedelta(days=180)).isoformat()
         history_cutoff = (reference_date - timedelta(days=366 * 5)).isoformat()
+        notification_cutoff = utc_now().isoformat()
         deleted: dict[str, int] = {}
         with self._connect() as connection:
             rules = (
@@ -294,6 +382,7 @@ class StateStore(SQLiteStateDatabase):
                     "AND status IN ('FILLED','CANCELLED','REJECTED')",
                     history_cutoff,
                 ),
+                ("notify_msg", "expires_at <= ?", notification_cutoff),
             )
             for table, condition, cutoff in rules:
                 deleted[table] = connection.execute(
@@ -320,6 +409,7 @@ class StateStore(SQLiteStateDatabase):
             "deletedByTable": deleted,
             "taskCutoff": task_cutoff,
             "historyCutoff": history_cutoff,
+            "notificationCutoff": notification_cutoff,
         }
 
     def import_model_artifacts(
@@ -1273,6 +1363,7 @@ class StateStore(SQLiteStateDatabase):
                 "orderAttempts": "order_attempt",
                 "broker_permission": "broker_permission",
                 "accountSnapshot": "account_snapshot",
+                "notifications": "notify_msg",
             }
             counts = {
                 name: connection.execute(
@@ -1567,4 +1658,4 @@ def _broker_order_matches_intent(order: BrokerOrder, intent: sqlite3.Row) -> boo
         and order.order_quantity == int(intent["quantity"])
         and order.order_price == Decimal(str(intent["price"]))
     )
-# AI_GENERATE_END -----------------------------------------------------------------------
+# AI_GENERATE_END ------------------------------------------------------------------------
