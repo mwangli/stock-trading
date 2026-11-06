@@ -1,0 +1,141 @@
+<!-- AI_GENERATE_START - -->
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>消息通知中心 Demo</title>
+  <style>
+    * { box-sizing: border-box; }
+    :root { --app-bg:#f3f6fa; --panel:#fff; --panel-muted:#edf3fa; --sidebar:#f8fafd; --border:#d9e2ee; --border-soft:#eaf0f6; --text:#172033; --secondary:#5b687c; --muted:#8793a5; --brand:#2563eb; --brand-soft:#e8f1ff; --danger:#dc2626; }
+    body { margin:0; overflow:hidden; background:var(--app-bg); color:var(--text); font-family:Inter,"Segoe UI","Microsoft YaHei",Arial,sans-serif; }
+    button { font:inherit; letter-spacing:0; }
+    .app { display:grid; width:100vw; height:100vh; grid-template-columns:216px minmax(0,1fr); }
+    .sidebar { border-right:1px solid var(--border); background:var(--sidebar); padding:0 12px; }
+    .brand { display:flex; height:64px; align-items:center; gap:10px; margin-bottom:18px; }
+    .mark { display:grid; width:38px; height:38px; place-items:center; border:1px solid #bfd3f6; border-radius:6px; color:var(--brand); background:var(--brand-soft); font-weight:800; }
+    .brand strong,.brand span { display:block; }
+    .brand strong { font-size:14px; }
+    .brand span { margin-top:3px; color:var(--muted); font-size:9px; letter-spacing:.12em; }
+    .nav { display:grid; gap:4px; }
+    .nav div { display:flex; height:42px; align-items:center; gap:10px; border-radius:4px; padding:0 12px; color:var(--secondary); font-size:14px; }
+    .nav .active { color:var(--brand); background:var(--brand-soft); font-weight:650; }
+    .nav-icon { width:20px; text-align:center; }
+    .main { min-width:0; }
+    .header { position:relative; z-index:2; display:flex; height:64px; align-items:center; justify-content:space-between; border-bottom:1px solid var(--border); padding:0 24px; background:rgba(255,255,255,.95); }
+    .heading strong { display:block; font-size:18px; }
+    .heading span { color:var(--muted); font-size:12px; }
+    .tools { display:flex; align-items:center; gap:7px; }
+    .tool { display:grid; width:34px; height:34px; place-items:center; border:0; border-radius:4px; color:var(--secondary); background:transparent; cursor:pointer; }
+    .tool:hover { color:var(--brand); background:var(--brand-soft); }
+    .language { width:auto; padding:0 8px; font-size:12px; }
+    .avatar { border-radius:50%; color:var(--brand); background:var(--brand-soft); font-size:12px; font-weight:700; }
+    .bell-wrap { position:relative; }
+    .bell { font-size:18px; line-height:1; }
+    .badge { position:absolute; top:-3px; right:-5px; display:grid; min-width:17px; height:17px; place-items:center; border:2px solid #fff; border-radius:9px; padding:0 3px; color:#fff; background:var(--danger); font-size:10px; font-weight:750; pointer-events:none; }
+    .badge.hidden { display:none; }
+    .content { height:calc(100vh - 64px); overflow:auto; padding:24px; }
+    .metrics { display:grid; overflow:hidden; border:1px solid var(--border); border-radius:4px; background:var(--panel); grid-template-columns:repeat(4,minmax(0,1fr)); }
+    .metric { padding:16px 20px; border-right:1px solid var(--border); }
+    .metric:last-child { border-right:0; }
+    .metric span { color:var(--muted); font-size:12px; }
+    .metric strong { display:block; margin-top:6px; font-size:21px; }
+    .workspace { display:grid; margin-top:20px; grid-template-columns:minmax(0,1.4fr) minmax(280px,.7fr); gap:16px; }
+    .section { border:1px solid var(--border); border-radius:4px; background:var(--panel); }
+    .section h2 { margin:0; border-bottom:1px solid var(--border); padding:14px 16px; font-size:15px; }
+    .rows { padding:4px 16px 14px; }
+    .row { display:grid; grid-template-columns:1fr 120px 90px; gap:12px; border-bottom:1px solid var(--border-soft); padding:13px 0; font-size:13px; }
+    .row:last-child { border-bottom:0; }
+    .up { color:#dc2626; }
+    .ok { color:#15803d; }
+    .notification-panel { position:absolute; top:54px; right:58px; display:none; width:min(390px,calc(100vw - 28px)); max-height:calc(100vh - 82px); overflow:hidden; border:1px solid var(--border); border-radius:6px; background:var(--panel); box-shadow:0 18px 45px rgba(15,23,42,.2); }
+    .notification-panel.open { display:flex; flex-direction:column; }
+    .panel-head { display:flex; align-items:center; justify-content:space-between; padding:14px 14px 11px; border-bottom:1px solid var(--border); }
+    .panel-head h2 { margin:0; font-size:15px; }
+    .panel-actions { display:flex; align-items:center; gap:5px; }
+    .text-button { height:28px; border:0; padding:0 7px; color:var(--brand); background:transparent; font-size:12px; cursor:pointer; }
+    .text-button:disabled { color:var(--muted); cursor:default; }
+    .add-button { width:28px; padding:0; border-radius:4px; font-size:18px; }
+    .filters { display:grid; margin:12px 14px 8px; border-radius:5px; padding:3px; background:var(--panel-muted); grid-template-columns:repeat(3,1fr); }
+    .filter { height:28px; border:0; border-radius:4px; color:var(--secondary); background:transparent; font-size:12px; cursor:pointer; }
+    .filter.active { color:var(--text); background:#fff; box-shadow:0 1px 3px rgba(15,23,42,.12); font-weight:650; }
+    .notice-list { min-height:150px; overflow-y:auto; padding:0 14px 8px; }
+    .notice { display:grid; grid-template-columns:30px minmax(0,1fr); gap:10px; padding:12px 0; border-bottom:1px solid var(--border-soft); }
+    .notice:last-child { border-bottom:0; }
+    .level { display:grid; width:28px; height:28px; place-items:center; border-radius:50%; font-size:14px; font-weight:800; }
+    .success { color:#15803d; background:#dcfce7; }
+    .error { color:#b91c1c; background:#fee2e2; }
+    .warning { color:#b45309; background:#fef3c7; }
+    .notice-title { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+    .notice-title strong { font-size:13px; line-height:20px; }
+    .notice-title time { flex:0 0 auto; color:var(--muted); font-size:11px; line-height:20px; }
+    .notice p { margin:4px 0 0; color:var(--secondary); font-size:12px; line-height:19px; white-space:pre-wrap; }
+    .meta { display:flex; align-items:center; gap:8px; margin-top:7px; color:var(--muted); font-size:11px; }
+    .tag { border:1px solid var(--border); border-radius:4px; padding:1px 6px; color:var(--secondary); background:var(--panel-muted); }
+    .empty { display:grid; min-height:180px; place-items:center; color:var(--muted); font-size:13px; }
+    @media (max-width:900px) { .app { grid-template-columns:1fr; } .sidebar { display:none; } .workspace { grid-template-columns:1fr; } .language { display:none; } }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand"><div class="mark">ST</div><div><strong>股票交易控制台</strong><span>STOCK OPERATIONS</span></div></div>
+      <nav class="nav">
+        <div class="active"><span class="nav-icon">▦</span>概览</div><div><span class="nav-icon">⌁</span>行情</div><div><span class="nav-icon">≡</span>交易记录</div><div><span class="nav-icon">◇</span>模型与预测</div><div><span class="nav-icon">□</span>运行状态与日志</div>
+      </nav>
+    </aside>
+    <main class="main">
+      <header class="header">
+        <div class="heading"><strong>系统概览</strong><span>Stock Operations Console</span></div>
+        <div class="tools">
+          <button class="tool" title="系统文档">▤</button><button class="tool language">中文</button><button class="tool" title="主题">◐</button>
+          <div class="bell-wrap"><button id="bellButton" class="tool bell" title="通知" aria-label="通知" aria-expanded="false">&#128276;</button><span id="badge" class="badge">3</span></div>
+          <button class="tool avatar" title="用户菜单">管</button>
+        </div>
+        <section id="notificationPanel" class="notification-panel" aria-label="通知中心">
+          <div class="panel-head"><h2>通知中心</h2><div class="panel-actions"><button id="addNotice" class="text-button add-button" title="模拟新通知">+</button><button id="markRead" class="text-button">全部已读</button></div></div>
+          <div class="filters"><button class="filter active" data-filter="ALL">全部</button><button class="filter" data-filter="TRADE">交易</button><button class="filter" data-filter="SYSTEM">系统</button></div>
+          <div id="noticeList" class="notice-list"></div>
+        </section>
+      </header>
+      <div class="content">
+        <section class="metrics"><div class="metric"><span>今日交易</span><strong>8</strong></div><div class="metric"><span>成交订单</span><strong>6</strong></div><div class="metric"><span>运行任务</span><strong>4</strong></div><div class="metric"><span>系统状态</span><strong class="ok">正常</strong></div></section>
+        <div class="workspace">
+          <section class="section"><h2>最近交易</h2><div class="rows"><div class="row"><span>600519 贵州茅台</span><span class="up">买入 100 股</span><span>已成交</span></div><div class="row"><span>000001 平安银行</span><span>卖出 500 股</span><span>已成交</span></div><div class="row"><span>300750 宁德时代</span><span class="up">买入 200 股</span><span>已拒绝</span></div></div></section>
+          <section class="section"><h2>运行状态</h2><div class="rows"><div class="row"><span>行情同步</span><span></span><span class="ok">正常</span></div><div class="row"><span>交易任务</span><span></span><span class="ok">正常</span></div><div class="row"><span>清理任务</span><span></span><span>待执行</span></div></div></section>
+        </div>
+      </div>
+    </main>
+  </div>
+  <script>
+    const notices = [
+      { id:3, category:'SYSTEM', level:'error', icon:'!', title:'任务执行异常', content:'stock-run 执行失败，请查看运行日志。', source:'stock-run', time:'10:42' },
+      { id:2, category:'TRADE', level:'success', icon:'✓', title:'买入成交完成', content:'600519 贵州茅台，成交 100 股。', source:'trading', time:'10:38' },
+      { id:1, category:'TRADE', level:'error', icon:'×', title:'卖出执行未完成', content:'300750 宁德时代，委托已被拒绝。', source:'trading', time:'10:31' }
+    ];
+    let currentFilter = 'ALL';
+    let unreadCount = 3;
+    const panel = document.getElementById('notificationPanel');
+    const bell = document.getElementById('bellButton');
+    const badge = document.getElementById('badge');
+    const list = document.getElementById('noticeList');
+    const markRead = document.getElementById('markRead');
+    function updateBadge() { badge.textContent = unreadCount > 99 ? '99+' : String(unreadCount); badge.classList.toggle('hidden', unreadCount === 0); markRead.disabled = unreadCount === 0; }
+    function render() {
+      const filtered = currentFilter === 'ALL' ? notices : notices.filter(function(item) { return item.category === currentFilter; });
+      if (!filtered.length) { list.innerHTML = '<div class="empty">暂无通知</div>'; return; }
+      list.innerHTML = filtered.map(function(item) {
+        const category = item.category === 'TRADE' ? '交易通知' : '系统通知';
+        return '<article class="notice"><span class="level ' + item.level + '">' + item.icon + '</span><div><div class="notice-title"><strong>' + item.title + '</strong><time>' + item.time + '</time></div><p>' + item.content + '</p><div class="meta"><span class="tag">' + category + '</span><span>' + item.source + '</span></div></div></article>';
+      }).join('');
+    }
+    bell.addEventListener('click', function() { const open = panel.classList.toggle('open'); bell.setAttribute('aria-expanded', String(open)); });
+    document.querySelectorAll('.filter').forEach(function(button) { button.addEventListener('click', function() { currentFilter = button.dataset.filter; document.querySelectorAll('.filter').forEach(function(item) { item.classList.toggle('active', item === button); }); render(); }); });
+    markRead.addEventListener('click', function() { unreadCount = 0; updateBadge(); });
+    document.getElementById('addNotice').addEventListener('click', function() { const nextId = notices[0].id + 1; notices.unshift({ id:nextId, category:'TRADE', level:'warning', icon:'!', title:'交易状态待确认', content:'新委托状态为 UNKNOWN，请稍后核对。', source:'trading', time:new Date().toLocaleTimeString('zh-CN', { hour:'2-digit', minute:'2-digit', hour12:false }) }); unreadCount += 1; updateBadge(); render(); });
+    document.addEventListener('click', function(event) { if (!panel.contains(event.target) && !bell.contains(event.target)) { panel.classList.remove('open'); bell.setAttribute('aria-expanded', 'false'); } });
+    updateBadge(); render();
+  </script>
+</body>
+</html>
+<!-- AI_GENERATE_END - -->

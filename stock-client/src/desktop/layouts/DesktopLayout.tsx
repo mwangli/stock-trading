@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 import React, {
   useEffect,
   useMemo,
@@ -10,13 +10,12 @@ import React, {
   type ReactNode,
 } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { Avatar, Badge, Button, Dropdown, Layout, Tooltip, type MenuProps } from 'antd';
+import { Avatar, Button, Dropdown, Layout, Tooltip, type MenuProps } from 'antd';
 import { Reorder, useDragControls } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { BookOpenText } from 'lucide-react';
 import {
   ArrowLeftOutlined,
-  BellOutlined,
   CheckOutlined,
   DesktopOutlined,
   FileTextOutlined,
@@ -35,6 +34,7 @@ import {
 import { useAppTheme } from '@shared/theme/AppThemeProvider';
 import { useAuth } from '@shared/auth/AuthContext';
 import { checkBackendHealth } from '@shared/utils/backendHealth';
+import NotificationCenter from '../components/NotificationCenter';
 import SystemBrand from '../components/SystemBrand';
 import { PageHeaderContext, type PageHeaderState } from './PageHeaderContext';
 
@@ -376,7 +376,7 @@ const DesktopLayout: React.FC = () => {
               <Tooltip title={mode === 'dark' ? t('layout.lightMode') : t('layout.darkMode')}>
                 <Button type="text" className="app-theme-picker-button" icon={mode === 'dark' ? <SunOutlined /> : <MoonOutlined />} onClick={toggleMode} />
               </Tooltip>
-              <Badge dot color="#22c55e"><Button type="text" icon={<BellOutlined />} aria-label="通知" /></Badge>
+              <NotificationCenter userId={user?.id} />
               <Dropdown menu={{ items: userMenuItems, onClick: handleUserMenuClick }} trigger={['click']}>
                 <Button type="text" className="!h-8 !px-1" aria-label={t('layout.userMenu')}><Avatar size={30} icon={<UserOutlined />} className="app-header-avatar" /></Button>
               </Dropdown>
@@ -392,4 +392,4 @@ const DesktopLayout: React.FC = () => {
 };
 
 export default DesktopLayout;
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----
