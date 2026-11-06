@@ -1,4 +1,4 @@
-// AI_GENERATE_START------------------------------------
+// AI_GENERATE_START-------------------------------------
 import { Suspense, lazy } from 'react';
 import { BrowserRouter as Router } from 'react-router-dom';
 import { Spin } from 'antd';
@@ -15,15 +15,16 @@ const PageFallback = (
 
 function App() {
   const platform = usePlatform();
+  const isLocalUiStyleDemo = import.meta.env.DEV && window.location.pathname === '/uiStyleDemos';
 
   return (
     <Router>
       <Suspense fallback={PageFallback}>
-        {platform === 'mobile' ? <MobileApp /> : <DesktopApp />}
+        {platform === 'mobile' && !isLocalUiStyleDemo ? <MobileApp /> : <DesktopApp />}
       </Suspense>
     </Router>
   );
 }
 
 export default App;
-// AI_GENERATE_END------------------------------------
+// AI_GENERATE_END-------------------------------------

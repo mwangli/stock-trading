@@ -36,6 +36,7 @@ import { useAuth } from '@shared/auth/AuthContext';
 import { checkBackendHealth } from '@shared/utils/backendHealth';
 import NotificationCenter from '../components/NotificationCenter';
 import SystemBrand from '../components/SystemBrand';
+import NotificationCenter from '../components/NotificationCenter';
 import { PageHeaderContext, type PageHeaderState } from './PageHeaderContext';
 
 const { Header, Content, Sider } = Layout;

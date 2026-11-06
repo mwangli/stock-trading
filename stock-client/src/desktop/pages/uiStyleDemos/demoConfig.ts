@@ -1,15 +1,26 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 import type { CSSProperties } from 'react';
 
 export type DemoThemeMode = 'light' | 'dark';
 export type DemoViewport = 'desktop' | 'mobile' | 'compare';
 export type DemoPageId = 'overview' | 'records' | 'agent' | 'logs';
+export type DemoMobileStyleId = 'edge' | 'dock' | 'tabs' | 'console';
 
 export interface DemoTokens {
   canvas: string; surface: string; surfaceRaised: string; surfaceMuted: string;
   border: string; borderStrong: string; text: string; textSecondary: string; textMuted: string;
   accent: string; accentSoft: string; instrument: string; positive: string; negative: string;
   warning: string; shadow: string; radius: string; font: string; numberFont: string;
+}
+
+export interface DemoMobileStyle {
+  id: DemoMobileStyleId;
+  name: string;
+  chineseName: string;
+  description: string;
+  feature: string;
+  navigation: 'overlay' | 'bottom' | 'tabs' | 'rail';
+  themes: Record<DemoThemeMode, DemoTokens>;
 }
 
 const systemSans = '"IBM Plex Sans", "Segoe UI", "Microsoft YaHei", Arial, sans-serif';
@@ -35,6 +46,69 @@ export const demoStyle = {
     },
   } satisfies Record<DemoThemeMode, DemoTokens>,
 };
+
+const createThemes = (
+  light: Partial<DemoTokens>,
+  dark: Partial<DemoTokens>,
+): Record<DemoThemeMode, DemoTokens> => ({
+  light: { ...demoStyle.themes.light, ...light },
+  dark: { ...demoStyle.themes.dark, ...dark },
+});
+
+export const mobileDemoStyles: DemoMobileStyle[] = [
+  {
+    id: 'edge',
+    name: 'Edge Ledger',
+    chineseName: '全宽账本',
+    description: '内容贴近屏幕边缘，用分隔线代替外层卡片，优先解决左右留白。',
+    feature: '最大内容宽度 · 轻量菜单',
+    navigation: 'overlay',
+    themes: createThemes(
+      { canvas: '#eef2f6', accent: '#1f5fbf', accentSoft: '#e8f0fb', radius: '4px' },
+      { canvas: '#0b111b', accent: '#72a7ef', accentSoft: '#18345a', radius: '4px' },
+    ),
+  },
+  {
+    id: 'dock',
+    name: 'Bottom Dock',
+    chineseName: '底部导航',
+    description: '底部常驻四入口，页面主体使用窄边距，适合高频单手切换。',
+    feature: '单手操作 · 四入口直达',
+    navigation: 'bottom',
+    themes: createThemes(
+      { canvas: '#f1f5f4', accent: '#0f766e', accentSoft: '#dff4ef', instrument: '#0e7490', radius: '8px' },
+      { canvas: '#0b1414', surface: '#101d1c', surfaceRaised: '#132321', surfaceMuted: '#182b28', border: '#29413d', borderStrong: '#3d5b55', accent: '#5eead4', accentSoft: '#153e38', instrument: '#67e8f9', radius: '8px' },
+    ),
+  },
+  {
+    id: 'tabs',
+    name: 'Top Tabs',
+    chineseName: '顶部页签',
+    description: '四页面固定在标题下方，主体采用满宽分区，浏览路径始终可见。',
+    feature: '路径清晰 · 无抽屉操作',
+    navigation: 'tabs',
+    themes: createThemes(
+      { canvas: '#f4f5f7', accent: '#475569', accentSoft: '#e7eaf0', instrument: '#0369a1', radius: '2px', shadow: '0 10px 24px rgb(15 23 42 / 8%)' },
+      { canvas: '#0f1115', surface: '#15181e', surfaceRaised: '#191d24', surfaceMuted: '#20252e', border: '#303742', borderStrong: '#48515f', accent: '#cbd5e1', accentSoft: '#2b333e', instrument: '#7dd3fc', radius: '2px' },
+    ),
+  },
+  {
+    id: 'console',
+    name: 'Data Console',
+    chineseName: '紧凑控制台',
+    description: '压缩装饰和垂直间距，以数据密度为先，适合交易与日志高频查看。',
+    feature: '高密度 · 数值优先',
+    navigation: 'rail',
+    themes: createThemes(
+      { canvas: '#f7f8fa', surface: '#ffffff', surfaceRaised: '#ffffff', surfaceMuted: '#eef1f4', border: '#cfd6df', borderStrong: '#8d99a8', accent: '#005f73', accentSoft: '#dff3f3', instrument: '#005f73', radius: '0px', shadow: '0 8px 20px rgb(15 23 42 / 8%)' },
+      { canvas: '#07090c', surface: '#0c1015', surfaceRaised: '#10161d', surfaceMuted: '#151c24', border: '#26313d', borderStrong: '#526170', text: '#f2f7fb', textSecondary: '#bdc8d4', textMuted: '#7d8a98', accent: '#56d7df', accentSoft: '#123438', instrument: '#56d7df', radius: '0px' },
+    ),
+  },
+];
+
+export const getMobileDemoStyle = (styleId: DemoMobileStyleId): DemoMobileStyle => (
+  mobileDemoStyles.find((style) => style.id === styleId) ?? mobileDemoStyles[0]
+);
 
 export const demoMetrics = [
   { label: '持仓市值', value: '¥287,430.00', change: '+1.82%', tone: 'positive' as const },
@@ -88,4 +162,4 @@ export const toDemoCssVariables = (tokens: DemoTokens): CSSProperties => ({
   '--demo-radius': tokens.radius, '--demo-font': tokens.font,
   '--demo-number-font': tokens.numberFont,
 } as CSSProperties);
-// AI_GENERATE_END -
+// AI_GENERATE_END --

@@ -1,11 +1,11 @@
-/* AI_GENERATE_START ------ */
+/* AI_GENERATE_START ------- */
 .app-header {
-  min-height: calc(60px + env(safe-area-inset-top));
-  padding: env(safe-area-inset-top) 10px 0;
+  min-height: calc(70px + env(safe-area-inset-top));
+  padding: env(safe-area-inset-top) 8px 0 12px;
 }
 
 .app-header-identity,
-.app-header-tools { min-height: 60px; }
+.app-header-tools { min-height: 58px; }
 
 .app-header-identity > .ant-btn,
 .app-header-tools > .ant-btn {
@@ -14,7 +14,7 @@
   height: 44px;
 }
 
-.app-header-subtitle { display: none; }
+.app-header-subtitle { display: block; margin-top: 3px; font-size: 10px !important; line-height: 1.35; }
 .app-page-title { font-size: 18px; line-height: 1.3; }
 
 .app-content {
@@ -112,4 +112,4 @@
   padding-inline: 10px !important;
   font-size: 14px;
 }
-/* AI_GENERATE_END ------ */
+/* AI_GENERATE_END ------- */

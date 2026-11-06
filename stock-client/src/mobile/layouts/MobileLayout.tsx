@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START ------
 import React, {
   useEffect,
   useRef,
@@ -202,9 +202,6 @@ const MobileLayout: React.FC = () => {
         <Layout className="app-main-layout">
           <Header className="app-header">
             <div className="app-header-identity">
-              <Tooltip title="打开页面菜单">
-                <Button type="text" icon={<MenuUnfoldOutlined />} aria-label="打开页面菜单" aria-expanded={navigationOpen} onClick={() => setNavigationOpen(true)} />
-              </Tooltip>
               <div className="min-w-0 flex-1">
                 <div className="app-page-title truncate">{pageTitles[location.pathname] ?? t('layout.title')}</div>
                 <div className="app-header-subtitle truncate text-xs text-[var(--text-muted)]">{pageHeader?.subtitle ?? 'Stock Operations Console'}</div>
@@ -217,6 +214,9 @@ const MobileLayout: React.FC = () => {
               <Button type="text" className="app-mobile-user-menu-button !px-1" aria-label={t('layout.userMenu')} aria-expanded={userMenuOpen} onClick={() => setUserMenuOpen(true)}>
                 <Avatar size={30} icon={<UserOutlined />} className="app-header-avatar" />
               </Button>
+              <Tooltip title="打开页面菜单">
+                <Button type="text" icon={<MenuUnfoldOutlined />} aria-label="打开页面菜单" aria-expanded={navigationOpen} onClick={() => setNavigationOpen(true)} />
+              </Tooltip>
             </div>
           </Header>
           <Content
@@ -279,4 +279,4 @@ const MobileLayout: React.FC = () => {
 };
 
 export default MobileLayout;
-// AI_GENERATE_END -----
+// AI_GENERATE_END ------

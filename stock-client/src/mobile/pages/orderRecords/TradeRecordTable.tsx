@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dayjs from 'dayjs';
 import { Button, DatePicker, Empty, Input, Pagination, Space, Spin, Table, Typography } from 'antd';
@@ -127,6 +127,7 @@ const TradeRecordTable: React.FC = () => {
         const holdingDays = item.holding_days == null
           ? undefined
           : Math.max(0, Math.trunc(Number(item.holding_days)));
+        const soldQuantity = sellTime ? quantity : 0;
         return {
           tradeKey: String(item.trade_key ?? `${item.buy_order_id ?? ''}:${item.sell_order_id ?? ''}`),
           stockCode: String(item.instrument ?? ''),
@@ -135,8 +136,8 @@ const TradeRecordTable: React.FC = () => {
           firstSellTime: sellTime,
           lastSellTime: sellTime,
           buyQuantity: quantity,
-          soldQuantity: quantity,
-          remainingQuantity: 0,
+          soldQuantity,
+          remainingQuantity: quantity - soldQuantity,
           buyPrice: Number(item.buy_price ?? 0),
           averageSellPrice: Number(item.sell_price ?? 0),
           buyAmount: Number(item.cost_basis ?? 0),
@@ -365,45 +366,35 @@ const TradeRecordTable: React.FC = () => {
             pagination={false}
           />
         </div>
+        <section className="order-records-mobile-lead" aria-label="交易记录摘要">
+          <span>今日交易</span>
+          <strong>{page.total} 笔</strong>
+          <small>按成交时间倒序</small>
+        </section>
         <div className="order-records-mobile-list" aria-live="polite">
           {loading && records.length === 0 ? (
             <div className="order-records-mobile-state"><Spin /></div>
           ) : records.length > 0 ? (
             <>
               {records.map((item) => (
-                <article className="order-records-mobile-card" key={item.tradeKey}>
-              <header className="order-records-mobile-card-header">
-                <div className="order-records-mobile-security">
-                  <button
-                    type="button"
-                    className="order-records-stock-code"
-                    aria-label={localizedText(`查看 ${item.stockName || item.stockCode}（${item.stockCode}）详情`, `View details for ${item.stockName || item.stockCode} (${item.stockCode})`)}
-                    onClick={() => openTradeDetail(item)}
-                  >
-                    {item.stockCode}
-                  </button>
-                  <strong>{item.stockName || '-'}</strong>
-                  <span className={`trade-record-mobile-status${item.soldQuantity > 0 ? ' is-closed' : ''}`}>
-                    {item.soldQuantity > 0 ? '已卖出' : '持仓中'}
+                <button
+                  type="button"
+                  className="order-records-mobile-row"
+                  key={item.tradeKey}
+                  aria-label={localizedText(`查看 ${item.stockName || item.stockCode}（${item.stockCode}）详情`, `View details for ${item.stockName || item.stockCode} (${item.stockCode})`)}
+                  onClick={() => openTradeDetail(item)}
+                >
+                  <span className="order-records-mobile-row-main">
+                    <strong>{item.stockName || item.stockCode || '-'}</strong>
+                    <small>{item.stockCode} · {item.soldQuantity > 0 ? '卖出' : '持仓'} · {compactDateTime(item.lastSellTime ?? item.buyTime)}</small>
                   </span>
-                </div>
-                <div className="order-records-mobile-result">
-                  <strong>{item.soldQuantity > 0 ? profit(item.netProfit) : '-'}</strong>
-                  <span>{item.soldQuantity > 0 ? rate(item.returnRate) : '-'}</span>
-                </div>
-              </header>
-              <div className="order-records-mobile-grid">
-                <div><span>买入价</span><strong>{money(item.buyPrice)}</strong></div>
-                <div><span>卖出价</span><strong>{money(item.averageSellPrice)}</strong></div>
-                <div><span>买 / 卖</span><strong>{item.buyQuantity} / {item.soldQuantity || '-'}</strong></div>
-                <div><span>持仓时间</span><strong>{days(item.holdingDays)}</strong></div>
-              </div>
-              <footer className="order-records-mobile-card-footer">
-                <span>买 {compactDateTime(item.buyTime)}</span>
-                <span>{item.lastSellTime ? `卖 ${compactDateTime(item.lastSellTime)}` : '尚未卖出'}</span>
-                <span>费用 {money(item.totalFee)}</span>
-              </footer>
-                </article>
+                  <span className="order-records-mobile-row-result">
+                    <strong>{money(item.soldQuantity > 0 ? item.sellAmount : item.buyAmount)}</strong>
+                    <small className={item.soldQuantity <= 0 ? 'is-neutral' : item.netProfit >= 0 ? 'is-up' : 'is-down'}>
+                      {item.soldQuantity > 0 ? money(item.netProfit) : '持仓中'}
+                    </small>
+                  </span>
+                </button>
               ))}
               {(records.length < page.total || loadingMore) && (
                 <div
@@ -440,4 +431,4 @@ const TradeRecordTable: React.FC = () => {
 };
 
 export default TradeRecordTable;
-// AI_GENERATE_END --
+// AI_GENERATE_END ---

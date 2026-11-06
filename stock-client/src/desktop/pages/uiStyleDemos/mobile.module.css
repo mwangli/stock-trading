@@ -1,9 +1,9 @@
-/* Hallmark · checked: 2026-11-02 · genre: modern-minimal · shape: app screen · built: project demo · v2.0.0 · AI_GENERATE_START - */
+/* Hallmark · checked: 2026-11-06 · genre: operational-mobile · shape: app screen · built: project demo · v2.1.0 · AI_GENERATE_START -- */
 .phone {
   position: relative;
   display: flex;
-  width: min(100%, 390px);
-  height: 760px;
+  width: min(100%, 412px);
+  height: 780px;
   min-height: 700px;
   margin-inline: auto;
   overflow: hidden;
@@ -94,7 +94,7 @@
 .swipeViewport { position: relative; min-height: 0; flex: 1; overflow: hidden; background: var(--demo-canvas); }
 .swipePage { position: absolute; inset: 0; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; scrollbar-width: none; will-change: transform, opacity; }
 .swipePage::-webkit-scrollbar { display: none; }
-.swipePageContent { padding: 12px 16px 32px; }
+.swipePageContent { padding: 0 0 48px; }
 .ledgerBalance { min-height: 176px; border-color: var(--demo-border); box-shadow: none; }
 .ledgerMetrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 12px; border-block: 1px solid var(--demo-border); background: var(--demo-surface); }
 .ledgerMetrics article { display: flex; min-width: 0; min-height: 86px; flex-direction: column; padding: 16px 12px; }
@@ -204,6 +204,91 @@
 .warning { color: var(--demo-warning) !important; }
 .info { color: var(--demo-instrument) !important; }
 
+.topTabs,
+.bottomDock,
+.compactRail { display: grid; min-width: 0; background: var(--demo-surface); }
+.topTabs button,
+.bottomDock button,
+.compactRail button { display: flex; min-width: 0; min-height: 44px; align-items: center; justify-content: center; gap: 5px; border: 0; background: transparent; color: var(--demo-text-muted); cursor: pointer; font: inherit; }
+.topTabs button:active,
+.bottomDock button:active,
+.compactRail button:active { background: var(--demo-accent-soft); }
+.navigationActive { color: var(--demo-accent) !important; font-weight: 680; }
+
+.topTabs { min-height: 50px; flex: 0 0 50px; grid-template-columns: repeat(4, minmax(0, 1fr)); border-bottom: 1px solid var(--demo-border); }
+.topTabs button { position: relative; flex-direction: column; font-size: 9px; }
+.topTabs .navigationActive::after { position: absolute; right: 10px; bottom: 0; left: 10px; height: 2px; background: var(--demo-accent); content: ''; }
+
+.bottomDock { position: absolute; right: 0; bottom: 0; left: 0; z-index: 6; min-height: 70px; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--demo-border); padding: 4px 4px max(6px, env(safe-area-inset-bottom)); background: color-mix(in srgb, var(--demo-surface) 96%, transparent); backdrop-filter: blur(14px); }
+.bottomDock button { min-height: 56px; flex-direction: column; border-radius: var(--demo-radius); font-size: 9px; }
+.bottomDock .navigationActive { background: var(--demo-accent-soft); }
+
+.compactRail { min-height: 44px; flex: 0 0 44px; grid-template-columns: repeat(4, minmax(0, 1fr)); border-bottom: 1px solid var(--demo-border-strong); }
+.compactRail button { min-height: 44px; gap: 4px; border-right: 1px solid var(--demo-border); font-size: 9px; }
+.compactRail button:last-child { border-right: 0; }
+.compactRail .navigationActive { background: var(--demo-accent-soft); box-shadow: inset 0 -2px 0 var(--demo-accent); }
+
+.edgeStyle .swipeHeader { padding-inline: 12px; }
+.edgeStyle .balanceCard,
+.edgeStyle .mobileLead,
+.edgeStyle .mobileLogStatus { border-right: 0; border-left: 0; border-radius: 0; }
+.edgeStyle .ledgerBalance { min-height: 184px; }
+.edgeStyle .ledgerMetrics { margin-top: 0; }
+.edgeStyle .ledgerSection,
+.edgeStyle .mobileLogs { margin-top: 10px; }
+.edgeStyle .mobileMessages { padding-inline: 12px; }
+.edgeStyle .mobileComposer { margin-inline: 12px; }
+
+.dockStyle .swipeHeader { min-height: 62px; flex-basis: 62px; }
+.dockStyle .swipePageContent { padding: 8px 8px 84px; }
+.dockStyle .ledgerBalance,
+.dockStyle .mobileLead,
+.dockStyle .mobileLogStatus { border-radius: 8px; }
+.dockStyle .ledgerMetrics,
+.dockStyle .ledgerSection,
+.dockStyle .mobileLogs { overflow: hidden; border: 1px solid var(--demo-border); border-radius: 8px; }
+.dockStyle .mobileMessages { padding-inline: 4px; }
+.dockStyle .mobileComposer { padding: 8px; border: 1px solid var(--demo-border); border-radius: 8px; background: var(--demo-surface); }
+
+.tabsStyle .swipeHeader { min-height: 58px; flex-basis: 58px; padding-inline: 12px; }
+.tabsStyle .swipePageContent { padding-bottom: 20px; }
+.tabsStyle .balanceCard,
+.tabsStyle .mobileLead,
+.tabsStyle .mobileLogStatus { border-right: 0; border-left: 0; border-radius: 0; }
+.tabsStyle .ledgerMetrics { margin-top: 0; }
+.tabsStyle .ledgerSection,
+.tabsStyle .mobileLogs { margin-top: 8px; border-right: 0; border-left: 0; }
+.tabsStyle .mobileMessages { padding-inline: 12px; }
+.tabsStyle .mobileComposer { margin: 0 12px 12px; }
+
+.consoleStyle .statusBar { min-height: 24px; flex-basis: 24px; border-bottom: 1px solid var(--demo-border); padding-inline: 10px; }
+.consoleStyle .swipeHeader { min-height: 50px; flex-basis: 50px; padding-inline: 10px; }
+.consoleStyle .swipeHeader h2 { font-size: 16px; }
+.consoleStyle .swipeHeader p { margin-top: 2px; }
+.consoleStyle .headerActions button { width: 40px; height: 40px; }
+.consoleStyle .swipePageContent { padding: 0 0 12px; }
+.consoleStyle .balanceCard,
+.consoleStyle .mobileLead,
+.consoleStyle .mobileLogStatus { min-height: 112px; border: 0; border-bottom: 1px solid var(--demo-border-strong); border-radius: 0; padding: 14px 12px; }
+.consoleStyle .ledgerBalance { min-height: 154px; }
+.consoleStyle .ledgerBalance > strong,
+.consoleStyle .mobileLead strong { font-size: 22px; }
+.consoleStyle .ledgerMetrics { margin-top: 0; border-top: 0; }
+.consoleStyle .ledgerMetrics article { min-height: 72px; padding: 10px; }
+.consoleStyle .ledgerMetrics strong { margin-top: 5px; }
+.consoleStyle .ledgerSection,
+.consoleStyle .mobileLogs { margin-top: 0; border-top: 0; }
+.consoleStyle .ledgerSectionTitle { min-height: 42px; }
+.consoleStyle .analysisRow { min-height: 50px; }
+.consoleStyle .recordDetailRow { min-height: 56px; padding: 7px 10px; }
+.consoleStyle .mobileAgentHeader { min-height: 54px; padding: 6px 10px; }
+.consoleStyle .mobileMessages { gap: 8px; padding: 10px; }
+.consoleStyle .mobileUserMessage,
+.consoleStyle .mobileAgentMessage { width: 94%; border-radius: 0; padding: 10px; }
+.consoleStyle .mobileComposer { margin-inline: 10px; }
+.consoleStyle .mobileLogStatus { min-height: 58px; }
+.consoleStyle .mobileLogs article { padding: 9px 10px; }
+
 @media (max-width: 370px) {
   .phone { border-radius: var(--demo-radius); }
   .balanceCard > strong { font-size: 22px; }
@@ -213,4 +298,4 @@
 @media (prefers-reduced-motion: reduce) {
   .phone * { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
 }
-/* AI_GENERATE_END - */
+/* AI_GENERATE_END -- */

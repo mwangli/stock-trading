@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 import './styles/app.css';
 import { lazy, Suspense } from 'react';
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
@@ -38,11 +38,16 @@ const PublicOnlyRoute = () => {
   return user ? <Navigate to="/dashboard" replace /> : <Login />;
 };
 
+const LocalUiStyleDemos = () => (
+  import.meta.env.DEV ? <UiStyleDemos /> : <Navigate to="/login" replace />
+);
+
 const DesktopApp = () => (
   <div className="desktop-app h-full">
     <Suspense fallback={fallback}>
       <Routes>
         <Route path="/login" element={<PublicOnlyRoute />} />
+        <Route path="/uiStyleDemos" element={<LocalUiStyleDemos />} />
         <Route path="/" element={<ProtectedRoute />}>
           <Route element={<DesktopLayout />}>
             <Route index element={<Navigate to="/dashboard" replace />} />
@@ -54,7 +59,6 @@ const DesktopApp = () => (
             <Route path="modelInfo" element={<ModelInfo />} />
             <Route path="orderRecords" element={<Navigate to="/tradeRecords" replace />} />
             <Route path="tradeRecordDemos" element={<TradeRecordDemos />} />
-            <Route path="uiStyleDemos" element={<UiStyleDemos />} />
             <Route path="modelOperations" element={<Navigate to="/modelInfo" replace />} />
             <Route path="agentConversation" element={<AgentConversation />} />
             <Route path="logs" element={<Logs />} />
@@ -71,4 +75,4 @@ const DesktopApp = () => (
 );
 
 export default DesktopApp;
-// AI_GENERATE_END --
+// AI_GENERATE_END ---
