@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START ------
 import React, {
   useEffect,
   useMemo,
@@ -34,7 +34,6 @@ import {
 import { useAppTheme } from '@shared/theme/AppThemeProvider';
 import { useAuth } from '@shared/auth/AuthContext';
 import { checkBackendHealth } from '@shared/utils/backendHealth';
-import NotificationCenter from '../components/NotificationCenter';
 import SystemBrand from '../components/SystemBrand';
 import NotificationCenter from '../components/NotificationCenter';
 import { PageHeaderContext, type PageHeaderState } from './PageHeaderContext';
@@ -393,4 +392,4 @@ const DesktopLayout: React.FC = () => {
 };
 
 export default DesktopLayout;
-// AI_GENERATE_END -----
+// AI_GENERATE_END ------
