@@ -5,6 +5,8 @@
 
 <p align="center">
   <a href="http://117.72.216.67/"><strong>在线体验：117.72.216.67</strong></a>
+  &nbsp;&nbsp;·&nbsp;&nbsp;
+  <a href="http://117.72.216.67/docs"><strong>文档工作台</strong></a>
 </p>
 
 > 支持 PC 与移动端自适应访问。当前为个人项目演示环境，需要登录后使用。
