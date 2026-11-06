@@ -1,4 +1,4 @@
-# AI_GENERATE_START-- ----------------------------------------------------------------------------------------------------------------------------------------
+# AI_GENERATE_START---- ----------------------------------------------------------------------------------------------------------------------------------------
 from __future__ import annotations
 
 import json
@@ -32,6 +32,7 @@ from stock_trading.utils.workflows import (
     prepare_workflow,
     rank_workflow,
     review_workflow,
+    sync_account_workflow,
     sync_order_workflow,
     trading_workflow,
 )
@@ -92,11 +93,25 @@ def _execute(
 
 
 def order_command(
+    account: Annotated[
+        bool,
+        typer.Option("--account", help="同步最新券商账户资金快照。"),
+    ] = False,
     date_value: Annotated[
         str | None,
         typer.Option("--date", help="业务日期或日期范围，默认当天。"),
     ] = None,
 ) -> None:
+    if account:
+        if date_value is not None:
+            raise typer.BadParameter("--account 不支持同时指定 --date")
+        _execute(
+            "order-account",
+            {"account": True},
+            sync_account_workflow,
+            result_logger=_log_account_summary,
+        )
+        return
     today = shanghai_today()
     start_date, end_date = _parse_date_expression(date_value, today, today)
     _execute(
@@ -496,6 +511,18 @@ def _log_order_summary(result: dict[str, object]) -> None:
     )
 
 
+def _log_account_summary(result: dict[str, object]) -> None:
+    LOGGER.info(
+        "券商账户同步完成：采集时间=%s；可用资金=%s；总资产=%s；"
+        "持仓市值=%s；冻结金额=%s",
+        result["captured_at"],
+        _format_amount(result["available_cash"]),
+        _format_amount(result["total_assets"]),
+        _format_amount(result["total_position"]),
+        _format_amount(result["frozen_amount"]),
+    )
+
+
 def _log_review_summary(result: dict[str, object]) -> None:
     profit = dict(result["profit"])
     decision = dict(result["decision"])
@@ -532,4 +559,4 @@ def _format_amount(value: object) -> str:
     return "-" if value is None else f"{float(value):,.2f}"
 
 
-# AI_GENERATE_END-- ----------------------------------------------------------------------------------------------------------------------------------------
+# AI_GENERATE_END---- ----------------------------------------------------------------------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------
+# AI_GENERATE_START ---------
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
@@ -22,6 +22,7 @@ class StockBasic:
     ipo_date: date | None
     out_date: date | None
     security_type: str
+    market_category: str
     status: str
     trade_status: str
     snapshot_date: date
@@ -38,6 +39,7 @@ class StockBasic:
             ipo_date=_compact_date(row.get("list_date")),
             out_date=_compact_date(row.get("delist_date")),
             security_type="1",
+            market_category=str(row.get("market") or ""),
             status="1" if list_status == "L" else "0",
             trade_status="1" if list_status == "L" else "0",
             snapshot_date=snapshot_date,
@@ -56,6 +58,9 @@ class StockBasic:
             ipo_date=_optional_iso_date(basic.get("ipoDate")),
             out_date=_optional_iso_date(basic.get("outDate")),
             security_type=str(basic.get("type") or ""),
+            market_category=_market_category(
+                str(basic.get("code") or market.get("code") or "").lower()
+            ),
             status=str(basic.get("status") or ""),
             trade_status=str(market.get("tradeStatus") or ""),
             snapshot_date=snapshot_date,
@@ -67,6 +72,43 @@ class StockBasic:
         record["ipo_date"] = self.ipo_date.isoformat() if self.ipo_date else None
         record["out_date"] = self.out_date.isoformat() if self.out_date else None
         record["snapshot_date"] = self.snapshot_date.isoformat()
+        return record
+
+
+@dataclass(frozen=True)
+class DailyBasic:
+    """TuShare 每日基础指标，金额统一保存为元。"""
+
+    trade_date: date
+    code: str
+    turnover_rate: Decimal | None
+    volume_ratio: Decimal | None
+    total_market_value: Decimal | None
+    circulating_market_value: Decimal | None
+
+    @classmethod
+    def from_tushare(cls, row: dict[str, object]) -> "DailyBasic":
+        return cls(
+            trade_date=datetime.strptime(str(row["trade_date"]), "%Y%m%d").date(),
+            code=_tushare_code(row.get("ts_code")),
+            turnover_rate=_optional_decimal(row.get("turnover_rate")),
+            volume_ratio=_optional_decimal(row.get("volume_ratio")),
+            total_market_value=_scaled_optional_decimal(row.get("total_mv")),
+            circulating_market_value=_scaled_optional_decimal(row.get("circ_mv")),
+        )
+
+    def as_record(self) -> dict[str, object]:
+        record = asdict(self)
+        record["trade_date"] = self.trade_date.isoformat()
+        for field in (
+            "turnover_rate",
+            "volume_ratio",
+            "total_market_value",
+            "circulating_market_value",
+        ):
+            record[field] = (
+                float(record[field]) if record[field] is not None else None
+            )
         return record
 
 
@@ -212,7 +254,30 @@ def _optional_iso_date(value: object) -> date | None:
     return date.fromisoformat(normalized) if normalized else None
 
 
+def _optional_decimal(value: object) -> Decimal | None:
+    normalized = str(value or "").strip()
+    return Decimal(normalized) if normalized else None
+
+
+def _scaled_optional_decimal(value: object) -> Decimal | None:
+    normalized = _optional_decimal(value)
+    return normalized * Decimal("10000") if normalized is not None else None
+
+
 def _tushare_code(value: object) -> str:
     symbol, exchange = str(value or "").strip().split(".", maxsplit=1)
     return f"{exchange.lower()}.{symbol}"
-# AI_GENERATE_END --------
+
+
+def _market_category(code: str) -> str:
+    symbol = code.rsplit(".", maxsplit=1)[-1]
+    if code.startswith("sh.") and symbol.startswith(("688", "689")):
+        return "科创板"
+    if code.startswith("sz.") and symbol.startswith(("300", "301")):
+        return "创业板"
+    if code.startswith(("sh.", "sz.")):
+        return "主板"
+    if code.startswith("bj."):
+        return "北交所"
+    return ""
+# AI_GENERATE_END ---------

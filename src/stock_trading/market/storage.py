@@ -1,4 +1,4 @@
-# AI_GENERATE_START----- -----------------------------------------------------------
+# AI_GENERATE_START------- -----------------------------------------------------------
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -17,6 +17,7 @@ from stock_trading.market.minute1_summary import (
 )
 from stock_trading.market.models import (
     CumulativeAdjustmentFactor,
+    DailyBasic,
     DailyBar,
     MinuteBar,
     StockBasic,
@@ -79,7 +80,7 @@ class ParquetMarketStore:
             return False
         required = {
             "code", "code_name", "ipo_date", "out_date", "security_type",
-            "status", "trade_status", "snapshot_date",
+            "market_category", "status", "trade_status", "snapshot_date",
         }
         if (
             not required.issubset(frame.columns)
@@ -97,6 +98,59 @@ class ParquetMarketStore:
         target = self._root / "daily" / f"code={code}" / "bars.parquet"
         records = [_without(bar.as_record(), "code") for bar in bars]
         return self._merge_history(target, records, "trade_date")
+
+    def write_daily_snapshot(self, trade_date: date, bars: list[DailyBar]) -> Path:
+        """保存指定交易日的全市场日线横截面。"""
+        target = (
+            self._root
+            / "daily"
+            / f"trade_date={trade_date.isoformat()}"
+            / "bars.parquet"
+        )
+        return self._write(target, [bar.as_record() for bar in bars])
+
+    def write_daily_basics(
+        self, trade_date: date, values: list[DailyBasic]
+    ) -> Path:
+        """保存指定交易日的换手率、量比和市值横截面。"""
+        target = (
+            self._root
+            / "daily_basic"
+            / f"trade_date={trade_date.isoformat()}"
+            / "indicators.parquet"
+        )
+        return self._write(target, [value.as_record() for value in values])
+
+    def daily_basic_rows(self, trade_date: date, codes: set[str]) -> int:
+        """返回已完整覆盖目标股票的每日基础指标行数。"""
+        target = (
+            self._root
+            / "daily_basic"
+            / f"trade_date={trade_date.isoformat()}"
+            / "indicators.parquet"
+        )
+        try:
+            frame = _read_parquet_file(target)
+            required = {
+                "trade_date",
+                "code",
+                "turnover_rate",
+                "volume_ratio",
+                "total_market_value",
+                "circulating_market_value",
+            }
+            dates = pd.to_datetime(frame["trade_date"], errors="raise").dt.date
+        except (OSError, ValueError, KeyError, AttributeError):
+            return 0
+        available = set(frame["code"].dropna().astype(str))
+        if (
+            frame.empty
+            or not required.issubset(frame.columns)
+            or not dates.eq(trade_date).all()
+            or not codes.issubset(available)
+        ):
+            return 0
+        return len(codes)
 
     def write_factors(
         self,
@@ -773,4 +827,4 @@ def _normalize_minute1_frame(frame: pd.DataFrame, code: str) -> pd.DataFrame:
     )
 
 
-# AI_GENERATE_END----- -----------------------------------------------------------
+# AI_GENERATE_END------- -----------------------------------------------------------

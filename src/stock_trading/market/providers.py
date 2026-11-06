@@ -1,4 +1,4 @@
-# AI_GENERATE_START---- --------
+# AI_GENERATE_START------ --------
 from __future__ import annotations
 
 import logging
@@ -67,6 +67,7 @@ class TushareMarketProvider:
             str(row.code): str(row.code_name) for row in stocks.itertuples(index=False)
         }
         rows = 0
+        daily_basic_rows = 0
         completed: set[str] = set()
         buffered: dict[str, list[DailyBar]] = defaultdict(list)
         for index, trade_date in enumerate(dates, start=1):
@@ -75,10 +76,27 @@ class TushareMarketProvider:
                 if not values:
                     raise ValueError(f"TuShare 全市场日线为空：{trade_date}")
                 selected_values = [value for value in values if value.code in selected]
+                daily_codes = {value.code for value in selected_values}
+                cached_daily_basic_rows = store.daily_basic_rows(
+                    trade_date, daily_codes
+                )
+                daily_basics = []
+                if cached_daily_basic_rows == 0:
+                    daily_basics = [
+                        value
+                        for value in self._client.fetch_daily_basics(trade_date)
+                        if value.code in daily_codes
+                    ]
+                    if not daily_basics:
+                        raise ValueError(f"TuShare 每日基础指标为空：{trade_date}")
+                store.write_daily_snapshot(trade_date, selected_values)
+                if daily_basics:
+                    store.write_daily_basics(trade_date, daily_basics)
                 for code, grouped in _group_daily(selected_values).items():
                     buffered[code].extend(grouped)
                     completed.add(code)
                 rows += len(selected_values)
+                daily_basic_rows += cached_daily_basic_rows or len(daily_basics)
                 if index % WRITE_BATCH_DAYS == 0 or index == len(dates):
                     for code, grouped in buffered.items():
                         store.write_daily_history(code, grouped)
@@ -87,6 +105,7 @@ class TushareMarketProvider:
             "provider": self.name,
             "tradeDates": len(dates),
             "rows": rows,
+            "dailyBasicRows": daily_basic_rows,
             "codes": len(completed),
         }
 
@@ -500,4 +519,4 @@ def _to_minute_bars(
         )
         for point in regular
     ]
-# AI_GENERATE_END---- --------
+# AI_GENERATE_END------ --------

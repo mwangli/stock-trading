@@ -1,4 +1,4 @@
-# AI_GENERATE_START ----------
+# AI_GENERATE_START -----------
 from __future__ import annotations
 
 import json
@@ -7,10 +7,11 @@ import time
 from datetime import date, datetime
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.request import ProxyHandler, Request, build_opener
 
 from stock_trading.market.models import (
     CumulativeAdjustmentFactor,
+    DailyBasic,
     DailyBar,
     StockBasic,
 )
@@ -30,6 +31,7 @@ class TushareClient:
             raise ValueError("缺少 TUSHARE_TOKEN；basic、daily 和 factor 采集无法执行")
         self._token = token
         self._timeout_seconds = timeout_seconds
+        self._opener = build_opener(ProxyHandler({}))
 
     def fetch_stock_basics(self, snapshot_date: date) -> list[StockBasic]:
         rows = self._request(
@@ -76,6 +78,15 @@ class TushareClient:
             for row in rows
         ]
 
+    def fetch_daily_basics(self, trade_date: date) -> list[DailyBasic]:
+        """读取换手率、量比和市值等日级横截面指标。"""
+        rows = self._request(
+            "daily_basic",
+            {"trade_date": trade_date.strftime("%Y%m%d")},
+            "ts_code,trade_date,turnover_rate,volume_ratio,total_mv,circ_mv",
+        )
+        return [DailyBasic.from_tushare(row) for row in rows]
+
     def fetch_factors(self, trade_date: date) -> list[CumulativeAdjustmentFactor]:
         rows = self._request(
             "adj_factor",
@@ -103,7 +114,9 @@ class TushareClient:
                 method="POST",
             )
             try:
-                with urlopen(request, timeout=self._timeout_seconds) as response:
+                with self._opener.open(
+                    request, timeout=self._timeout_seconds
+                ) as response:
                     payload: dict[str, Any] = json.loads(response.read().decode("utf-8"))
             except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as error:
                 if attempt < 3:
@@ -142,4 +155,4 @@ class TushareClient:
 def _normalized_code(value: object) -> str:
     symbol, exchange = str(value or "").split(".", maxsplit=1)
     return f"{exchange.lower()}.{symbol}"
-# AI_GENERATE_END ----------
+# AI_GENERATE_END -----------

@@ -1,4 +1,4 @@
-# AI_GENERATE_START----- ---------------------------------
+# AI_GENERATE_START------- ---------------------------------
 from __future__ import annotations
 
 import json
@@ -460,6 +460,15 @@ def cleanup_workflow(config: AppConfig, reference_date: date) -> dict[str, objec
     }
 
 
+def sync_account_workflow(
+    config: AppConfig,
+) -> dict[str, object]:
+    """主动同步并覆盖保存最新券商账户资金快照。"""
+    return StateStore(config.state_db_path).save_account_snapshot(
+        _build_broker(config).get_account()
+    )
+
+
 def sync_order_workflow(
     config: AppConfig,
     start_date: date,
@@ -724,4 +733,4 @@ def _build_broker(config: AppConfig) -> ZXBrokerClient:
     return ZXBrokerClient(config, captcha_solver=BaiduCaptchaSolver(config).solve)
 
 
-# AI_GENERATE_END----- ---------------------------------
+# AI_GENERATE_END------- ---------------------------------

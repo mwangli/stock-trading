@@ -1,4 +1,4 @@
-# AI_GENERATE_START ----------------------------------------------------------------------------
+# AI_GENERATE_START- ----------------------------------------------------------------------------
 from __future__ import annotations
 
 import hashlib
@@ -279,7 +279,7 @@ CREATE TABLE IF NOT EXISTS broker_permission (
     updated_at TEXT NOT NULL -- 本地最后更新时间。
 );
 
--- 账户快照：固定主键保证全库只保留最近一次交易前同步的账户资金事实。
+-- 账户快照：固定主键保证全库只保留最近一次主动同步的券商账户资金事实。
 CREATE TABLE IF NOT EXISTS account_snapshot (
     id INTEGER PRIMARY KEY CHECK(id = 1),
     available_cash REAL NOT NULL,
@@ -710,7 +710,7 @@ class StateStore(SQLiteStateDatabase):
         return [dict(row) for row in rows]
 
     def save_account_snapshot(self, account: BrokerAccount) -> dict[str, Any]:
-        """覆盖保存交易前读取的最新账户资金事实。"""
+        """覆盖保存最近一次主动读取的券商账户资金事实。"""
         self.initialize()
         captured_at = _now()
         with self._connect() as connection:
@@ -1619,4 +1619,4 @@ def _broker_order_matches_intent(order: BrokerOrder, intent: sqlite3.Row) -> boo
         and order.order_quantity == int(intent["quantity"])
         and order.order_price == Decimal(str(intent["price"]))
     )
-# AI_GENERATE_END ----------------------------------------------------------------------------
+# AI_GENERATE_END- ----------------------------------------------------------------------------

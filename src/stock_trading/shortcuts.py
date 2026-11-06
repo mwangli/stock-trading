@@ -1,4 +1,4 @@
-# AI_GENERATE_START- --------------------------------
+# AI_GENERATE_START--- --------------------------------
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -40,7 +40,7 @@ COMMAND_GROUPS = (
     (
         "订单与复盘",
         (
-            ("stock-order", "同步券商历史订单并增量结算交易闭环。"),
+            ("stock-order", "同步券商账户快照或历史成交订单。"),
             ("stock-review", "汇总已实现收益并判断模型是否需要重训。"),
         ),
     ),
@@ -224,18 +224,21 @@ def order() -> None:
     _run(
         "stock-order",
         order_command,
-        "同步券商历史订单，并增量结算完整买卖交易闭环。",
+        "同步券商账户快照，或按原语义同步历史成交订单。",
         (
-            "按月同步指定日期范围内的历史成交订单。",
+            "--account 查询券商账户资金并覆盖保存最新快照。",
+            "未指定 --account 时，按月同步指定日期范围内的历史成交订单。",
             "根据成交数量、成本和费用匹配已经完成的买卖闭环。",
         ),
         (
+            "stock-order --account",
             "stock-order",
             "stock-order --date 2026-11-02",
             "stock-order --date 2026-10-01:2026-11-02",
         ),
         (
-            "只同步历史订单和结算事实，不主动提交新的买卖委托。",
+            "--account 只保存最新一条账户资金快照，不保留历史序列。",
+            "默认只同步历史订单和结算事实，不主动提交新的买卖委托。",
             "未卖出的买入继续保留为待闭环交易。",
         ),
     )
@@ -299,4 +302,4 @@ def sync() -> None:
             "服务器连接只读取 SERVER_IP、SERVER_USER 和 SERVER_PASS。",
         ),
     )
-# AI_GENERATE_END- --------------------------------
+# AI_GENERATE_END--- --------------------------------
