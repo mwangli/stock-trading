@@ -1,23 +1,17 @@
-// AI_GENERATE_START ------
+// AI_GENERATE_START ---------
 import React, {
   useEffect,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
-  type ReactNode,
 } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { Avatar, Button, Drawer, Layout, Menu, Tooltip, type MenuProps } from 'antd';
+import { Avatar, Button, Dropdown, Layout, Tooltip, type MenuProps } from 'antd';
 import { useTranslation } from 'react-i18next';
 import {
   CheckOutlined,
-  DesktopOutlined,
-  FileTextOutlined,
-  LineChartOutlined,
-  MenuUnfoldOutlined,
-  MessageOutlined,
   MoonOutlined,
   SunOutlined,
   UserOutlined,
@@ -48,12 +42,6 @@ const SWIPE_EXCLUSION_SELECTOR = [
   'canvas',
 ].join(',');
 
-interface MobileMenuItem {
-  key: typeof MOBILE_ROUTES[number];
-  icon: ReactNode;
-  label: string;
-}
-
 interface SwipeState {
   pointerId: number;
   startX: number;
@@ -75,18 +63,11 @@ const MobileLayout: React.FC = () => {
   const reduceMotion = useReducedMotion();
   const swipeStateRef = useRef<SwipeState | null>(null);
   const edgeFeedbackTimerRef = useRef<number | null>(null);
-  const [navigationOpen, setNavigationOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [swipeDirection, setSwipeDirection] = useState(1);
   const [edgeFeedback, setEdgeFeedback] = useState<EdgeFeedback | null>(null);
   const [pageHeader, setPageHeader] = useState<PageHeaderState | null>(null);
 
-  const menuItems: MobileMenuItem[] = [
-    { key: '/dashboard', icon: <DesktopOutlined />, label: t('layout.dashboard') },
-    { key: '/tradeRecords', icon: <LineChartOutlined />, label: t('layout.tradeRecords') },
-    { key: '/agentConversation', icon: <MessageOutlined />, label: t('layout.agentConversation') },
-    { key: '/logs', icon: <FileTextOutlined />, label: t('layout.logs') },
-  ];
   const pageIndex = MOBILE_ROUTES.findIndex((route) => route === location.pathname);
 
   const showEdgeFeedback = (side: EdgeFeedback['side']) => {
@@ -110,17 +91,6 @@ const MobileLayout: React.FC = () => {
     if (nextIndex === pageIndex) return;
     setSwipeDirection(nextIndex > pageIndex ? 1 : -1);
     navigate(MOBILE_ROUTES[nextIndex]);
-    setNavigationOpen(false);
-  };
-
-  const selectPage = (path: string) => {
-    const nextIndex = MOBILE_ROUTES.findIndex((route) => route === path);
-    if (nextIndex < 0) return;
-    if (nextIndex === pageIndex) {
-      setNavigationOpen(false);
-      return;
-    }
-    navigateToPage(nextIndex);
   };
 
   const beginSwipe = (event: ReactPointerEvent<HTMLElement>) => {
@@ -171,7 +141,7 @@ const MobileLayout: React.FC = () => {
     { type: 'divider' },
     {
       key: 'adaptiveTheme',
-      label: <span className="flex min-w-[140px] items-center justify-between gap-4"><span>{t('layout.adaptiveTheme')}</span>{autoThemeEnabled && <CheckOutlined className="text-[var(--brand)]" />}</span>,
+      label: <span className="app-mobile-theme-menu-item"><span>{t('layout.adaptiveTheme')}</span>{autoThemeEnabled && <CheckOutlined className="text-[var(--brand)]" />}</span>,
     },
     { type: 'divider' },
     { key: 'logout', label: t('common.logout'), danger: true },
@@ -192,7 +162,7 @@ const MobileLayout: React.FC = () => {
   const pageTitles: Record<string, string> = {
     '/dashboard': t('layout.pageTitles.dashboard'),
     '/tradeRecords': t('layout.pageTitles.tradeRecords'),
-    '/agentConversation': t('layout.pageTitles.agentConversation'),
+    '/agentConversation': 'Agent 智能分析',
     '/logs': t('layout.pageTitles.logs'),
   };
 
@@ -211,12 +181,24 @@ const MobileLayout: React.FC = () => {
               <Tooltip title={mode === 'dark' ? t('layout.lightMode') : t('layout.darkMode')}>
                 <Button type="text" className="app-theme-picker-button" icon={mode === 'dark' ? <SunOutlined /> : <MoonOutlined />} onClick={toggleMode} />
               </Tooltip>
-              <Button type="text" className="app-mobile-user-menu-button !px-1" aria-label={t('layout.userMenu')} aria-expanded={userMenuOpen} onClick={() => setUserMenuOpen(true)}>
-                <Avatar size={30} icon={<UserOutlined />} className="app-header-avatar" />
-              </Button>
-              <Tooltip title="打开页面菜单">
-                <Button type="text" icon={<MenuUnfoldOutlined />} aria-label="打开页面菜单" aria-expanded={navigationOpen} onClick={() => setNavigationOpen(true)} />
-              </Tooltip>
+              <Dropdown
+                rootClassName="app-mobile-user-popover"
+                placement="bottomRight"
+                trigger={['click']}
+                open={userMenuOpen}
+                onOpenChange={setUserMenuOpen}
+                menu={{ items: userMenuItems, selectable: false, onClick: handleUserMenuClick }}
+              >
+                <Button
+                  type="text"
+                  className="app-mobile-user-menu-button !px-1"
+                  aria-label={t('layout.userMenu')}
+                  aria-haspopup="menu"
+                  aria-expanded={userMenuOpen}
+                >
+                  <Avatar size={30} icon={<UserOutlined />} className="app-header-avatar" />
+                </Button>
+              </Dropdown>
             </div>
           </Header>
           <Content
@@ -262,21 +244,10 @@ const MobileLayout: React.FC = () => {
             </motion.div>
           </Content>
         </Layout>
-        <Drawer rootClassName="app-mobile-navigation-drawer" title={t('layout.title')} placement="left" size="min(82vw, 300px)" open={navigationOpen} onClose={() => setNavigationOpen(false)}>
-          <Menu
-            className="app-mobile-navigation-menu"
-            selectedKeys={[location.pathname]}
-            items={menuItems.map((item) => ({ key: item.key, icon: item.icon, label: item.label }))}
-            onClick={({ key }) => selectPage(key)}
-          />
-        </Drawer>
-        <Drawer rootClassName="app-mobile-user-drawer" title={t('layout.userMenu')} placement="bottom" size="auto" open={userMenuOpen} onClose={() => setUserMenuOpen(false)}>
-          <Menu className="app-mobile-user-menu" items={userMenuItems} selectable={false} onClick={handleUserMenuClick} />
-        </Drawer>
       </Layout>
     </PageHeaderContext.Provider>
   );
 };
 
 export default MobileLayout;
-// AI_GENERATE_END ------
+// AI_GENERATE_END ---------

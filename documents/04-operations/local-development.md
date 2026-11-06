@@ -35,7 +35,7 @@ Windows 下 `AppConfig` 以 `stock-trading` 源码仓库为项目目录，运行
 
 ## 控制台本地路径
 
-Spring Boot 当前默认 `STOCK_TRADING_VAR_DIR=D:/stock-trading4/var`，这是控制台历史默认值。与最新 Python 主线联调时应显式设置为 Python 仓库的 `data` 目录，例如 `D:/stock-trading4/data`，并把 `STOCK_TASK_LOG` 指向实际 `logs/run.log`。
+Spring Boot 当前默认 `STOCK_TRADING_DATA_DIR=D:/stock-trading4/data`。Python 数据目录位于其他位置时，应通过 `STOCK_TRADING_DATA_DIR` 显式覆盖，并把 `STOCK_TASK_LOG` 指向实际 `logs/run.log`。
 
 Vite 将 `/api` 和 `/ws` 代理到 `http://localhost:8080`，并允许读取仓库根 `documents/`。文档 Front Matter 必须从文件第一字节开始。
 

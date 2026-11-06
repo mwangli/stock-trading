@@ -1,4 +1,4 @@
-/* Hallmark · checked: 2026-11-06 · app screen · Edge Ledger · AI_GENERATE_START ----- */
+/* Hallmark · checked: 2026-11-06 · app screen · Edge Ledger · AI_GENERATE_START ------------ */
 .order-records-shell { min-width: 0; overflow: hidden; border-radius: 0 !important; padding: 0 16px 16px; }
 .order-records-shell .ant-tabs-nav { min-height: 52px; margin-bottom: 16px; border-bottom: 1px solid var(--border-color); }
 .order-records-shell .ant-tabs-nav::before { border-bottom: 0; }
@@ -43,18 +43,25 @@
   .order-records-filters { display: none !important; }
   .order-records-desktop-table,
   .order-records-desktop-pagination { display: none; }
-  .order-records-mobile-lead { display: flex; min-height: 126px; flex-direction: column; justify-content: center; border-bottom: 1px solid var(--border-color); padding: 18px 20px; background: var(--panel-bg); }
-  .order-records-mobile-lead > span { color: var(--text-muted); font-size: 11px; }
-  .order-records-mobile-lead > strong { margin-top: 8px; color: var(--text-primary); font-size: 28px; font-weight: 680; font-variant-numeric: tabular-nums; }
-  .order-records-mobile-lead > small { margin-top: 12px; color: var(--text-muted); font-size: 10px; }
+  .order-records-mobile-lead { display: grid; min-height: 88px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); border-bottom: 1px solid var(--border-color); background: var(--panel-bg); }
+  .order-records-mobile-lead-item { display: flex; min-width: 0; flex-direction: column; justify-content: center; padding: 14px 16px; }
+  .order-records-mobile-lead-item + .order-records-mobile-lead-item { border-left: 1px solid var(--border-color); }
+  .order-records-mobile-lead-item > span { color: var(--text-muted); font-size: 11px; }
+  .order-records-mobile-lead-item > strong { overflow: hidden; margin-top: 8px; color: var(--text-primary); font-size: 22px; font-weight: 680; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
+  .order-records-mobile-lead-result { align-items: flex-end; text-align: right; }
+  .order-records-mobile-lead-result .is-up { color: var(--danger-color, #dc2626); }
+  .order-records-mobile-lead-result .is-down { color: var(--success-color, #059669); }
   .order-records-mobile-list { display: grid; margin-top: 10px; border-block: 1px solid var(--border-color); background: var(--panel-bg); }
-  .order-records-mobile-row { display: flex; width: 100%; min-width: 0; min-height: 64px; align-items: center; justify-content: space-between; gap: 12px; border: 0; border-bottom: 1px solid var(--border-color); padding: 10px 12px; background: var(--panel-bg); color: var(--text-primary); cursor: pointer; font: inherit; text-align: left; }
+  .order-records-mobile-row { display: grid; width: 100%; min-width: 0; min-height: 64px; grid-template-columns: 26% 56% 18%; align-items: center; border-bottom: 1px solid var(--border-color); padding: 10px 8px 10px 12px; background: var(--panel-bg); color: var(--text-primary); text-align: left; }
   .order-records-mobile-row:last-of-type { border-bottom: 0; }
-  .order-records-mobile-row:active { background: var(--brand-soft); }
   .order-records-mobile-row-main,
   .order-records-mobile-row-result { display: flex; min-width: 0; flex-direction: column; gap: 5px; }
-  .order-records-mobile-row-main { flex: 1 1 auto; }
-  .order-records-mobile-row-result { min-width: 92px; flex: 0 0 auto; align-items: flex-end; text-align: right; }
+  .order-records-mobile-row-prices { display: grid; width: 100%; min-width: 0; grid-template-columns: 34% repeat(3, 22%); }
+  .order-records-mobile-row-prices > span { display: flex; min-width: 0; flex-direction: column; align-items: center; gap: 4px; padding-inline: 2px; text-align: center; }
+  .order-records-mobile-row-prices > span > small { font-size: 9px; }
+  .order-records-mobile-row-prices > span > strong { max-width: 100%; font-size: 11px; }
+  .order-records-mobile-row-prices .order-records-mobile-row-sell-time > strong { font-size: 9px; }
+  .order-records-mobile-row-result { min-width: 0; align-items: flex-end; text-align: right; }
   .order-records-mobile-row strong { overflow: hidden; color: var(--text-primary); font-size: 13px; font-weight: 680; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
   .order-records-mobile-row small { overflow: hidden; color: var(--text-muted); font-size: 10px; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
   .order-records-mobile-row-result .is-up { color: var(--danger-color, #dc2626); }
@@ -68,4 +75,4 @@
 @media (prefers-reduced-motion: reduce) {
   .order-records-shell * { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
 }
-/* AI_GENERATE_END ----- */
+/* AI_GENERATE_END ------------ */

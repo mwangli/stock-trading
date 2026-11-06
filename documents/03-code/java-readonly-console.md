@@ -37,7 +37,7 @@ com.stock.console
 
 `TradingFacts` 在内存 DuckDB 中以 `ATTACH ... (TYPE sqlite, READ_ONLY)` 连接 Python 的 `data/state/trading.db`。当前查询已对齐 Python Schema v4，预测来源为 `prediction_rank`，账户资金来源为 `account_snapshot`。`MarketRepository` 使用参数化文件路径调用 `read_parquet`。代码不建立 JPA 实体、同步数据库或本地缓存副本。
 
-容器通过 `STOCK_TRADING_VAR_DIR=/data/stock-trading` 对齐 Python `data/`。本地开发必须显式指向实际数据目录；控制台默认路径仍是历史值，不能依赖默认值判断 Python 文件是否缺失。
+容器通过 `STOCK_TRADING_DATA_DIR=/data/stock-trading` 对齐 Python `data/`。本地开发默认读取 `D:/stock-trading4/data`，其他目录可通过该环境变量显式覆盖。
 
 ## 错误边界
 

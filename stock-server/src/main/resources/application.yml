@@ -13,7 +13,7 @@ server:
         http-only: true
         same-site: lax
 console:
-  data-dir: ${STOCK_TRADING_VAR_DIR:D:/stock-trading4/var}
+  data-dir: ${STOCK_TRADING_DATA_DIR:D:/stock-trading4/data}
   task-log: ${STOCK_TASK_LOG:/var/log/stock-trading/run.log}
   document-roots: ${STOCK_DOCUMENT_ROOTS:documents,../documents}
   auth:

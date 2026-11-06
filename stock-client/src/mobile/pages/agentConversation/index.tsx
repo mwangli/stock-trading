@@ -1,14 +1,9 @@
-// AI_GENERATE_START------------------------
+// AI_GENERATE_START---------------------------
 import './styles.css';
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Button, Drawer, Input, Spin, Tag, Tooltip, message, type InputRef } from 'antd';
+import React, { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
+import { Button, Input, Spin, Tag, message, type InputRef } from 'antd';
 import {
-  ClockCircleOutlined,
-  HistoryOutlined,
   MessageOutlined,
-  PlusOutlined,
-  ReloadOutlined,
-  RobotOutlined,
   SendOutlined,
 } from '@ant-design/icons';
 import { useAuth } from '@shared/auth/AuthContext';
@@ -89,8 +84,6 @@ const DESKTOP_PROMPT_EXAMPLES = [
   '最近有哪些运行异常？',
 ];
 
-
-
 const parseEvidenceRefs = (value?: string): string[] => {
   if (!value) return [];
   try {
@@ -123,9 +116,14 @@ const normalizeHistoryMessages = (history: AgentHistoryMessage[]): AgentConversa
     : parseEvidenceRefs(item.evidenceRefs || item.evidence_refs),
 }));
 
-const formatDateTime = (value?: string) => value
-  ? new Date(value).toLocaleString('zh-CN', { hour12: false })
-  : '未记录';
+const formatMessageTime = (value?: string) => {
+  if (!value) return '';
+  if (/^\d{2}:\d{2}$/.test(value)) return value;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? ''
+    : date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
+};
 
 const statusColor = (status?: string) => {
   if (status === 'COMPLETED' || status === 'SUCCEEDED') return 'success';
@@ -151,17 +149,13 @@ const summarizeConversationTitle = (content: string): string => {
 };
 
 const AgentConversation: React.FC = () => {
-  usePageHeader('智能对话');
+  usePageHeader('全额成本 · 智能问答');
   const { user } = useAuth();
   const ownerId = String(user?.id ?? 'anonymous');
-  const currentUserName = user?.displayName?.trim() || user?.username?.trim() || '当前用户';
   const inputRef = useRef<InputRef>(null);
   const restoredOwnerRef = useRef<string | null>(null);
-  const [sessions, setSessions] = useState<AgentSession[]>([]);
-  const [sessionsLoading, setSessionsLoading] = useState(true);
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [sessionDrawerOpen, setSessionDrawerOpen] = useState(false);
 
+  const storeOwnerId = useAgentConversationStore((state) => state.ownerId);
   const sessionId = useAgentConversationStore((state) => state.sessionId);
   const question = useAgentConversationStore((state) => state.question);
   const messages = useAgentConversationStore((state) => state.messages);
@@ -172,12 +166,10 @@ const AgentConversation: React.FC = () => {
   const appendMessage = useAgentConversationStore((state) => state.appendMessage);
   const setLoading = useAgentConversationStore((state) => state.setLoading);
   const replaceConversation = useAgentConversationStore((state) => state.replaceConversation);
-  const resetConversation = useAgentConversationStore((state) => state.resetConversation);
 
   useLayoutEffect(() => {
     activateOwner(ownerId);
   }, [activateOwner, ownerId]);
-
 
   const toMessages = useCallback((tasks: AgentTask[]): AgentConversationMessage[] => tasks.flatMap((task) => {
     const assistantContent = task.resultSummary || task.errorMessage
@@ -199,7 +191,6 @@ const AgentConversation: React.FC = () => {
   }), []);
 
   const loadHistory = useCallback(async (targetSessionId: string) => {
-    setHistoryLoading(true);
     try {
       const response = await request.get(`/agent/sessions/${targetSessionId}/history`) as ApiResponse<SessionHistoryResponse | AgentHistoryMessage[]>;
       const history = readApiData(response, '读取会话历史失败');
@@ -210,37 +201,32 @@ const AgentConversation: React.FC = () => {
       }
     } catch (cause) {
       message.error(getApiErrorMessage(cause, '读取会话历史失败'));
-    } finally {
-      setHistoryLoading(false);
     }
   }, [ownerId, replaceConversation, toMessages]);
 
-  const loadSessions = useCallback(async () => {
-    setSessionsLoading(true);
+  const restoreConversation = useCallback(async () => {
+    if (storeOwnerId !== ownerId) return;
+    if (restoredOwnerRef.current === ownerId) return;
+    restoredOwnerRef.current = ownerId;
     try {
       const response = await request.get('/agent/sessions') as ApiResponse<SessionListResponse | AgentSessionPayload[]>;
       const data = readApiData(response, '读取会话列表失败');
       const rawSessions = Array.isArray(data) ? data : data.items ?? [];
-      const items = rawSessions.map(normalizeSession).filter((item): item is AgentSession => item !== null);
-      setSessions(items);
-      const shouldRestoreHistory = restoredOwnerRef.current !== ownerId;
-      restoredOwnerRef.current = ownerId;
-      const preferred = items.find((item) => item.sessionId === sessionId) ?? items[0];
-      if (preferred && shouldRestoreHistory && messages.length === 0) {
+      const sessions = rawSessions
+        .map(normalizeSession)
+        .filter((item): item is AgentSession => item !== null);
+      const preferred = sessions.find((item) => item.sessionId === sessionId) ?? sessions[0];
+      if (preferred) {
         await loadHistory(preferred.sessionId);
       }
     } catch (cause) {
       message.error(getApiErrorMessage(cause, '读取会话列表失败'));
-    } finally {
-      setSessionsLoading(false);
     }
-  }, [loadHistory, messages.length, ownerId, sessionId]);
+  }, [loadHistory, ownerId, sessionId, storeOwnerId]);
 
   useEffect(() => {
-    void loadSessions();
-  }, [loadSessions]);
-
-  const activeSession = sessions.find((item) => item.sessionId === sessionId);
+    void restoreConversation();
+  }, [restoreConversation]);
 
   const createSession = async (initialQuestion: string): Promise<string | null> => {
     try {
@@ -250,7 +236,6 @@ const AgentConversation: React.FC = () => {
       const created = normalizeSession(readApiData(response, '创建 Agent 会话失败'));
       if (!created) throw new Error('创建 Agent 会话失败');
       setSessionId(ownerId, created.sessionId);
-      setSessions((current) => [created, ...current]);
       return created.sessionId;
     } catch (cause) {
       message.error(getApiErrorMessage(cause, '创建 Agent 会话失败'));
@@ -282,7 +267,6 @@ const AgentConversation: React.FC = () => {
         capabilities: result.capabilities,
         uncertainty: result.uncertainty,
       });
-      void loadSessions();
     } catch (cause) {
       appendMessage(ownerId, {
         role: 'assistant',
@@ -301,88 +285,26 @@ const AgentConversation: React.FC = () => {
   return (
     <div className="app-page agent-conversation-page min-h-0">
       <div className="agent-conversation-layout">
-        <aside className="agent-panel agent-session-panel border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
-          <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-slate-700">
-            <div>
-              <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">会话记录</div>
-              <div className="mt-1 text-xs text-slate-500">当前会话保存</div>
-            </div>
-            <Tooltip title="新建会话">
-              <Button
-                type="text"
-                icon={<PlusOutlined />}
-                aria-label="新建会话"
-                onClick={() => {
-                  resetConversation(ownerId);
-                  inputRef.current?.focus();
-                }}
-              />
-            </Tooltip>
-          </div>
-          <div className="overflow-y-auto p-2">
-            {sessionsLoading ? (
-              <div className="flex justify-center py-8"><Spin /></div>
-            ) : sessions.length === 0 ? (
-              <div className="px-3 py-8 text-center text-sm text-slate-500">暂无历史会话</div>
-            ) : sessions.map((item) => (
-              <button
-                key={item.sessionId}
-                type="button"
-                onClick={() => void loadHistory(item.sessionId)}
-                className={`agent-session-item ${item.sessionId === sessionId ? 'is-active' : ''}`}
-              >
-                <div className="truncate text-sm font-medium">{item.title}</div>
-                <div className="mt-1 flex items-center gap-1 text-xs text-slate-500">
-                  <ClockCircleOutlined />{formatDateTime(item.updatedAt)}
-                </div>
-              </button>
-            ))}
-          </div>
-        </aside>
-
         <main className="agent-panel agent-chat-panel flex min-h-0 flex-col border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
-          <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-4 dark:border-slate-700">
-            <div className="flex min-w-0 items-center gap-3">
-              <Tooltip title="会话记录">
-                <Button
-                  className="agent-history-button"
-                  type="text"
-                  icon={<HistoryOutlined />}
-                  aria-label="打开会话记录"
-                  onClick={() => setSessionDrawerOpen(true)}
-                />
-              </Tooltip>
-              <div className="flex size-10 shrink-0 items-center justify-center bg-blue-600 text-white"><RobotOutlined /></div>
-              <div className="min-w-0">
-                <h2 className="truncate text-base font-semibold text-slate-900 dark:text-slate-100">{activeSession?.title || '新对话'}</h2>
-              </div>
-            </div>
-            <Tooltip title="刷新会话">
-              <Button icon={<ReloadOutlined />} aria-label="刷新会话" onClick={() => void loadSessions()} />
-            </Tooltip>
-          </header>
-
           <div className="agent-message-scroll min-h-[360px] flex-1 overflow-y-auto px-5 py-5">
-            {historyLoading ? (
-              <div className="flex h-full items-center justify-center"><Spin /></div>
-            ) : messages.length === 0 ? (
-              <div className="flex h-full min-h-[320px] flex-col items-center justify-center text-center">
+            {messages.length === 0 ? (
+              <div className="agent-empty-state flex h-full min-h-[320px] flex-col items-center justify-center text-center">
                 <MessageOutlined className="text-3xl text-[var(--text-muted)]" />
                 <div className="mt-3 text-sm text-slate-500">发送消息开始新对话</div>
               </div>
             ) : (
-              <div className="space-y-4">
+              <div className="agent-message-list space-y-4">
                 {messages.map((item, index) => (
                   <div key={`${item.taskId ?? index}-${item.role}`} className={`flex ${item.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`agent-message-bubble max-w-[84%] border px-4 py-3 ${
+                    <div className={`agent-message-bubble ${item.role === 'user' ? 'agent-message-user' : 'agent-message-assistant'} max-w-[84%] border px-4 py-3 ${
                       item.role === 'user'
                         ? 'border-blue-600 bg-blue-600 text-white'
                         : 'border-slate-200 bg-slate-50 text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100'
                     }`}>
-                      <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
-                        <strong>{item.role === 'user' ? currentUserName : '策略 Agent'}</strong>
+                      <div className="agent-message-meta mb-2 flex flex-wrap items-center gap-2 text-xs">
+                        <strong>{item.role === 'user' ? '当前用户' : '策略 Agent'}</strong>
                         {item.status && <Tag color={statusColor(item.status)}>{item.status}</Tag>}
-                        {item.createdAt && <span className={item.role === 'user' ? 'text-blue-100' : 'text-slate-500'}>{formatDateTime(item.createdAt)}</span>}
+                        {item.createdAt && <span className={item.role === 'user' ? 'text-blue-100' : 'text-slate-500'}>{formatMessageTime(item.createdAt)}</span>}
                       </div>
                       {item.role === 'assistant' ? (
                         <AgentMarkdown content={item.content} />
@@ -418,19 +340,21 @@ const AgentConversation: React.FC = () => {
           <footer className="agent-composer border-t border-slate-200 p-4 dark:border-slate-700">
             <div className="agent-composer-row flex items-end gap-3">
               <Input.TextArea
+                className="agent-question-input"
                 ref={inputRef}
                 value={question}
                 onChange={(event) => setQuestion(ownerId, event.target.value)}
-                autoSize={{ minRows: 2, maxRows: 5 }}
+                autoSize={{ minRows: 1, maxRows: 4 }}
                 onPressEnter={(event) => {
                   if (!event.shiftKey) {
                     event.preventDefault();
                     void submit();
                   }
                 }}
-                placeholder="询问行情、收益、交易记录、模型预测、运行异常或代码问题"
+                placeholder="输入问题"
               />
               <Button
+                className="agent-send-button"
                 type="primary"
                 icon={<SendOutlined />}
                 loading={loading}
@@ -468,57 +392,9 @@ const AgentConversation: React.FC = () => {
         </aside>
 
       </div>
-
-      <Drawer
-        className="agent-session-drawer"
-        title="会话记录"
-        placement="left"
-        width="min(88vw, 340px)"
-        open={sessionDrawerOpen}
-        onClose={() => setSessionDrawerOpen(false)}
-        afterOpenChange={(open) => {
-          if (!open) inputRef.current?.focus();
-        }}
-        extra={(
-          <Tooltip title="新建会话">
-            <Button
-              type="text"
-              icon={<PlusOutlined />}
-              aria-label="新建会话"
-              onClick={() => {
-                resetConversation(ownerId);
-                setSessionDrawerOpen(false);
-              }}
-            />
-          </Tooltip>
-        )}
-      >
-        <div className="agent-session-drawer-list">
-          {sessionsLoading ? (
-            <div className="flex justify-center py-8"><Spin /></div>
-          ) : sessions.length === 0 ? (
-            <div className="px-3 py-8 text-center text-sm text-slate-500">暂无历史会话</div>
-          ) : sessions.map((item) => (
-            <button
-              key={item.sessionId}
-              type="button"
-              onClick={() => {
-                setSessionDrawerOpen(false);
-                void loadHistory(item.sessionId);
-              }}
-              className={`agent-session-drawer-item ${item.sessionId === sessionId ? 'is-active' : ''}`}
-            >
-              <div className="truncate text-sm font-medium">{item.title}</div>
-              <div className="mt-1 flex items-center gap-1 text-xs text-slate-500">
-                <ClockCircleOutlined />{formatDateTime(item.updatedAt)}
-              </div>
-            </button>
-          ))}
-        </div>
-      </Drawer>
     </div>
   );
 };
 
 export default AgentConversation;
-// AI_GENERATE_END------------------------
+// AI_GENERATE_END---------------------------

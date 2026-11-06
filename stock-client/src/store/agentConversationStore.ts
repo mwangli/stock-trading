@@ -1,5 +1,6 @@
-// AI_GENERATE_START-----
+// AI_GENERATE_START------
 import { create } from 'zustand';
+import { createJSONStorage, persist } from 'zustand/middleware';
 
 export interface AgentConversationMessage {
   role: 'user' | 'assistant';
@@ -38,32 +39,48 @@ const emptyConversation = {
   loading: false,
 };
 
-export const useAgentConversationStore = create<AgentConversationState>((set) => ({
-  ownerId: null,
-  ...emptyConversation,
-  activateOwner: (ownerId) => set((state) => state.ownerId === ownerId
-    ? state
-    : { ownerId, ...emptyConversation }),
-  setAgentOpen: (ownerId, agentOpen) => set((state) => state.ownerId === ownerId
-    ? { agentOpen }
-    : state),
-  setSessionId: (ownerId, sessionId) => set((state) => state.ownerId === ownerId
-    ? { sessionId }
-    : state),
-  setQuestion: (ownerId, question) => set((state) => state.ownerId === ownerId
-    ? { question }
-    : state),
-  appendMessage: (ownerId, nextMessage) => set((state) => state.ownerId === ownerId
-    ? { messages: [...state.messages, nextMessage] }
-    : state),
-  replaceConversation: (ownerId, sessionId, messages) => set((state) => state.ownerId === ownerId
-    ? { sessionId, messages, agentOpen: true, question: '', loading: false }
-    : state),
-  resetConversation: (ownerId) => set((state) => state.ownerId === ownerId
-    ? { ...emptyConversation }
-    : state),
-  setLoading: (ownerId, loading) => set((state) => state.ownerId === ownerId
-    ? { loading }
-    : state),
-}));
-// AI_GENERATE_END-----
+const AGENT_CONVERSATION_STORAGE_KEY = 'stock-console.agent-conversation.v1';
+
+export const useAgentConversationStore = create<AgentConversationState>()(
+  persist(
+    (set) => ({
+      ownerId: null,
+      ...emptyConversation,
+      activateOwner: (ownerId) => set((state) => state.ownerId === ownerId
+        ? state
+        : { ownerId, ...emptyConversation }),
+      setAgentOpen: (ownerId, agentOpen) => set((state) => state.ownerId === ownerId
+        ? { agentOpen }
+        : state),
+      setSessionId: (ownerId, sessionId) => set((state) => state.ownerId === ownerId
+        ? { sessionId }
+        : state),
+      setQuestion: (ownerId, question) => set((state) => state.ownerId === ownerId
+        ? { question }
+        : state),
+      appendMessage: (ownerId, nextMessage) => set((state) => state.ownerId === ownerId
+        ? { messages: [...state.messages, nextMessage] }
+        : state),
+      replaceConversation: (ownerId, sessionId, messages) => set((state) => state.ownerId === ownerId
+        ? { sessionId, messages, agentOpen: true, question: '', loading: false }
+        : state),
+      resetConversation: (ownerId) => set((state) => state.ownerId === ownerId
+        ? { ...emptyConversation }
+        : state),
+      setLoading: (ownerId, loading) => set((state) => state.ownerId === ownerId
+        ? { loading }
+        : state),
+    }),
+    {
+      name: AGENT_CONVERSATION_STORAGE_KEY,
+      storage: createJSONStorage(() => window.sessionStorage),
+      partialize: (state) => ({
+        ownerId: state.ownerId,
+        sessionId: state.sessionId,
+        question: state.question,
+        messages: state.messages,
+      }),
+    },
+  ),
+);
+// AI_GENERATE_END------

@@ -72,7 +72,7 @@ flowchart LR
   J --> DOC[/app/documents/]
 ```
 
-控制台通过 `STOCK_TRADING_VAR_DIR=/data/stock-trading` 对齐 Python 的 `data/`。本地默认值仍是历史路径 `D:/stock-trading4/var`，跨分支本地开发时应显式覆盖为实际 Python `data` 目录。
+控制台通过 `STOCK_TRADING_DATA_DIR=/data/stock-trading` 对齐 Python 的 `data/`。本地默认值为 `D:/stock-trading4/data`，跨分支本地开发时可显式覆盖为实际 Python `data` 目录。
 
 ## 失败边界
 

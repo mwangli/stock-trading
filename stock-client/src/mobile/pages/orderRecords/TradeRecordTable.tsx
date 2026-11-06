@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----------
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dayjs from 'dayjs';
 import { Button, DatePicker, Empty, Input, Pagination, Space, Spin, Table, Typography } from 'antd';
@@ -79,9 +79,12 @@ const timestamp = (value?: string) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 const percent = (value?: number) => value == null ? '-' : `${(Number(value) * 100).toFixed(2)}%`;
+const signedPercent = (value?: number) => value == null
+  ? '-'
+  : `${value >= 0 ? '+' : ''}${percent(value)}`;
 const days = (value?: number) => value == null ? '-' : `${Math.trunc(Number(value))} 天`;
-const compactDateTime = (value?: string) => value && dayjs(value).isValid()
-  ? dayjs(value).format('MM-DD HH:mm')
+const compactDate = (value?: string) => value && dayjs(value).isValid()
+  ? dayjs(value).format('YYYY-MM-DD')
   : '-';
 const dailyReturn = (returnRate: number, holdingDays?: number) => {
   if (!holdingDays || holdingDays <= 0 || returnRate <= -1) return returnRate;
@@ -95,6 +98,7 @@ const TradeRecordTable: React.FC = () => {
   const [filters, setFilters] = useState<TradeFilters>(defaultFilters);
   const [records, setRecords] = useState<TradeRecord[]>([]);
   const [page, setPage] = useState<PageState>({ current: 1, pageSize: 10, total: 0 });
+  const [cumulativeProfit, setCumulativeProfit] = useState(0);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [isMobile, setIsMobile] = useState(() => (
@@ -171,10 +175,15 @@ const TradeRecordTable: React.FC = () => {
       setRecords((current) => append ? [...current, ...nextRecords] : nextRecords);
       mobileLoadedPageRef.current = append ? targetPage : 1;
       setPage((current) => ({ ...current, total: filteredRecords.length }));
+      setCumulativeProfit(filteredRecords.reduce(
+        (total, item) => total + (item.soldQuantity > 0 ? item.netProfit : 0),
+        0,
+      ));
     } catch (cause) {
       if (!append) {
         setRecords([]);
         setPage((current) => ({ ...current, total: 0 }));
+        setCumulativeProfit(0);
       }
       setError(cause instanceof Error ? cause.message : '交易记录读取失败');
     } finally {
@@ -370,9 +379,16 @@ const TradeRecordTable: React.FC = () => {
           />
         </div>
         <section className="order-records-mobile-lead" aria-label="交易记录摘要">
-          <span>今日交易</span>
-          <strong>{page.total} 笔</strong>
-          <small>按成交时间倒序</small>
+          <div className="order-records-mobile-lead-item">
+            <span>累计交易</span>
+            <strong>{page.total} 笔</strong>
+          </div>
+          <div className="order-records-mobile-lead-item order-records-mobile-lead-result">
+            <span>累计收益</span>
+            <strong className={cumulativeProfit >= 0 ? 'is-up' : 'is-down'}>
+              {signedMoney(cumulativeProfit)}
+            </strong>
+          </div>
         </section>
         <div className="order-records-mobile-list" aria-live="polite">
           {loading && records.length === 0 ? (
@@ -380,24 +396,41 @@ const TradeRecordTable: React.FC = () => {
           ) : records.length > 0 ? (
             <>
               {records.map((item) => (
-                <button
-                  type="button"
+                <article
                   className="order-records-mobile-row"
                   key={item.tradeKey}
-                  aria-label={localizedText(`查看 ${item.stockName || item.stockCode}（${item.stockCode}）详情`, `View details for ${item.stockName || item.stockCode} (${item.stockCode})`)}
-                  onClick={() => openTradeDetail(item)}
                 >
                   <span className="order-records-mobile-row-main">
                     <strong>{item.stockName || item.stockCode || '-'}</strong>
-                    <small>{item.stockCode} · {item.soldQuantity > 0 ? '卖出' : '持仓'} · {compactDateTime(item.lastSellTime ?? item.buyTime)}</small>
+                    <small>{item.stockCode}</small>
+                  </span>
+                  <span className="order-records-mobile-row-prices">
+                    <span className="order-records-mobile-row-sell-time">
+                      <small>卖出时间</small>
+                      <strong>{item.lastSellTime ? compactDate(item.lastSellTime) : '-'}</strong>
+                    </span>
+                    <span>
+                      <small>买入</small>
+                      <strong>{money(item.buyPrice)}</strong>
+                    </span>
+                    <span>
+                      <small>卖出</small>
+                      <strong>{item.soldQuantity > 0 ? money(item.averageSellPrice) : '-'}</strong>
+                    </span>
+                    <span>
+                      <small>持仓</small>
+                      <strong>{days(item.holdingDays)}</strong>
+                    </span>
                   </span>
                   <span className="order-records-mobile-row-result">
-                    <strong>{money(item.soldQuantity > 0 ? item.sellAmount : item.buyAmount)}</strong>
-                    <small className={item.soldQuantity <= 0 ? 'is-neutral' : item.netProfit >= 0 ? 'is-up' : 'is-down'}>
+                    <strong className={item.soldQuantity <= 0 ? 'is-neutral' : item.netProfit >= 0 ? 'is-up' : 'is-down'}>
                       {item.soldQuantity > 0 ? signedMoney(item.netProfit) : '持仓中'}
+                    </strong>
+                    <small className={item.soldQuantity <= 0 ? 'is-neutral' : item.netProfit >= 0 ? 'is-up' : 'is-down'}>
+                      {item.soldQuantity > 0 ? signedPercent(item.dailyReturnRate) : '-'}
                     </small>
                   </span>
-                </button>
+                </article>
               ))}
               {(records.length < page.total || loadingMore) && (
                 <div
@@ -434,4 +467,4 @@ const TradeRecordTable: React.FC = () => {
 };
 
 export default TradeRecordTable;
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----------

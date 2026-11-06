@@ -1,0 +1,278 @@
+<!-- AI_GENERATE_START- -->
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>收益总览移动端方案预览</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --canvas: #eaf0f7;
+      --panel: #ffffff;
+      --panel-soft: #f5f8fc;
+      --line: #cdd8e7;
+      --line-strong: #aebed3;
+      --text: #132035;
+      --secondary: #586982;
+      --muted: #8190a5;
+      --brand: #2463c5;
+      --brand-soft: #e9f1ff;
+      --up: #dc2626;
+      --down: #059669;
+      --shadow: 0 16px 42px rgba(31, 49, 75, 0.13);
+      font-family: "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+    }
+
+    body[data-theme="dark"] {
+      color-scheme: dark;
+      --canvas: #070d18;
+      --panel: #0c1526;
+      --panel-soft: #111d31;
+      --line: #263750;
+      --line-strong: #3a4d68;
+      --text: #edf3ff;
+      --secondary: #aebbd0;
+      --muted: #73829a;
+      --brand: #4b88f7;
+      --brand-soft: #10274c;
+      --up: #fb5b5b;
+      --down: #27c58a;
+      --shadow: 0 18px 48px rgba(0, 0, 0, 0.34);
+    }
+
+    * { box-sizing: border-box; }
+    html, body { min-height: 100%; margin: 0; }
+    body { background: var(--canvas); color: var(--text); }
+    button { color: inherit; font: inherit; }
+
+    .demo-shell { min-height: 100vh; padding: 22px 22px 42px; }
+    .demo-toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      max-width: 1640px;
+      min-height: 64px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      margin: 0 auto 22px;
+      padding: 10px 14px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: color-mix(in srgb, var(--panel) 94%, transparent);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(12px);
+    }
+    .demo-title strong { display: block; font-size: 16px; }
+    .demo-title span { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; }
+    .demo-actions { display: flex; align-items: center; gap: 8px; }
+    .segmented { display: flex; gap: 3px; padding: 3px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel-soft); }
+    .segmented button, .theme-button {
+      min-height: 34px;
+      border: 0;
+      border-radius: 3px;
+      padding: 0 11px;
+      background: transparent;
+      color: var(--secondary);
+      cursor: pointer;
+    }
+    .segmented button.is-active { background: var(--brand); color: #fff; }
+    .theme-button { border: 1px solid var(--line); background: var(--panel-soft); }
+    .theme-button:focus-visible, .segmented button:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+
+    .demo-grid {
+      display: grid;
+      max-width: 1640px;
+      grid-template-columns: repeat(4, minmax(300px, 1fr));
+      gap: 18px;
+      margin: 0 auto;
+      align-items: start;
+    }
+    .demo-option { min-width: 0; }
+    .demo-option.is-hidden { display: none; }
+    .demo-grid.is-single { grid-template-columns: minmax(300px, 420px); justify-content: center; }
+    .option-head { display: flex; min-height: 58px; align-items: flex-end; justify-content: space-between; gap: 10px; padding: 0 4px 9px; }
+    .option-head strong { font-size: 14px; }
+    .option-head span { color: var(--muted); font-size: 10px; text-align: right; }
+    .recommended { display: inline-flex; margin-left: 6px; padding: 2px 6px; border-radius: 3px; background: var(--brand-soft); color: var(--brand); font-size: 9px; vertical-align: 1px; }
+
+    .phone {
+      width: 100%;
+      min-height: 690px;
+      overflow: hidden;
+      border: 1px solid var(--line-strong);
+      border-radius: 7px;
+      background: var(--canvas);
+      box-shadow: var(--shadow);
+    }
+    .phone-header { height: 94px; border-bottom: 1px solid var(--line); background: var(--panel); }
+    .phone-status { display: flex; height: 28px; align-items: center; justify-content: space-between; padding: 0 12px; color: var(--secondary); font: 9px/1 Consolas, monospace; }
+    .phone-title { display: flex; height: 66px; align-items: center; justify-content: space-between; padding: 0 12px; }
+    .phone-title h2 { margin: 0; font-size: 18px; line-height: 1.2; }
+    .phone-title p { margin: 4px 0 0; color: var(--muted); font-size: 10px; }
+    .phone-actions { display: flex; align-items: center; gap: 16px; color: var(--brand); font-size: 18px; }
+    .avatar { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 50%; background: var(--brand-soft); font-size: 16px; }
+
+    .band { border-bottom: 1px solid var(--line); background: var(--panel); }
+    .hero { padding: 18px 12px; }
+    .eyebrow, .metric-label { color: var(--muted); font-size: 10px; }
+    .hero-value { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-top: 8px; }
+    .hero-value strong { overflow: hidden; font: 700 27px/1.1 Consolas, "Microsoft YaHei", monospace; text-overflow: ellipsis; white-space: nowrap; }
+    .hero-value span { font: 700 11px/1 Consolas, monospace; white-space: nowrap; }
+    .up { color: var(--up) !important; }
+    .down { color: var(--down) !important; }
+
+    .metric-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .metric { min-width: 0; min-height: 78px; padding: 13px 10px; border-right: 1px solid var(--line); }
+    .metric:last-child { border-right: 0; }
+    .metric strong { display: block; overflow: hidden; margin-top: 8px; font: 700 14px/1.1 Consolas, monospace; text-overflow: ellipsis; white-space: nowrap; }
+    .metric small { display: block; margin-top: 6px; color: var(--muted); font: 9px/1 Consolas, monospace; }
+
+    .section { margin-top: 10px; border-block: 1px solid var(--line); background: var(--panel); }
+    .section-title { display: flex; min-height: 46px; align-items: center; justify-content: space-between; padding: 0 12px; border-bottom: 1px solid var(--line); }
+    .section-title strong { font-size: 13px; }
+    .section-title span { color: var(--muted); font-size: 9px; }
+    .summary-row { display: flex; min-height: 58px; align-items: center; justify-content: space-between; gap: 12px; padding: 0 12px; border-bottom: 1px solid var(--line); }
+    .summary-row:last-child { border-bottom: 0; }
+    .summary-row > span:first-child { color: var(--secondary); font-size: 11px; }
+    .summary-value { display: flex; align-items: baseline; gap: 10px; font-family: Consolas, monospace; }
+    .summary-value strong { font-size: 11px; }
+    .summary-value small { font-size: 9px; }
+
+    .quality-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .quality-item { min-height: 70px; padding: 13px 12px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+    .quality-item:nth-child(2n) { border-right: 0; }
+    .quality-item:nth-last-child(-n+2) { border-bottom: 0; }
+    .quality-item span { color: var(--muted); font-size: 10px; }
+    .quality-item strong { display: block; margin-top: 7px; font: 700 16px/1 Consolas, monospace; }
+
+    .allocation { padding: 15px 12px 17px; }
+    .allocation-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+    .allocation-head span { color: var(--secondary); font-size: 11px; }
+    .allocation-head strong { font: 700 12px/1 Consolas, monospace; }
+    .allocation-bar { display: grid; height: 9px; grid-template-columns: 69.4% 30.6%; overflow: hidden; margin-top: 12px; border: 1px solid var(--line); border-radius: 2px; background: var(--panel-soft); }
+    .allocation-bar span:first-child { background: var(--brand); }
+    .allocation-bar span:last-child { background: var(--line-strong); }
+    .allocation-legend { display: flex; align-items: center; justify-content: space-between; margin-top: 9px; color: var(--muted); font-size: 9px; }
+
+    .chart-panel { padding: 14px 12px 10px; }
+    .chart-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .chart-head strong { font-size: 12px; }
+    .periods { display: flex; gap: 3px; }
+    .periods span { padding: 3px 6px; border-radius: 2px; color: var(--muted); font-size: 8px; }
+    .periods .active { background: var(--brand-soft); color: var(--brand); }
+    .chart-wrap { position: relative; height: 138px; margin-top: 10px; }
+    .chart-zero { position: absolute; top: 67px; right: 0; left: 0; border-top: 1px dashed var(--line-strong); }
+    .chart-svg { position: relative; z-index: 1; display: block; width: 100%; height: 112px; }
+    .chart-axis { display: flex; justify-content: space-between; color: var(--muted); font: 8px/1 Consolas, monospace; }
+    .chart-note { display: flex; justify-content: space-between; margin-top: 8px; color: var(--muted); font-size: 9px; }
+
+    .page-note { max-width: 1640px; margin: 18px auto 0; color: var(--muted); font-size: 10px; text-align: center; }
+
+    @media (max-width: 1340px) { .demo-grid { grid-template-columns: repeat(2, minmax(300px, 1fr)); } }
+    @media (max-width: 760px) {
+      .demo-shell { padding: 10px 10px 32px; }
+      .demo-toolbar { position: static; align-items: stretch; flex-direction: column; margin-bottom: 12px; }
+      .demo-actions { align-items: stretch; flex-direction: column; }
+      .segmented { overflow-x: auto; }
+      .segmented button { flex: 0 0 auto; }
+      .demo-grid { grid-template-columns: 1fr; }
+      .phone { min-height: 650px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="demo-shell">
+    <header class="demo-toolbar">
+      <div class="demo-title">
+        <strong>收益总览移动端 · 4 套方案</strong>
+        <span>同一组数据对比信息层级，正式页面不会被修改</span>
+      </div>
+      <div class="demo-actions">
+        <div class="segmented" role="group" aria-label="筛选预览方案">
+          <button type="button" class="is-active" data-filter="all">全部</button>
+          <button type="button" data-filter="core">核心绩效</button>
+          <button type="button" data-filter="account">资金账户</button>
+          <button type="button" data-filter="curve">收益曲线</button>
+          <button type="button" data-filter="quality">交易质量</button>
+        </div>
+        <button type="button" class="theme-button" id="themeButton" aria-label="切换亮色或暗色主题">切换暗色</button>
+      </div>
+    </header>
+
+    <div class="demo-grid">
+      <article class="demo-option" data-demo="core">
+        <div class="option-head"><strong>方案一 · 核心绩效<span class="recommended">推荐</span></strong><span>账户数据缺失时仍有内容</span></div>
+        <section class="phone" aria-label="核心绩效方案预览">
+          <header class="phone-header"><div class="phone-status"><span>14:36</span><span>5G&nbsp;&nbsp;92%</span></div><div class="phone-title"><div><h2>收益总览</h2><p>全额成本 · 账户与收益</p></div><div class="phone-actions"><span>☾</span><span class="avatar">♙</span></div></div></header>
+          <div class="band hero"><span class="eyebrow">累计收益</span><div class="hero-value"><strong class="up">+¥31,680.00</strong><span class="up">+8.20%</span></div></div>
+          <div class="band metric-grid">
+            <div class="metric"><span class="metric-label">累计交易</span><strong>192 笔</strong><small>已完成 192</small></div>
+            <div class="metric"><span class="metric-label">交易胜率</span><strong>61.30%</strong><small>盈利 118 笔</small></div>
+            <div class="metric"><span class="metric-label">平均收益率</span><strong class="up">+1.82%</strong><small>单笔平均</small></div>
+          </div>
+          <div class="section"><div class="section-title"><strong>收益摘要</strong><span>全额成本</span></div><div class="summary-row"><span>今日收益</span><span class="summary-value up"><strong>+¥4,286.20</strong><small>+1.11%</small></span></div><div class="summary-row"><span>本月收益</span><span class="summary-value up"><strong>+¥18,942.60</strong><small>+4.73%</small></span></div><div class="summary-row"><span>累计收益</span><span class="summary-value up"><strong>+¥31,680.00</strong><small>+8.20%</small></span></div></div>
+          <div class="section"><div class="section-title"><strong>收益区间</strong><span>历史交易</span></div><div class="quality-grid"><div class="quality-item"><span>最佳收益率</span><strong class="up">+14.20%</strong></div><div class="quality-item"><span>最差收益率</span><strong class="down">-9.60%</strong></div><div class="quality-item"><span>盈利交易</span><strong>118</strong></div><div class="quality-item"><span>亏损交易</span><strong>74</strong></div></div></div>
+        </section>
+      </article>
+
+      <article class="demo-option" data-demo="account">
+        <div class="option-head"><strong>方案二 · 资金账户</strong><span>突出资金结构与使用率</span></div>
+        <section class="phone" aria-label="资金账户方案预览">
+          <header class="phone-header"><div class="phone-status"><span>14:36</span><span>5G&nbsp;&nbsp;92%</span></div><div class="phone-title"><div><h2>收益总览</h2><p>全额成本 · 账户与收益</p></div><div class="phone-actions"><span>☾</span><span class="avatar">♙</span></div></div></header>
+          <div class="band hero"><span class="eyebrow">账户总资产</span><div class="hero-value"><strong>¥414,230.00</strong><span class="up">累计 +¥31,680.00</span></div></div>
+          <div class="band allocation"><div class="allocation-head"><span>资产配置</span><strong>持仓 69.4% · 现金 30.6%</strong></div><div class="allocation-bar"><span></span><span></span></div><div class="allocation-legend"><span>持仓市值 ¥287,430.00</span><span>可用资金 ¥126,800.00</span></div></div>
+          <div class="section"><div class="section-title"><strong>收益摘要</strong><span>账户口径</span></div><div class="summary-row"><span>今日收益</span><span class="summary-value up"><strong>+¥4,286.20</strong><small>+1.11%</small></span></div><div class="summary-row"><span>本月收益</span><span class="summary-value up"><strong>+¥18,942.60</strong><small>+4.73%</small></span></div><div class="summary-row"><span>累计收益</span><span class="summary-value up"><strong>+¥31,680.00</strong><small>+8.20%</small></span></div></div>
+          <div class="section"><div class="section-title"><strong>资金状态</strong><span>当前</span></div><div class="quality-grid"><div class="quality-item"><span>资金使用率</span><strong>69.40%</strong></div><div class="quality-item"><span>现金比例</span><strong>30.60%</strong></div><div class="quality-item"><span>冻结资金</span><strong>¥0.00</strong></div><div class="quality-item"><span>总交易</span><strong>192 笔</strong></div></div></div>
+        </section>
+      </article>
+
+      <article class="demo-option" data-demo="curve">
+        <div class="option-head"><strong>方案三 · 有效收益曲线</strong><span>保留图表但补足业务含义</span></div>
+        <section class="phone" aria-label="收益曲线方案预览">
+          <header class="phone-header"><div class="phone-status"><span>14:36</span><span>5G&nbsp;&nbsp;92%</span></div><div class="phone-title"><div><h2>收益总览</h2><p>全额成本 · 账户与收益</p></div><div class="phone-actions"><span>☾</span><span class="avatar">♙</span></div></div></header>
+          <div class="band hero"><span class="eyebrow">累计收益</span><div class="hero-value"><strong class="up">+¥31,680.00</strong><span class="up">+8.20%</span></div></div>
+          <div class="band chart-panel"><div class="chart-head"><strong>近 30 日累计收益</strong><div class="periods"><span>7日</span><span class="active">30日</span><span>90日</span></div></div><div class="chart-wrap"><div class="chart-zero"></div><svg class="chart-svg" viewBox="0 0 320 112" role="img" aria-label="近30日累计收益曲线"><polyline points="0,86 28,80 55,82 82,68 110,72 138,52 165,57 193,38 220,42 248,25 276,30 320,12" fill="none" stroke="var(--brand)" stroke-width="2.5" /><circle cx="320" cy="12" r="4" fill="var(--brand)" /><line x1="0" y1="86" x2="320" y2="86" stroke="var(--line)" /><line x1="0" y1="50" x2="320" y2="50" stroke="var(--line)" /></svg><div class="chart-axis"><span>10-08</span><span>10-23</span><span>11-06</span></div></div><div class="chart-note"><span>区间最低 +¥18,240</span><span class="up">区间最高 +¥31,680</span></div></div>
+          <div class="section"><div class="section-title"><strong>收益摘要</strong><span>30日趋势</span></div><div class="summary-row"><span>今日收益</span><span class="summary-value up"><strong>+¥4,286.20</strong><small>+1.11%</small></span></div><div class="summary-row"><span>本月收益</span><span class="summary-value up"><strong>+¥18,942.60</strong><small>+4.73%</small></span></div><div class="summary-row"><span>累计收益</span><span class="summary-value up"><strong>+¥31,680.00</strong><small>+8.20%</small></span></div></div>
+        </section>
+      </article>
+
+      <article class="demo-option" data-demo="quality">
+        <div class="option-head"><strong>方案四 · 交易质量</strong><span>适合策略复盘与评估</span></div>
+        <section class="phone" aria-label="交易质量方案预览">
+          <header class="phone-header"><div class="phone-status"><span>14:36</span><span>5G&nbsp;&nbsp;92%</span></div><div class="phone-title"><div><h2>收益总览</h2><p>全额成本 · 账户与收益</p></div><div class="phone-actions"><span>☾</span><span class="avatar">♙</span></div></div></header>
+          <div class="band hero"><span class="eyebrow">累计收益</span><div class="hero-value"><strong class="up">+¥31,680.00</strong><span class="up">+8.20%</span></div></div>
+          <div class="band quality-grid"><div class="quality-item"><span>已完成交易</span><strong>192 笔</strong></div><div class="quality-item"><span>交易胜率</span><strong>61.30%</strong></div><div class="quality-item"><span>平均收益率</span><strong class="up">+1.82%</strong></div><div class="quality-item"><span>盈利 / 亏损</span><strong>118 / 74</strong></div><div class="quality-item"><span>最佳收益率</span><strong class="up">+14.20%</strong></div><div class="quality-item"><span>最差收益率</span><strong class="down">-9.60%</strong></div></div>
+          <div class="section"><div class="section-title"><strong>收益摘要</strong><span>策略绩效</span></div><div class="summary-row"><span>今日收益</span><span class="summary-value up"><strong>+¥4,286.20</strong><small>+1.11%</small></span></div><div class="summary-row"><span>本月收益</span><span class="summary-value up"><strong>+¥18,942.60</strong><small>+4.73%</small></span></div><div class="summary-row"><span>累计收益</span><span class="summary-value up"><strong>+¥31,680.00</strong><small>+8.20%</small></span></div></div>
+        </section>
+      </article>
+    </div>
+    <p class="page-note">该页面仅用于方案比较，所有数据均为静态演示数据。</p>
+  </main>
+
+  <script>
+    const filterButtons = [...document.querySelectorAll('[data-filter]')];
+    const demoOptions = [...document.querySelectorAll('[data-demo]')];
+    const demoGrid = document.querySelector('.demo-grid');
+    const themeButton = document.getElementById('themeButton');
+
+    filterButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const target = button.dataset.filter;
+        filterButtons.forEach((item) => item.classList.toggle('is-active', item === button));
+        demoOptions.forEach((item) => item.classList.toggle('is-hidden', target !== 'all' && item.dataset.demo !== target));
+        demoGrid.classList.toggle('is-single', target !== 'all');
+      });
+    });
+
+    themeButton.addEventListener('click', () => {
+      const dark = document.body.dataset.theme !== 'dark';
+      document.body.dataset.theme = dark ? 'dark' : 'light';
+      themeButton.textContent = dark ? '切换亮色' : '切换暗色';
+    });
+  </script>
+</body>
+</html>
+<!-- AI_GENERATE_END- -->

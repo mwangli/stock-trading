@@ -46,7 +46,7 @@ services:
       SPRING_PROFILES_ACTIVE: prod
       CONSOLE_USERNAME: ${CONSOLE_USERNAME:-admin}
       CONSOLE_PASSWORD_HASH: ${CONSOLE_PASSWORD_HASH:?CONSOLE_PASSWORD_HASH is required}
-      STOCK_TRADING_VAR_DIR: /data/stock-trading
+      STOCK_TRADING_DATA_DIR: /data/stock-trading
       STOCK_TASK_LOG: /root/stock-trading/logs/run.log
       STOCK_DOCUMENT_ROOTS: /app/documents
       AGENT_ENABLED: ${AGENT_ENABLED:-true}

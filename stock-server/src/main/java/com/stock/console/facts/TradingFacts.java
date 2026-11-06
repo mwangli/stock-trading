@@ -1,4 +1,4 @@
-// AI_GENERATE_START -------------------
+// AI_GENERATE_START ---------------------
 package com.stock.console.facts;
 
 import com.stock.console.config.ConsoleProperties;
@@ -16,6 +16,7 @@ import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -538,8 +539,7 @@ public class TradingFacts {
             String sql,
             int limit,
             List<Object> parameters) throws SQLException {
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setMaxRows(Math.max(1, Math.min(limit, 500)));
+        try (PreparedStatement statement = connection.prepareStatement(sql + "\nLIMIT ?")) {
             for (int index = 0; index < parameters.size(); index++) {
                 Object value = parameters.get(index);
                 if (value instanceof LocalDate date) {
@@ -548,6 +548,7 @@ public class TradingFacts {
                     statement.setObject(index + 1, value);
                 }
             }
+            statement.setInt(parameters.size() + 1, normalizeLimit(limit));
             try (ResultSet resultSet = statement.executeQuery()) {
                 return rows(resultSet);
             }
@@ -555,12 +556,16 @@ public class TradingFacts {
     }
 
     private List<Map<String, Object>> query(Connection connection, String sql, int limit) throws SQLException {
-        try (Statement statement = connection.createStatement()) {
-            statement.setMaxRows(Math.max(1, Math.min(limit, 500)));
-            try (ResultSet resultSet = statement.executeQuery(sql)) {
+        try (PreparedStatement statement = connection.prepareStatement(sql + "\nLIMIT ?")) {
+            statement.setInt(1, normalizeLimit(limit));
+            try (ResultSet resultSet = statement.executeQuery()) {
                 return rows(resultSet);
             }
         }
+    }
+
+    private int normalizeLimit(int limit) {
+        return Math.max(1, Math.min(limit, 500));
     }
 
     private List<Map<String, Object>> rows(ResultSet resultSet) throws SQLException {
@@ -639,14 +644,17 @@ public class TradingFacts {
         for (Map<String, Object> row : rows) {
             LocalDate buyDate = tradeDate(row, "buy_date", "buy_time");
             LocalDate sellDate = tradeDate(row, "sell_date", "sell_time");
-            if (buyDate == null || sellDate == null || sellDate.isBefore(buyDate) || tradingDates.isEmpty()) {
+            if (buyDate == null || sellDate == null || sellDate.isBefore(buyDate)) {
                 row.put("holding_days", null);
                 continue;
             }
-            int holdingDays = (int) tradingDates.stream()
+            long tradingDayCount = tradingDates.stream()
                     .filter(date -> date.isAfter(buyDate) && !date.isAfter(sellDate))
                     .count();
-            row.put("holding_days", holdingDays);
+            long holdingDays = tradingDayCount > 0 || buyDate.equals(sellDate)
+                    ? tradingDayCount
+                    : ChronoUnit.DAYS.between(buyDate, sellDate);
+            row.put("holding_days", Math.toIntExact(holdingDays));
         }
         return rows;
     }
@@ -711,4 +719,4 @@ public class TradingFacts {
         return message == null || message.isBlank() ? "SQLite 数据源无法读取" : message;
     }
 }
-// AI_GENERATE_END -------------------
+// AI_GENERATE_END ---------------------
