@@ -1,4 +1,4 @@
-// AI_GENERATE_START -------
+// AI_GENERATE_START --------
 import React, { type ReactNode, useEffect, useState } from 'react';
 import { Alert, Descriptions, Drawer } from 'antd';
 import { useTranslation } from 'react-i18next';
@@ -19,7 +19,7 @@ export interface StockDetail {
   totalMarketValue?: number;
   turnoverRate?: number;
   volumeRatio?: number;
-  industryCode?: number;
+  securityCategory?: string;
   listedDate?: string;
   updateTime?: string;
 }
@@ -49,11 +49,12 @@ const MARKET_LABELS: Record<string, [string, string]> = {
   BJ: ['北京', 'Beijing'],
 };
 
-const SECURITY_CATEGORY_LABELS: Record<number, [string, string]> = {
-  0: ['深市主板', 'Shenzhen Main Board'],
-  2: ['深市主板（原中小板）', 'Shenzhen Main Board'],
-  9: ['沪市主板', 'Shanghai Main Board'],
-  18: ['创业板', 'ChiNext'],
+const SECURITY_CATEGORY_LABELS: Record<string, [string, string]> = {
+  主板: ['主板', 'Main Board'],
+  创业板: ['创业板', 'ChiNext'],
+  科创板: ['科创板', 'STAR Market'],
+  北交所: ['北交所', 'Beijing Stock Exchange'],
+  CDR: ['CDR', 'CDR'],
 };
 
 const compactAmountFormatters = {
@@ -73,10 +74,10 @@ const formatMarket = (value?: string) => {
   return labels ? localizedText(labels[0], labels[1]) : value;
 };
 
-const formatSecurityCategory = (value?: number) => {
-  if (value == null) return '-';
+const formatSecurityCategory = (value?: string) => {
+  if (!value) return '-';
   const labels = SECURITY_CATEGORY_LABELS[value];
-  return labels ? localizedText(labels[0], labels[1]) : localizedText(`其他类别（${value}）`, `Other (${value})`);
+  return labels ? localizedText(labels[0], labels[1]) : value;
 };
 
 const formatCompactAmount = (value?: number) => value == null
@@ -182,8 +183,14 @@ const StockDetailDrawer: React.FC<StockDetailDrawerProps> = ({ stock, onClose })
           changeAmount: close != null && preclose != null ? close - preclose : undefined,
           changePercent: close != null && preclose ? ((close - preclose) / preclose) * 100 : undefined,
           volume: latest?.volume == null ? undefined : Number(latest.volume),
-          listedDate: instrument?.as_of_date == null ? undefined : String(instrument.as_of_date),
-          updateTime: latest?.trade_date == null ? undefined : String(latest.trade_date),
+          totalMarketValue: instrument?.total_market_value == null ? undefined : Number(instrument.total_market_value),
+          turnoverRate: instrument?.turnover_rate == null ? undefined : Number(instrument.turnover_rate),
+          volumeRatio: instrument?.volume_ratio == null ? undefined : Number(instrument.volume_ratio),
+          securityCategory: instrument?.market_category == null ? undefined : String(instrument.market_category),
+          listedDate: instrument?.listed_date == null ? undefined : String(instrument.listed_date),
+          updateTime: instrument?.update_time == null
+            ? (latest?.trade_date == null ? undefined : String(latest.trade_date))
+            : String(instrument.update_time),
         };
         if (active) {
           stockDetailCache.set(stockCode, resolvedDetail);
@@ -265,7 +272,7 @@ const StockDetailDrawer: React.FC<StockDetailDrawerProps> = ({ stock, onClose })
                 labelStyle={{ width: 112 }}
                 items={[
                   { key: 'market', label: t('marketPage.details.market'), children: formatMarket(detail.market) },
-                  { key: 'category', label: t('marketPage.details.category'), children: formatSecurityCategory(detail.industryCode) },
+                  { key: 'category', label: t('marketPage.details.category'), children: formatSecurityCategory(detail.securityCategory) },
                   { key: 'changeAmount', label: t('marketPage.details.changeAmount'), children: formatNumber(detail.changeAmount, 3) },
                   { key: 'marketCap', label: t('marketPage.details.marketCap'), children: <span title={formatFullAmount(detail.totalMarketValue)}>{formatCompactAmount(detail.totalMarketValue)}</span> },
                   { key: 'turnover', label: t('marketPage.details.turnover'), children: formatPercent(detail.turnoverRate) },
@@ -283,4 +290,4 @@ const StockDetailDrawer: React.FC<StockDetailDrawerProps> = ({ stock, onClose })
 };
 
 export default StockDetailDrawer;
-// AI_GENERATE_END -------
+// AI_GENERATE_END --------
