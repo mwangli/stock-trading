@@ -1,4 +1,4 @@
-// AI_GENERATE_START --
+// AI_GENERATE_START ---
 import React, {
   useRef,
   useState,
@@ -182,7 +182,7 @@ const MobileLayout: React.FC = () => {
               </Tooltip>
               <div className="min-w-0 flex-1">
                 <div className="app-page-title truncate">{pageTitles[location.pathname] ?? t('layout.title')}</div>
-                <div className="truncate text-xs text-[var(--text-muted)]">{pageHeader?.subtitle ?? 'Stock Operations Console'}</div>
+                <div className="app-header-subtitle truncate text-xs text-[var(--text-muted)]">{pageHeader?.subtitle ?? 'Stock Operations Console'}</div>
               </div>
             </div>
             <div className="app-header-tools">
@@ -223,8 +223,25 @@ const MobileLayout: React.FC = () => {
               </motion.div>
             </AnimatePresence>
           </Content>
+          <nav className="app-mobile-bottom-nav" aria-label="主要页面">
+            {menuItems.map((item) => {
+              const active = item.key === location.pathname;
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  className={`app-mobile-bottom-nav-item${active ? ' is-active' : ''}`}
+                  aria-current={active ? 'page' : undefined}
+                  onClick={() => selectPage(item.key)}
+                >
+                  <span className="app-mobile-bottom-nav-icon" aria-hidden="true">{item.icon}</span>
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+          </nav>
         </Layout>
-        <Drawer rootClassName="app-mobile-navigation-drawer" title={t('layout.title')} placement="left" size="40vw" open={navigationOpen} onClose={() => setNavigationOpen(false)}>
+        <Drawer rootClassName="app-mobile-navigation-drawer" title={t('layout.title')} placement="left" size="min(82vw, 300px)" open={navigationOpen} onClose={() => setNavigationOpen(false)}>
           <Menu
             className="app-mobile-navigation-menu"
             selectedKeys={[location.pathname]}
@@ -241,4 +258,4 @@ const MobileLayout: React.FC = () => {
 };
 
 export default MobileLayout;
-// AI_GENERATE_END --
+// AI_GENERATE_END ---

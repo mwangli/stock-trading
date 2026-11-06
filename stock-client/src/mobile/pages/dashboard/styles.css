@@ -1,4 +1,4 @@
-/* Hallmark · checked: 2026-11-02 · app screen · Blue Ledger · AI_GENERATE_START - */
+/* Hallmark · checked: 2026-11-02 · app screen · Blue Ledger · AI_GENERATE_START -- */
 .returns-overview-page { gap: 12px; }
 .returns-overview-mobile-lead { display: none; }
 .returns-overview-page .surface-card { overflow: hidden; }
@@ -33,16 +33,19 @@
 .dashboard-ranking-card { margin-top: 0; }
 
 @media (max-width: 991px) {
-  .returns-overview-page { gap: 0; padding-bottom: 28px; }
-  .returns-overview-mobile-lead { display: flex; min-height: 148px; flex-direction: column; justify-content: center; border-bottom: 1px solid var(--border-color); padding: 20px 16px; background: var(--panel-bg); }
+  .returns-overview-page { gap: 0; padding-bottom: 12px; }
+  .returns-overview-mobile-lead { display: flex; min-height: 136px; flex-direction: column; justify-content: center; border-bottom: 1px solid var(--border-color); padding: 16px; background: var(--panel-bg); }
   .returns-overview-mobile-lead > span { color: var(--text-muted); font-size: 11px; }
-  .returns-overview-mobile-lead > strong { margin-top: 8px; color: var(--text-primary); font-size: 26px; font-weight: 680; font-variant-numeric: tabular-nums; }
-  .returns-overview-mobile-lead > div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; margin-top: 16px; color: var(--text-secondary); font-size: 11px; }
-  .returns-overview-mobile-lead b { margin-left: 4px; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .returns-overview-mobile-lead > strong { margin-top: 6px; color: var(--text-primary); font-size: 28px; font-weight: 680; font-variant-numeric: tabular-nums; }
+  .returns-overview-mobile-meta { display: grid; margin-top: 14px; border-top: 1px solid var(--border-soft); padding-top: 12px; color: var(--text-secondary); font-size: 11px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .returns-overview-mobile-meta > span { display: flex; min-width: 0; flex-direction: column; gap: 3px; padding-right: 8px; }
+  .returns-overview-mobile-meta > span + span { border-left: 1px solid var(--border-soft); padding-left: 10px; }
+  .returns-overview-mobile-meta small { overflow: hidden; color: var(--text-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+  .returns-overview-mobile-meta b { overflow: hidden; font-size: 12px; font-weight: 650; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
   .returns-overview-metric-grid { margin-top: 12px; border-inline: 0; }
+  .returns-overview-metric-grid > .ant-col:nth-child(-n + 2) { display: none; }
   .returns-overview-metric-grid > .ant-col:nth-child(2n) .returns-overview-metric-card { border-right: 0 !important; }
-  .returns-overview-metric-grid > .ant-col:nth-child(-n + 2) .returns-overview-metric-card { border-bottom: 1px solid var(--border-color) !important; }
-  .returns-overview-metric-card .ant-card-body { min-height: 88px; padding: 16px; }
+  .returns-overview-metric-card .ant-card-body { min-height: 92px; padding: 14px 16px; }
   .returns-overview-summary-card { margin-top: 12px; border-block: 1px solid var(--border-color) !important; border-radius: 0 !important; }
   .returns-overview-summary-card .ant-card-head-wrapper { align-items: flex-start; flex-direction: column; gap: 8px; }
   .returns-overview-summary-card .ant-card-extra { margin-inline-start: 0; padding-top: 0; }
@@ -54,4 +57,4 @@
 @media (prefers-reduced-motion: reduce) {
   .returns-overview-page * { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
 }
-/* AI_GENERATE_END - */
+/* AI_GENERATE_END -- */

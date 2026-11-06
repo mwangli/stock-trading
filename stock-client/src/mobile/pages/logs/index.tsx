@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START -------
 import './styles.css';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Tag } from 'antd';
@@ -25,6 +25,11 @@ let globalLogError = '';
 
 const MAX_LOG_LINES = 1000;
 const BOTTOM_FOLLOW_THRESHOLD = 24;
+const logTone = (line: string) => {
+  if (/\|\s*ERROR\s*\|/.test(line)) return ' is-error';
+  if (/\|\s*WARN(?:ING)?\s*\|/.test(line)) return ' is-warning';
+  return '';
+};
 
 const Logs: React.FC = () => {
   const { t } = useTranslation();
@@ -94,9 +99,13 @@ const Logs: React.FC = () => {
   useEffect(() => {
     const container = logsContainerRef.current;
     if (container && mobileFollowRef.current) {
-      container.scrollTop = container.scrollHeight;
-      setShowScrollToBottom(false);
+      const frame = window.requestAnimationFrame(() => {
+        container.scrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
+        setShowScrollToBottom(false);
+      });
+      return () => window.cancelAnimationFrame(frame);
     }
+    return undefined;
   }, [logs]);
 
   const handleLogsScroll = useCallback(() => {
@@ -114,7 +123,7 @@ const Logs: React.FC = () => {
     if (!container) return;
 
     mobileFollowRef.current = true;
-    container.scrollTop = container.scrollHeight;
+    container.scrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
     setShowScrollToBottom(false);
   }, []);
 
@@ -177,7 +186,7 @@ const Logs: React.FC = () => {
           {logs.map((log, index) => (
             <div
               key={`${index}-${log.slice(0, 16)}`}
-              className="logs-line"
+              className={`logs-line${logTone(log)}`}
             >
               <span className="logs-line-content">{logSearch.renderHighlightedLine(log, index)}</span>
             </div>
@@ -189,4 +198,4 @@ const Logs: React.FC = () => {
 };
 
 export default Logs;
-// AI_GENERATE_END -----
+// AI_GENERATE_END -------

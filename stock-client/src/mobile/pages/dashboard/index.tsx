@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 import './styles.css';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Card, Col, Empty, Row, Statistic, Table, Tag, Typography } from 'antd';
@@ -315,12 +315,13 @@ const Dashboard: React.FC = () => {
   return (
     <div className="app-page returns-overview-page">
       <section className="returns-overview-mobile-lead" aria-label={t('dashboard.title')}>
-        <span>{t('dashboard.cards.positionValue')}</span>
-        <strong>{money(account?.totalPosition)}</strong>
-        <div>
-          <span>{t('dashboard.cards.availableCash')} <b>{cashMoney(account?.availableCash)}</b></span>
+        <span>{t('dashboard.cards.totalAssets')}</span>
+        <strong>{money(account?.totalAssets)}</strong>
+        <div className="returns-overview-mobile-meta">
+          <span><small>{t('dashboard.cards.availableCash')}</small><b>{cashMoney(account?.availableCash)}</b></span>
+          <span><small>{t('dashboard.cards.positionValue')}</small><b>{money(account?.totalPosition)}</b></span>
           <Text type={profitColor(performance?.cumulativeProfit)}>
-            {t('dashboard.cards.realizedRate')} <b>{percent(performance?.cumulativeReturnRate)}</b>
+            <small>{t('dashboard.cards.realizedRate')}</small><b>{percent(performance?.cumulativeReturnRate)}</b>
           </Text>
         </div>
       </section>
@@ -396,4 +397,4 @@ const Dashboard: React.FC = () => {
 };
 
 export default Dashboard;
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----
