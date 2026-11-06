@@ -20,7 +20,7 @@
 Agent 基于交易数据库、任务状态、模型结果和项目文档进行只读分析，回答会区分事实、推断与不确定项，并标注数据来源。
 
 <p align="center">
-  <img src="documents/images/readme/pc-agent-conversation.png" alt="PC 端 Agent 智能对话" width="80%" />
+  <img src="https://raw.githubusercontent.com/mwangli/stock-trading/stock-web/documents/images/readme/pc-agent-conversation.png" alt="PC 端 Agent 智能对话" width="80%" />
 </p>
 
 ### 文档工作台
@@ -28,7 +28,7 @@ Agent 基于交易数据库、任务状态、模型结果和项目文档进行�
 内置文档工作台集中呈现系统架构、业务设计、代码说明、部署运维和架构决策，并提供目录导航、章节索引与源码关联入口。
 
 <p align="center">
-  <img src="documents/images/readme/pc-documentation.png" alt="PC 端文档工作台" width="80%" />
+  <img src="https://raw.githubusercontent.com/mwangli/stock-trading/stock-web/documents/images/readme/pc-documentation.png" alt="PC 端文档工作台" width="80%" />
 </p>
 
 ### 运行状态与日志
@@ -36,7 +36,7 @@ Agent 基于交易数据库、任务状态、模型结果和项目文档进行�
 深色主题适合长时间查看任务状态和实时日志，辅助定位数据、模型与调度链路中的异常。
 
 <p align="center">
-  <img src="documents/images/readme/pc-console-dark.png" alt="PC 端深色运行日志" width="80%" />
+  <img src="https://raw.githubusercontent.com/mwangli/stock-trading/stock-web/documents/images/readme/pc-console-dark.png" alt="PC 端深色运行日志" width="80%" />
 </p>
 
 ## 移动端体验
@@ -51,10 +51,10 @@ Agent 基于交易数据库、任务状态、模型结果和项目文档进行�
     <td width="25%" align="center"><strong>运行日志</strong></td>
   </tr>
   <tr>
-    <td width="25%" valign="top" align="center"><img src="documents/images/readme/mobile-dashboard.png" alt="移动端收益总览" width="88%" /></td>
-    <td width="25%" valign="top" align="center"><img src="documents/images/readme/mobile-trades.png" alt="移动端交易记录" width="88%" /></td>
-    <td width="25%" valign="top" align="center"><img src="documents/images/readme/mobile-agent.png" alt="移动端 Agent 智能对话" width="88%" /></td>
-    <td width="25%" valign="top" align="center"><img src="documents/images/readme/mobile-logs.png" alt="移动端运行日志" width="88%" /></td>
+    <td width="25%" valign="top" align="center"><img src="https://raw.githubusercontent.com/mwangli/stock-trading/stock-web/documents/images/readme/mobile-dashboard.png" alt="移动端收益总览" width="88%" /></td>
+    <td width="25%" valign="top" align="center"><img src="https://raw.githubusercontent.com/mwangli/stock-trading/stock-web/documents/images/readme/mobile-trades.png" alt="移动端交易记录" width="88%" /></td>
+    <td width="25%" valign="top" align="center"><img src="https://raw.githubusercontent.com/mwangli/stock-trading/stock-web/documents/images/readme/mobile-agent.png" alt="移动端 Agent 智能对话" width="88%" /></td>
+    <td width="25%" valign="top" align="center"><img src="https://raw.githubusercontent.com/mwangli/stock-trading/stock-web/documents/images/readme/mobile-logs.png" alt="移动端运行日志" width="88%" /></td>
   </tr>
 </table>
 
