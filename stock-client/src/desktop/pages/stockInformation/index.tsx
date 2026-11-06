@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START ---
 import './styles.css';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Button, Card, Empty, Input, Pagination, Skeleton, Table, Tooltip, Typography } from 'antd';
@@ -19,7 +19,9 @@ interface ActiveStockItem {
   price?: number;
   changePercent?: number;
   volume?: number;
+  volumeDisplay?: string;
   amount?: number;
+  amountDisplay?: string;
   updateTime?: string;
 }
 
@@ -78,7 +80,9 @@ const StockInformation: React.FC = () => {
         price: toNumber(item.price),
         changePercent: toNumber(item.change_percent),
         volume: toNumber(item.volume),
+        volumeDisplay: toText(item.volume_display),
         amount: toNumber(item.amount),
+        amountDisplay: toText(item.amount_display),
         updateTime: toText(item.update_time),
       })));
       setPagination({ current: stockPage.page, pageSize: stockPage.pageSize, total: stockPage.total });
@@ -115,8 +119,26 @@ const StockInformation: React.FC = () => {
       align: 'right',
       render: (value?: number) => <Text type={changeType(value)}>{formatPercent(value)}</Text>,
     },
-    { title: t('stockInformation.columns.volume'), dataIndex: 'volume', key: 'volume', width: 150, align: 'right', render: formatQuantity },
-    { title: t('stockInformation.columns.amount'), dataIndex: 'amount', key: 'amount', width: 180, align: 'right', render: formatAmount },
+    {
+      title: t('stockInformation.columns.volume'),
+      dataIndex: 'volume',
+      key: 'volume',
+      width: 130,
+      align: 'right',
+      render: (value: number | undefined, item: ActiveStockItem) => (
+        <span title={formatQuantity(value)}>{item.volumeDisplay || formatQuantity(value)}</span>
+      ),
+    },
+    {
+      title: t('stockInformation.columns.amount'),
+      dataIndex: 'amount',
+      key: 'amount',
+      width: 140,
+      align: 'right',
+      render: (value: number | undefined, item: ActiveStockItem) => (
+        <span title={formatAmount(value)}>{item.amountDisplay || formatAmount(value)}</span>
+      ),
+    },
     { title: t('stockInformation.columns.updateTime'), dataIndex: 'updateTime', key: 'updateTime', width: 180, align: 'center', render: formatDateTime },
   ];
 
@@ -207,8 +229,8 @@ const StockInformation: React.FC = () => {
                   </span>
                 </div>
                 <dl className="stock-information-mobile-details">
-                  <div><dt>{t('stockInformation.columns.volume')}</dt><dd>{formatQuantity(stock.volume)}</dd></div>
-                  <div><dt>{t('stockInformation.columns.amount')}</dt><dd>{formatAmount(stock.amount)}</dd></div>
+                  <div><dt>{t('stockInformation.columns.volume')}</dt><dd>{stock.volumeDisplay || formatQuantity(stock.volume)}</dd></div>
+                  <div><dt>{t('stockInformation.columns.amount')}</dt><dd>{stock.amountDisplay || formatAmount(stock.amount)}</dd></div>
                   <div><dt>{t('stockInformation.columns.updateTime')}</dt><dd>{formatDateTime(stock.updateTime)}</dd></div>
                 </dl>
               </article>
@@ -234,4 +256,4 @@ const StockInformation: React.FC = () => {
 };
 
 export default StockInformation;
-// AI_GENERATE_END -
+// AI_GENERATE_END ---

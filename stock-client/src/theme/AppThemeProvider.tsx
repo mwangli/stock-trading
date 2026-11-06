@@ -1,5 +1,5 @@
-// AI_GENERATE_START-----------------
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+// AI_GENERATE_START------------------
+import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { App as AntdApp, ConfigProvider, theme } from 'antd';
 
 export type ThemeMode = 'light' | 'dark';
@@ -10,6 +10,7 @@ interface ThemePalette {
   panelMuted: string;
   border: string;
   textPrimary: string;
+  textSecondary: string;
   brand: string;
   brandSoft: string;
   rowHover: string;
@@ -30,6 +31,7 @@ const THEME_PALETTES: Record<ThemeMode, ThemePalette> = {
     panelMuted: '#edf3fa',
     border: '#d9e2ee',
     textPrimary: '#172033',
+    textSecondary: '#5b687c',
     brand: '#2563eb',
     brandSoft: '#e8f1ff',
     rowHover: '#f0f6ff',
@@ -40,6 +42,7 @@ const THEME_PALETTES: Record<ThemeMode, ThemePalette> = {
     panelMuted: '#111c2e',
     border: '#253047',
     textPrimary: '#eef4ff',
+    textSecondary: '#a9b6ca',
     brand: '#3b82f6',
     brandSoft: 'rgba(59, 130, 246, 0.14)',
     rowHover: '#111c2e',
@@ -119,7 +122,7 @@ export const AppThemeProvider: React.FC<React.PropsWithChildren> = ({ children }
     }
   }, [mode]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     document.documentElement.dataset.theme = mode;
     delete document.documentElement.dataset.themePreset;
   }, [mode]);
@@ -169,6 +172,7 @@ export const AppThemeProvider: React.FC<React.PropsWithChildren> = ({ children }
             Card: { headerHeight: 48 },
             Table: {
               headerBg: palette.panelMuted,
+              headerColor: palette.textSecondary,
               rowHoverBg: palette.rowHover,
             },
             Menu: {
@@ -198,4 +202,4 @@ export const useAppTheme = (): AppThemeContextValue => {
   }
   return context;
 };
-// AI_GENERATE_END-----------------
+// AI_GENERATE_END------------------

@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START ------
 import './styles.css';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Card, Col, Empty, Row, Statistic, Table, Tag, Typography } from 'antd';
@@ -120,6 +120,11 @@ const profitColor = (value?: number): 'success' | 'danger' => value != null && v
 const numeric = (value: unknown) => value == null || value === '' ? 0 : Number(value);
 const optionalNumeric = (value: unknown) => value == null || value === '' ? undefined : Number(value);
 const text = (value: unknown) => value == null ? '' : String(value);
+const stockLabel = (item: PerformanceDailyReturnItem) => {
+  const stockCode = item.stockCode.trim();
+  const stockName = item.stockName?.trim();
+  return stockName && stockName !== stockCode ? `${stockCode} ${stockName}` : stockCode || stockName || '-';
+};
 const dailyReturnRate = (returnRate: number, holdingDays?: number) => (
   holdingDays != null && holdingDays > 1 && returnRate > -1
     ? Math.pow(1 + returnRate, 1 / holdingDays) - 1
@@ -233,7 +238,7 @@ const adaptDashboardOverview = (overview: DashboardOverview): PerformanceOvervie
     dailyReturns: performanceRows.map((item) => ({
       period: text(item.business_date),
       stockCode: text(item.scenario || item.model_version_id || 'LIVE'),
-      stockName: text(item.scenario),
+      stockName: text(item.stock_name),
       netProfit: numeric(item.net_pnl),
       buyAmount: numeric(item.cash),
       sellAmount: numeric(item.equity),
@@ -301,7 +306,7 @@ const Dashboard: React.FC = () => {
 
   const dailyReturnColumns = [
     { title: t('dashboard.columns.period'), dataIndex: 'period', key: 'period' },
-    { title: t('dashboard.columns.stock'), key: 'stock', render: (_value: unknown, item: PerformanceDailyReturnItem) => `${item.stockCode} ${item.stockName ?? ''}` },
+    { title: t('dashboard.columns.stock'), key: 'stock', render: (_value: unknown, item: PerformanceDailyReturnItem) => stockLabel(item) },
     { title: t('dashboard.columns.buyAmount'), dataIndex: 'buyAmount', key: 'buyAmount', render: money },
     { title: t('dashboard.columns.sellAmount'), dataIndex: 'sellAmount', key: 'sellAmount', render: money },
     { title: t('dashboard.columns.netProfit'), dataIndex: 'netProfit', key: 'netProfit', render: (value: number) => <Text type={profitColor(value)}>{money(value)}</Text> },
@@ -361,8 +366,12 @@ const Dashboard: React.FC = () => {
         title={t('dashboard.sections.returnStats')}
         extra={(
           <div className="returns-overview-summary-extra">
-            <Tag color="red">{t('dashboard.sections.best')} {percent(performance?.bestReturnRate)}</Tag>
-            <Tag color="green">{t('dashboard.sections.worst')} {percent(performance?.worstReturnRate)}</Tag>
+            <Tag className="returns-overview-extreme-tag is-profit">
+              {t('dashboard.sections.best')} {percent(performance?.bestReturnRate)}
+            </Tag>
+            <Tag className="returns-overview-extreme-tag is-loss">
+              {t('dashboard.sections.worst')} {percent(performance?.worstReturnRate)}
+            </Tag>
           </div>
         )}
       >
@@ -396,4 +405,4 @@ const Dashboard: React.FC = () => {
 };
 
 export default Dashboard;
-// AI_GENERATE_END ----
+// AI_GENERATE_END ------

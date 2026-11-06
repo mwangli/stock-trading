@@ -1,11 +1,15 @@
-/* AI_GENERATE_START --------- */
+/* AI_GENERATE_START ------------ */
 .app-header {
-  min-height: calc(70px + env(safe-area-inset-top));
-  padding: env(safe-area-inset-top) 8px 0 12px;
+  min-height: calc(64px + env(safe-area-inset-top));
+  padding: env(safe-area-inset-top) 4px 0;
 }
 
 .app-header-identity,
-.app-header-tools { min-height: 58px; }
+.app-header-tools {
+  min-height: 64px;
+  align-items: center;
+}
+.app-header-identity { gap: 2px; }
 
 .app-header-identity > .ant-btn,
 .app-header-tools > .ant-btn {
@@ -14,8 +18,62 @@
   height: 44px;
 }
 
-.app-header-subtitle { display: block; margin-top: 3px; font-size: 10px !important; line-height: 1.35; }
 .app-page-title { font-size: 18px; line-height: 1.3; }
+
+.app-mobile-navigation-button {
+  flex: 0 0 44px;
+  padding: 0 !important;
+  color: var(--text-secondary) !important;
+}
+
+.app-mobile-navigation-button:hover,
+.app-mobile-navigation-button[aria-expanded='true'] {
+  background: var(--brand-soft) !important;
+  color: var(--brand) !important;
+}
+
+.app-mobile-navigation-popover {
+  width: min(360px, calc(100vw - 16px));
+  min-width: 0 !important;
+}
+
+.app-mobile-navigation-popover .ant-dropdown-menu {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--panel-bg);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.16);
+}
+
+.app-mobile-navigation-popover .ant-dropdown-menu-item {
+  display: flex;
+  min-width: 0;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 20px;
+  text-align: center;
+  white-space: normal;
+}
+
+.app-mobile-navigation-popover .ant-dropdown-menu-item:hover {
+  background: var(--panel-muted) !important;
+  color: var(--text-primary) !important;
+}
+
+.app-mobile-navigation-popover .ant-dropdown-menu-item-selected {
+  background: var(--brand-soft) !important;
+  color: var(--brand) !important;
+  font-weight: 700;
+}
 
 .app-content {
   position: relative;
@@ -79,4 +137,4 @@
   margin: 4px 0;
   border-color: var(--border-color);
 }
-/* AI_GENERATE_END --------- */
+/* AI_GENERATE_END ------------ */

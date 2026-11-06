@@ -1,4 +1,4 @@
-/* AI_GENERATE_START - */
+/* AI_GENERATE_START -- */
 .trade-record-demo-page { gap: 16px; }
 .trade-demo-intro { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
 .trade-demo-intro .ant-card-body { display: flex; width: 100%; align-items: flex-start; justify-content: space-between; gap: 24px; }
@@ -13,9 +13,8 @@
 .demo-selection-copy strong { color: var(--text-primary); font-size: 14px; }
 .demo-preview-card .ant-card-body { padding: 0; }
 .demo-preview-card .ant-card-head { margin-bottom: 0; }
-.demo-table .ant-table-thead > tr > th { height: 44px; background: var(--panel-muted); color: var(--text-secondary); }
+.demo-table .ant-table-thead > tr > th { height: 44px; color: var(--text-secondary); }
 .demo-table .ant-table-tbody > tr > td { height: 58px; padding-top: 9px; padding-bottom: 9px; }
-.demo-table .ant-table-tbody > tr:hover > td { background: var(--brand-soft) !important; }
 .demo-table .demo-number-cell { text-align: right !important; font-variant-numeric: tabular-nums; }
 .demo-stock-cell { display: flex; min-width: 0; flex-direction: column; align-items: flex-start; gap: 3px; line-height: 1.3; }
 .demo-stock-cell strong { color: var(--text-primary); font-size: 13px; }
@@ -63,4 +62,4 @@
   .review-trade { grid-template-columns: 1fr; gap: 16px; padding: 16px; }
   .review-trade-summary { grid-column: auto; }
 }
-/* AI_GENERATE_END - */
+/* AI_GENERATE_END -- */

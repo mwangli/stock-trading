@@ -1,13 +1,10 @@
-// AI_GENERATE_START --------
+// AI_GENERATE_START ---------
 import './styles.css';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Card, Col, Empty, Row, Statistic, Table, Tag, Typography } from 'antd';
-import ReactECharts from 'echarts-for-react';
-import type { EChartsOption } from 'echarts';
 import request from '@shared/utils/request';
 import type { ApiResponse } from '@shared/utils/api';
 import { formatDateTime } from '@shared/utils/dateTime';
-import { useAppTheme } from '@shared/theme/AppThemeProvider';
 import { usePageHeader } from '../../layouts/PageHeaderContext';
 import { useTranslation } from 'react-i18next';
 
@@ -96,19 +93,6 @@ interface PerformanceOverview {
   dailyReturns: PerformanceDailyReturnItem[];
   monthlyReturns: PerformancePeriodItem[];
 }
-
-type TrendPeriod = 7 | 30 | 90;
-
-interface TrendPoint {
-  period: string;
-  dailyProfit: number;
-}
-
-const TREND_PERIODS: TrendPeriod[] = [7, 30, 90];
-const EMPTY_TREND_POINTS: TrendPoint[] = [
-  { period: '', dailyProfit: 0 },
-  { period: ' ', dailyProfit: 0 },
-];
 
 interface DashboardOverview {
   account: Record<string, unknown>;
@@ -267,11 +251,9 @@ const adaptDashboardOverview = (overview: DashboardOverview): PerformanceOvervie
 
 const Dashboard: React.FC = () => {
   const { t } = useTranslation();
-  const { mode } = useAppTheme();
   const [account, setAccount] = useState<BrokerAccount | null>(null);
   const [performance, setPerformance] = useState<PerformanceOverview | null>(null);
   const [loading, setLoading] = useState(false);
-  const [trendPeriod, setTrendPeriod] = useState<TrendPeriod>(30);
 
   const loadBrokerData = useCallback(async () => {
     setLoading(true);
@@ -301,85 +283,11 @@ const Dashboard: React.FC = () => {
     void loadBrokerData();
   }, [loadBrokerData]);
 
-  const trendPoints = useMemo<TrendPoint[]>(() => {
-    const profitsByDate = new Map<string, number>();
-    (performance?.dailyReturns ?? []).forEach((item) => {
-      const period = item.period.slice(0, 10);
-      if (!period) return;
-      profitsByDate.set(period, (profitsByDate.get(period) ?? 0) + item.netProfit);
-    });
-
-    return Array.from(profitsByDate.entries())
-      .sort(([left], [right]) => left.localeCompare(right))
-      .slice(-trendPeriod)
-      .map(([period, profit]) => ({ period, dailyProfit: profit }));
-  }, [performance?.dailyReturns, trendPeriod]);
-
-  const trendChartPoints = useMemo(
-    () => trendPoints.length > 0 ? trendPoints : EMPTY_TREND_POINTS,
-    [trendPoints],
-  );
-  const trendValues = useMemo(
-    () => trendChartPoints.map((item) => item.dailyProfit),
-    [trendChartPoints],
-  );
-  const trendMinimum = trendPoints.length > 0 ? Math.min(...trendValues) : undefined;
-  const trendMaximum = trendPoints.length > 0 ? Math.max(...trendValues) : undefined;
-
-  const trendOption = useMemo<EChartsOption>(() => ({
-    animation: false,
-    backgroundColor: 'transparent',
-    grid: { left: 4, right: 4, top: 12, bottom: 24, containLabel: false },
-    tooltip: {
-      trigger: 'axis',
-      confine: true,
-      backgroundColor: mode === 'dark' ? '#111827' : '#ffffff',
-      borderColor: mode === 'dark' ? '#334155' : '#cbd5e1',
-      textStyle: { color: mode === 'dark' ? '#f8fafc' : '#172033', fontSize: 11 },
-      valueFormatter: (value) => signedMoney(Number(value)),
-    },
-    xAxis: {
-      type: 'category',
-      boundaryGap: true,
-      data: trendChartPoints.map((item) => item.period),
-      axisLine: { show: true, lineStyle: { color: mode === 'dark' ? '#26344a' : '#d5deea' } },
-      axisTick: { show: false },
-      axisLabel: {
-        color: mode === 'dark' ? '#8190a8' : '#7a879b',
-        fontSize: 9,
-        interval: (index: number) => index === 0
-          || index === Math.floor((trendChartPoints.length - 1) / 2)
-          || index === trendChartPoints.length - 1,
-        formatter: (value: string) => value.slice(5),
-        hideOverlap: true,
-      },
-    },
-    yAxis: {
-      type: 'value',
-      scale: false,
-      show: false,
-    },
-    series: [{
-      name: '每日收益',
-      type: 'bar',
-      data: trendValues,
-      barMaxWidth: 18,
-      barMinHeight: 1,
-      itemStyle: {
-        color: ({ value }) => Number(value) < 0
-          ? mode === 'dark' ? '#34d399' : '#059669'
-          : mode === 'dark' ? '#f87171' : '#dc2626',
-      },
-      emphasis: { disabled: true },
-      markLine: {
-        silent: true,
-        symbol: 'none',
-        label: { show: false },
-        lineStyle: { color: mode === 'dark' ? '#334155' : '#d7dee9', type: 'dashed', width: 1 },
-        data: [{ yAxis: 0 }],
-      },
-    }],
-  }), [mode, trendChartPoints, trendValues]);
+  const positionValue = Math.max(0, account?.totalPosition ?? 0);
+  const cashValue = Math.max(0, account?.availableCash ?? 0);
+  const allocatedAssets = positionValue + cashValue;
+  const positionAllocation = allocatedAssets > 0 ? positionValue / allocatedAssets : 0;
+  const cashAllocation = allocatedAssets > 0 ? cashValue / allocatedAssets : 0;
 
   const rankingColumns = [
     { title: t('dashboard.columns.stockCode'), dataIndex: 'stockCode', key: 'stockCode', width: 110 },
@@ -417,49 +325,60 @@ const Dashboard: React.FC = () => {
   return (
     <div className="app-page returns-overview-page">
       <section className="returns-overview-mobile-dashboard" aria-label="收益总览" aria-busy={loading}>
-        <div className="returns-overview-mobile-hero">
-          <span className="returns-overview-mobile-label">累计收益</span>
-          <div className="returns-overview-mobile-hero-value">
-            <strong className={trendClass(performance?.cumulativeProfit)}>{signedMoney(performance?.cumulativeProfit)}</strong>
-            <span className={trendClass(performance?.cumulativeReturnRate)}>{signedPercent(performance?.cumulativeReturnRate)}</span>
+        <div className="returns-overview-mobile-account">
+          <div className="returns-overview-mobile-hero">
+            <span className="returns-overview-mobile-label">账户总资产</span>
+            <div className="returns-overview-mobile-hero-value">
+              <strong>{money(account?.totalAssets)}</strong>
+              <span className={trendClass(performance?.cumulativeProfit)}>
+                累计 {signedMoney(performance?.cumulativeProfit)}
+              </span>
+            </div>
+          </div>
+          <div className="returns-overview-mobile-allocation">
+            <header>
+              <span>资产配置</span>
+              <strong>持仓 {percent(positionAllocation)} · 现金 {percent(cashAllocation)}</strong>
+            </header>
+            <div className="returns-overview-mobile-allocation-bar" aria-label="资产配置比例">
+              <span style={{ width: percent(positionAllocation) }} />
+            </div>
+            <footer>
+              <span>持仓市值 {money(account?.totalPosition)}</span>
+              <span>可用资金 {money(account?.availableCash)}</span>
+            </footer>
           </div>
         </div>
 
-        <div className="returns-overview-mobile-trend">
+        <div className="returns-overview-mobile-range">
           <header>
-            <strong>近 {trendPeriod} 日每日收益</strong>
-            <div className="returns-overview-mobile-trend-periods" role="group" aria-label="收益曲线周期">
-              {TREND_PERIODS.map((periodValue) => (
-                <button
-                  key={periodValue}
-                  type="button"
-                  className={trendPeriod === periodValue ? 'is-active' : ''}
-                  aria-pressed={trendPeriod === periodValue}
-                  onClick={() => setTrendPeriod(periodValue)}
-                >
-                  {periodValue}日
-                </button>
-              ))}
-            </div>
+            <strong>收益区间</strong>
+            <span>历史交易</span>
           </header>
-          <ReactECharts
-            className="returns-overview-mobile-chart"
-            option={trendOption}
-            notMerge
-            lazyUpdate
-            opts={{ renderer: 'canvas' }}
-            aria-label={`近 ${trendPeriod} 日每日收益柱状图`}
-          />
-          <footer>
-            <span>单日最低 {signedMoney(trendMinimum)}</span>
-            <span className={trendClass(trendMaximum)}>单日最高 {signedMoney(trendMaximum)}</span>
-          </footer>
+          <div className="returns-overview-mobile-range-grid">
+            <div>
+              <span>最佳收益率</span>
+              <strong className={trendClass(performance?.bestReturnRate)}>{signedPercent(performance?.bestReturnRate)}</strong>
+            </div>
+            <div>
+              <span>最差收益率</span>
+              <strong className={trendClass(performance?.worstReturnRate)}>{signedPercent(performance?.worstReturnRate)}</strong>
+            </div>
+            <div>
+              <span>盈利交易</span>
+              <strong>{performance?.winningTradeCount ?? 0}</strong>
+            </div>
+            <div>
+              <span>亏损交易</span>
+              <strong>{performance?.losingTradeCount ?? 0}</strong>
+            </div>
+          </div>
         </div>
 
         <div className="returns-overview-mobile-summary">
           <header>
             <strong>收益摘要</strong>
-            <span>全额成本</span>
+            <span>账户口径</span>
           </header>
           <div className="returns-overview-mobile-summary-row">
             <span>今日收益</span>
@@ -473,6 +392,13 @@ const Dashboard: React.FC = () => {
             <span className={trendClass(performance?.monthlyProfit)}>
               <b>{signedMoney(performance?.monthlyProfit)}</b>
               <small>{signedPercent(performance?.monthlyReturnRate)}</small>
+            </span>
+          </div>
+          <div className="returns-overview-mobile-summary-row">
+            <span>累计收益</span>
+            <span className={trendClass(performance?.cumulativeProfit)}>
+              <b>{signedMoney(performance?.cumulativeProfit)}</b>
+              <small>{signedPercent(performance?.cumulativeReturnRate)}</small>
             </span>
           </div>
         </div>
@@ -549,4 +475,4 @@ const Dashboard: React.FC = () => {
 };
 
 export default Dashboard;
-// AI_GENERATE_END --------
+// AI_GENERATE_END ---------

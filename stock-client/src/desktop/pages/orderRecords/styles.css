@@ -1,4 +1,4 @@
-/* Hallmark · checked: 2026-11-02 · app screen · Blue Ledger · AI_GENERATE_START -- */
+/* Hallmark · checked: 2026-11-02 · app screen · Blue Ledger · AI_GENERATE_START --- */
 .order-records-shell { min-width: 0; overflow: hidden; border-radius: 0 !important; padding: 0 16px 16px; }
 .order-records-shell .ant-tabs-nav { min-height: 52px; margin-bottom: 16px; border-bottom: 1px solid var(--border-color); }
 .order-records-shell .ant-tabs-nav::before { border-bottom: 0; }
@@ -15,9 +15,7 @@
 .order-records-mobile-list,
 .order-records-mobile-load-more { display: none; }
 .order-records-desktop-table { overflow: hidden; border: 1px solid var(--border-color); }
-.order-records-desktop-table .ant-table-thead > tr > th { background: var(--panel-muted) !important; }
 .order-records-desktop-table .ant-table-tbody > tr > td { height: 48px; padding-block: 8px; }
-.order-records-desktop-table .ant-table-tbody > tr:hover > td { background: var(--brand-soft) !important; }
 .trade-records-table .trade-record-number { text-align: right !important; font-variant-numeric: tabular-nums; }
 .order-records-stock-code { min-height: 32px; border: 0; padding: 0; background: transparent; color: var(--brand); font-family: var(--font-mono); font-size: 13px; font-weight: 650; cursor: pointer; }
 .order-records-stock-code:hover { color: color-mix(in srgb, var(--brand) 75%, var(--text-primary)); }
@@ -69,4 +67,4 @@
 @media (prefers-reduced-motion: reduce) {
   .order-records-shell * { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
 }
-/* AI_GENERATE_END -- */
+/* AI_GENERATE_END --- */

@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---------
+// AI_GENERATE_START ------------
 import React, {
   useEffect,
   useRef,
@@ -12,6 +12,7 @@ import { Avatar, Button, Dropdown, Layout, Tooltip, type MenuProps } from 'antd'
 import { useTranslation } from 'react-i18next';
 import {
   CheckOutlined,
+  MenuOutlined,
   MoonOutlined,
   SunOutlined,
   UserOutlined,
@@ -23,6 +24,12 @@ import { PageHeaderContext, type PageHeaderState } from './PageHeaderContext';
 const { Header, Content } = Layout;
 
 const MOBILE_ROUTES = ['/dashboard', '/tradeRecords', '/agentConversation', '/logs'] as const;
+const MOBILE_ROUTE_LABELS: Record<(typeof MOBILE_ROUTES)[number], string> = {
+  '/dashboard': '收益总览',
+  '/tradeRecords': '交易记录',
+  '/agentConversation': '智能分析',
+  '/logs': '运行日志',
+};
 
 const SWIPE_EXCLUSION_SELECTOR = [
   'a',
@@ -63,10 +70,11 @@ const MobileLayout: React.FC = () => {
   const reduceMotion = useReducedMotion();
   const swipeStateRef = useRef<SwipeState | null>(null);
   const edgeFeedbackTimerRef = useRef<number | null>(null);
+  const [navigationMenuOpen, setNavigationMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [swipeDirection, setSwipeDirection] = useState(1);
   const [edgeFeedback, setEdgeFeedback] = useState<EdgeFeedback | null>(null);
-  const [pageHeader, setPageHeader] = useState<PageHeaderState | null>(null);
+  const [, setPageHeader] = useState<PageHeaderState | null>(null);
 
   const pageIndex = MOBILE_ROUTES.findIndex((route) => route === location.pathname);
 
@@ -166,15 +174,50 @@ const MobileLayout: React.FC = () => {
     '/logs': t('layout.pageTitles.logs'),
   };
 
+  const navigationMenuItems: MenuProps['items'] = MOBILE_ROUTES.map((route) => ({
+    key: route,
+    label: MOBILE_ROUTE_LABELS[route],
+  }));
+
+  const handleNavigationMenuClick: MenuProps['onClick'] = ({ key }) => {
+    setNavigationMenuOpen(false);
+    const nextIndex = MOBILE_ROUTES.indexOf(key as (typeof MOBILE_ROUTES)[number]);
+    if (nextIndex >= 0) navigateToPage(nextIndex);
+  };
+
   return (
     <PageHeaderContext.Provider value={setPageHeader}>
       <Layout className="app-shell">
         <Layout className="app-main-layout">
           <Header className="app-header">
             <div className="app-header-identity">
+              <Dropdown
+                rootClassName="app-mobile-navigation-popover"
+                placement="bottomLeft"
+                trigger={['click']}
+                open={navigationMenuOpen}
+                onOpenChange={(open) => {
+                  setNavigationMenuOpen(open);
+                  if (open) setUserMenuOpen(false);
+                }}
+                menu={{
+                  items: navigationMenuItems,
+                  selectedKeys: pageIndex >= 0 ? [location.pathname] : [],
+                  selectable: true,
+                  onClick: handleNavigationMenuClick,
+                }}
+              >
+                <Button
+                  type="text"
+                  className="app-mobile-navigation-button"
+                  icon={<MenuOutlined />}
+                  aria-label="页面菜单"
+                  aria-haspopup="menu"
+                  aria-expanded={navigationMenuOpen}
+                />
+              </Dropdown>
               <div className="min-w-0 flex-1">
                 <div className="app-page-title truncate">{pageTitles[location.pathname] ?? t('layout.title')}</div>
-                <div className="app-header-subtitle truncate text-xs text-[var(--text-muted)]">{pageHeader?.subtitle ?? 'Stock Operations Console'}</div>
               </div>
             </div>
             <div className="app-header-tools">
@@ -186,7 +229,10 @@ const MobileLayout: React.FC = () => {
                 placement="bottomRight"
                 trigger={['click']}
                 open={userMenuOpen}
-                onOpenChange={setUserMenuOpen}
+                onOpenChange={(open) => {
+                  setUserMenuOpen(open);
+                  if (open) setNavigationMenuOpen(false);
+                }}
                 menu={{ items: userMenuItems, selectable: false, onClick: handleUserMenuClick }}
               >
                 <Button
@@ -250,4 +296,4 @@ const MobileLayout: React.FC = () => {
 };
 
 export default MobileLayout;
-// AI_GENERATE_END ---------
+// AI_GENERATE_END ------------

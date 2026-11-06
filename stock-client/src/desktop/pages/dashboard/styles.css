@@ -1,4 +1,4 @@
-/* Hallmark · checked: 2026-11-02 · app screen · Blue Ledger · AI_GENERATE_START - */
+/* Hallmark · checked: 2026-11-02 · app screen · Blue Ledger · AI_GENERATE_START -- */
 .returns-overview-page { gap: 12px; }
 .returns-overview-mobile-lead { display: none; }
 .returns-overview-page .surface-card { overflow: hidden; }
@@ -8,10 +8,9 @@
 .returns-overview-page .ant-statistic-title { margin-bottom: 8px; color: var(--text-muted); font-size: 11px !important; }
 .returns-overview-page .ant-statistic-content { color: var(--text-primary); font-size: 20px !important; line-height: 1.25; font-variant-numeric: tabular-nums; }
 .returns-overview-page .ant-table { font-size: 12px; }
-.returns-overview-page .ant-table-thead > tr > th { background: var(--panel-muted) !important; color: var(--text-secondary); font-weight: 600; }
+.returns-overview-page .ant-table-thead > tr > th { color: var(--text-secondary); font-weight: 600; }
 .returns-overview-page .ant-table-thead > tr > th,
 .returns-overview-page .ant-table-tbody > tr > td { padding: 8px 12px; }
-.returns-overview-page .ant-table-tbody > tr:hover > td { background: var(--brand-soft) !important; }
 .returns-overview-page .ant-pagination { margin-block: 12px 0; }
 .returns-overview-metric-grid { border: 1px solid var(--border-color); background: var(--panel-bg); }
 .returns-overview-metric-grid.ant-row { margin-inline: 0 !important; row-gap: 0 !important; }
@@ -25,6 +24,8 @@
 .returns-overview-summary-card .ant-card-body { padding-block: 12px 16px; }
 .returns-overview-summary-extra { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .returns-overview-summary-extra .ant-tag { margin-inline-end: 0; }
+.returns-overview-extreme-tag.is-profit { border-color: var(--profit-tag-border); background: var(--profit-tag-bg); color: var(--profit-tag-text); }
+.returns-overview-extreme-tag.is-loss { border-color: var(--loss-tag-border); background: var(--loss-tag-bg); color: var(--loss-tag-text); }
 .dashboard-table-row { align-items: stretch; }
 .dashboard-table-col { display: flex; min-width: 0; }
 .dashboard-table-card { display: flex; width: 100%; flex-direction: column; }
@@ -54,4 +55,4 @@
 @media (prefers-reduced-motion: reduce) {
   .returns-overview-page * { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
 }
-/* AI_GENERATE_END - */
+/* AI_GENERATE_END -- */

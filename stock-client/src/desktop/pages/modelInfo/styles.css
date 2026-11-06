@@ -1,14 +1,26 @@
-/* AI_GENERATE_START - */
+/* AI_GENERATE_START ---- */
 .model-info-page { display: grid; gap: 16px; }
 .model-info-summary .ant-card { height: 100%; border-radius: 4px; }
 .model-info-section { min-width: 0; border: 1px solid var(--border-color); background: var(--panel-bg); }
 .model-info-section > h2 { min-height: 48px; margin: 0; padding: 13px 16px; border-bottom: 1px solid var(--border-color); color: var(--text-primary); font-size: 15px; font-weight: 650; }
 .model-info-section .ant-table-wrapper { min-width: 0; }
-.model-info-section .ant-table-thead > tr > th { background: var(--panel-muted) !important; }
+.model-id-button { display: block; width: 100%; overflow: hidden; border: 0; padding: 0; background: transparent; color: var(--brand); cursor: pointer; font: inherit; font-weight: 600; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+.model-id-button:hover { text-decoration: underline; text-underline-offset: 3px; }
+.model-id-button:focus-visible { border-radius: 2px; outline: 2px solid color-mix(in srgb, var(--brand) 45%, transparent); outline-offset: 2px; }
+.model-detail-drawer .ant-drawer-body { padding: 0; }
+.model-detail-content { display: grid; gap: 20px; padding: 20px; }
+.model-detail-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--border-color); padding-bottom: 16px; }
+.model-detail-heading > div { display: grid; min-width: 0; gap: 4px; }
+.model-detail-heading span { color: var(--text-secondary); font-size: 12px; }
+.model-detail-heading strong { overflow-wrap: anywhere; color: var(--text-primary); font-size: 17px; line-height: 1.45; }
+.model-detail-content .ant-descriptions-title { margin-bottom: 10px; color: var(--text-primary); font-size: 14px; }
+.model-detail-content .ant-descriptions-item-label { width: 132px; color: var(--text-secondary); }
+.model-detail-content .ant-descriptions-item-content { min-width: 0; color: var(--text-primary); overflow-wrap: anywhere; }
+.model-detail-code { font-family: var(--font-mono); font-size: 12px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
 
 @media (max-width: 991px) {
   .model-info-page { gap: 12px; }
   .model-info-summary .ant-card-body { padding: 12px; }
   .model-info-section > h2 { padding-inline: 12px; }
 }
-/* AI_GENERATE_END - */
+/* AI_GENERATE_END ---- */

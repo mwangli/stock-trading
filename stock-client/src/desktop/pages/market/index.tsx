@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 import './styles.css';
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import ReactECharts from 'echarts-for-react';
@@ -29,7 +29,7 @@ interface StockInfo {
   totalMarketValue?: number;
   turnoverRate?: number;
   volumeRatio?: number;
-  industryCode?: number;
+  securityCategory?: string;
   listedDate?: string;
   updateTime?: string;
 }
@@ -138,11 +138,12 @@ const MARKET_LABELS: Record<string, [string, string]> = {
   BJ: ['北京', 'Beijing'],
 };
 
-const SECURITY_CATEGORY_LABELS: Record<number, [string, string]> = {
-  0: ['深市主板', 'Shenzhen Main Board'],
-  2: ['深市主板（原中小板）', 'Shenzhen Main Board'],
-  9: ['沪市主板', 'Shanghai Main Board'],
-  18: ['创业板', 'ChiNext'],
+const SECURITY_CATEGORY_LABELS: Record<string, [string, string]> = {
+  主板: ['主板', 'Main Board'],
+  创业板: ['创业板', 'ChiNext'],
+  科创板: ['科创板', 'STAR Market'],
+  北交所: ['北交所', 'Beijing Stock Exchange'],
+  CDR: ['CDR', 'CDR'],
 };
 
 const compactAmountFormatters = {
@@ -168,10 +169,10 @@ const formatMarket = (value?: string) => {
   return labels ? localizedText(labels[0], labels[1]) : value;
 };
 
-const formatSecurityCategory = (value?: number) => {
-  if (value == null) return '-';
+const formatSecurityCategory = (value?: string) => {
+  if (!value) return '-';
   const labels = SECURITY_CATEGORY_LABELS[value];
-  return labels ? localizedText(labels[0], labels[1]) : localizedText(`其他类别（${value}）`, `Other (${value})`);
+  return labels ? localizedText(labels[0], labels[1]) : value;
 };
 
 const formatCompactAmount = (value?: number) => value == null
@@ -382,7 +383,11 @@ const Market: React.FC = () => {
             changePercent: row.change_percent == null ? undefined : Number(row.change_percent),
             volume: row.volume == null ? undefined : Number(row.volume),
             amount: row.amount == null ? undefined : Number(row.amount),
-            listedDate: row.as_of_date == null ? undefined : String(row.as_of_date),
+            totalMarketValue: row.total_market_value == null ? undefined : Number(row.total_market_value),
+            turnoverRate: row.turnover_rate == null ? undefined : Number(row.turnover_rate),
+            volumeRatio: row.volume_ratio == null ? undefined : Number(row.volume_ratio),
+            securityCategory: row.market_category == null ? undefined : String(row.market_category),
+            listedDate: row.listed_date == null ? undefined : String(row.listed_date),
             updateTime: row.update_time == null ? undefined : String(row.update_time),
           };
           return {
@@ -959,7 +964,7 @@ const Market: React.FC = () => {
               labelStyle={{ width: isCompactViewport ? 104 : 128 }}
               items={[
                 { key: 'market', label: t('marketPage.details.market'), children: formatMarket(detailStock.market) },
-                { key: 'category', label: t('marketPage.details.category'), children: formatSecurityCategory(detailStock.industryCode) },
+                { key: 'category', label: t('marketPage.details.category'), children: formatSecurityCategory(detailStock.securityCategory) },
                 { key: 'changeAmount', label: t('marketPage.details.changeAmount'), children: formatNumber(detailStock.changeAmount, 3) },
                 { key: 'marketCap', label: t('marketPage.details.marketCap'), children: <span title={formatFullAmount(detailStock.totalMarketValue)}>{formatCompactAmount(detailStock.totalMarketValue)}</span> },
                 { key: 'turnover', label: t('marketPage.details.turnover'), children: formatPercent(detailStock.turnoverRate) },
@@ -1035,4 +1040,4 @@ const Market: React.FC = () => {
 };
 
 export default Market;
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----
