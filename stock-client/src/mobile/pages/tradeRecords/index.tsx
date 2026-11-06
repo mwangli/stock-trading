@@ -1,14 +1,12 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 import '../orderRecords/styles.css';
 import React from 'react';
 import { Card } from 'antd';
-import { useTranslation } from 'react-i18next';
 import { usePageHeader } from '../../layouts/PageHeaderContext';
 import TradeRecordTable from '../orderRecords/TradeRecordTable';
 
 const TradeRecords: React.FC = () => {
-  const { t } = useTranslation();
-  usePageHeader(t('tradeRecords.subtitle'));
+  usePageHeader('全部成本 · 最近成交');
 
   return (
     <div className="app-page">
@@ -20,4 +18,4 @@ const TradeRecords: React.FC = () => {
 };
 
 export default TradeRecords;
-// AI_GENERATE_END -
+// AI_GENERATE_END --

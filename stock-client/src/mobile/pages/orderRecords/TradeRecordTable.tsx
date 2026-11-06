@@ -70,7 +70,10 @@ const buildDefaultFilters = (): TradeFilters => {
   };
 };
 
-const money = (value?: number) => value == null ? '-' : `¥${Number(value).toFixed(2)}`;
+const money = (value?: number) => value == null
+  ? '-'
+  : `¥${Number(value).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const signedMoney = (value: number) => `${value >= 0 ? '+' : '-'}¥${Math.abs(value).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const timestamp = (value?: string) => {
   const parsed = value ? Date.parse(value) : Number.NaN;
   return Number.isFinite(parsed) ? parsed : 0;
@@ -133,8 +136,8 @@ const TradeRecordTable: React.FC = () => {
           stockCode: String(item.instrument ?? ''),
           stockName: String(item.stock_name ?? ''),
           buyTime,
-          firstSellTime: sellTime,
-          lastSellTime: sellTime,
+          firstSellTime: sellTime || undefined,
+          lastSellTime: sellTime || undefined,
           buyQuantity: quantity,
           soldQuantity,
           remainingQuantity: quantity - soldQuantity,
@@ -391,7 +394,7 @@ const TradeRecordTable: React.FC = () => {
                   <span className="order-records-mobile-row-result">
                     <strong>{money(item.soldQuantity > 0 ? item.sellAmount : item.buyAmount)}</strong>
                     <small className={item.soldQuantity <= 0 ? 'is-neutral' : item.netProfit >= 0 ? 'is-up' : 'is-down'}>
-                      {item.soldQuantity > 0 ? money(item.netProfit) : '持仓中'}
+                      {item.soldQuantity > 0 ? signedMoney(item.netProfit) : '持仓中'}
                     </small>
                   </span>
                 </button>
