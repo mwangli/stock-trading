@@ -1,4 +1,4 @@
-# AI_GENERATE_START -------------------
+# AI_GENERATE_START --------------------------
 from __future__ import annotations
 
 import json
@@ -52,7 +52,7 @@ def default_training_codes(
     try:
         stocks = store.read_stock_basics()
     except (OSError, ValueError, KeyError) as error:
-        raise ValueError("未找到股票基础信息；请先执行 stock-collect") from error
+        raise ValueError("未找到股票基础信息；请先执行 stock-collect --daily") from error
     codes = research_codes(stocks, start_date, end_date)
     if not codes:
         raise ValueError("股票基础信息中没有满足当前日期范围的研究股票")
@@ -65,16 +65,15 @@ def run_training_pipeline(
     force: bool = False,
 ) -> dict[str, object]:
     """校验现有 Qlib 后执行训练、评估、回测和发布。"""
-    start_date, end_date = default_training_range(config)
+    qlib = QlibBinaryStore(
+        ParquetMarketStore(config.data_dir), config.qlib_dir
+    )
+    start_date, end_date = qlib.date_range() or default_training_range(config)
     codes = default_training_codes(config, start_date, end_date)
-    preparation = assert_training_data_ready(config, codes, start_date, end_date)
-    preparation_summary = {
-        "startDate": preparation["startDate"],
-        "endDate": preparation["endDate"],
-        "researchCodes": len(preparation["codes"]),
-        "qlibReady": True,
-        "dataQuality": preparation["dataQuality"],
-    }
+    preparation = assert_training_data_ready(
+        config, codes, start_date, end_date
+    )
+    preparation_summary = _preparation_summary(preparation)
     root = model_root(config.artifact_dir)
     if not force:
         try:
@@ -109,7 +108,11 @@ def assert_training_data_ready(
     store = ParquetMarketStore(config.data_dir)
     stocks = store.read_stock_basics()
     audit = audit_research_quality(
-        store, stocks, codes, start_date, end_date
+        store,
+        stocks,
+        codes,
+        start_date,
+        end_date,
     )
     raw_quality = require_data_quality(
         "train-raw",
@@ -118,6 +121,7 @@ def assert_training_data_ready(
         config.data_quality_min_ratio,
         audit,
     )
+    expected = {normalize_instrument(code) for code in audit.model_codes}
     qlib = QlibBinaryStore(store, config.qlib_dir)
     qlib_range = qlib.date_range()
     available = qlib.available_instruments(end_date)
@@ -128,7 +132,6 @@ def assert_training_data_ready(
         or available is None
     ):
         raise ValueError("Qlib 数据未覆盖当前训练范围；请先执行 stock-prepare")
-    expected = {normalize_instrument(code) for code in audit.model_codes}
     ready = expected & available
     qlib_quality = require_data_quality(
         "train-qlib",
@@ -140,10 +143,21 @@ def assert_training_data_ready(
         "startDate": start_date.isoformat(),
         "endDate": end_date.isoformat(),
         "codes": sorted(ready),
+        "marketCodes": list(audit.model_codes),
         "dataQuality": {
             "raw": raw_quality,
             "qlib": qlib_quality,
         },
+    }
+
+
+def _preparation_summary(preparation: dict[str, object]) -> dict[str, object]:
+    return {
+        "startDate": preparation["startDate"],
+        "endDate": preparation["endDate"],
+        "researchCodes": len(preparation["codes"]),
+        "qlibReady": True,
+        "dataQuality": preparation["dataQuality"],
     }
 
 
@@ -241,6 +255,9 @@ def run_backtest_scenarios(
             initial_cash=float(cash),
             entry_rank=config.trading_entry_rank,
             exit_rank=config.trading_exit_rank,
+            max_holding_days=config.trading_max_holding_days,
+            limit_down_lookback_days=config.trading_limit_down_lookback_days,
+            max_recent_limit_downs=config.trading_max_recent_limit_downs,
         ):
             LOGGER.info("资金档位回测已完成，复用现有制品")
             results[str(cash)] = read_backtest_summary(target)
@@ -366,4 +383,4 @@ def _write_evaluation(model_dir: Path, evaluation: dict[str, object]) -> None:
     )
 
 
-# AI_GENERATE_END -------------------
+# AI_GENERATE_END --------------------------

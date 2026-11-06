@@ -1,4 +1,4 @@
-# AI_GENERATE_START -------------------------
+# AI_GENERATE_START --------------------------------
 from __future__ import annotations
 
 import json
@@ -17,6 +17,11 @@ from stock_trading.utils.logging_utils import set_log_context
 LOGGER = logging.getLogger(__name__)
 LIGHTGBM_NUM_BOOST_ROUND = 300
 LIGHTGBM_EARLY_STOPPING_ROUNDS = 30
+MODEL_LABEL_CONTRACT = "t1-morning-observation-afternoon-windows-v3"
+MODEL_LABEL_DESCRIPTION = (
+    "T+1 13:00-14:00 adjusted sell VWAP / "
+    "T 14:00-15:00 adjusted buy VWAP - 1; observed through T 11:30"
+)
 
 
 def lightgbm_parameters() -> dict[str, object]:
@@ -120,7 +125,7 @@ def train_alpha158_lightgbm(
     import qlib
     import lightgbm as lgb
     from qlib.constant import REG_CN
-    from qlib.contrib.data.handler import Alpha158
+    from stock_trading.research.features import MorningAlpha158
     from qlib.data.dataset import DatasetH
     from qlib.data.dataset.handler import DataHandlerLP
 
@@ -129,7 +134,7 @@ def train_alpha158_lightgbm(
     qlib.init(provider_uri=str(qlib_dir), region=REG_CN, kernels=2)
     set_log_context(step="2/6", progress="-/-", target="Alpha158")
     LOGGER.info("构建特征处理器")
-    handler = Alpha158(
+    handler = MorningAlpha158(
         instruments="all",
         start_time=segments.train_start,
         end_time=segments.test_end,
@@ -263,9 +268,10 @@ def _persist_training_artifacts(
     with (artifact_dir / "model.pkl").open("wb") as stream:
         pickle.dump(model, stream)
     payload = {
-        "featureSet": "Alpha158",
+        "featureSet": "MorningAlpha158",
         "model": "LightGBM Regression",
-        "label": "next-morning sell VWAP / next-afternoon buy VWAP - 1",
+        "labelContract": MODEL_LABEL_CONTRACT,
+        "label": MODEL_LABEL_DESCRIPTION,
         "segments": _segments_record(segments),
         "metrics": metrics,
         "topK": top_k,
@@ -293,7 +299,7 @@ def predict_alpha158_lightgbm(
     """Run one deterministic cross-sectional prediction with an existing model."""
     import qlib
     from qlib.constant import REG_CN
-    from qlib.contrib.data.handler import Alpha158
+    from stock_trading.research.features import MorningAlpha158
     from qlib.data.dataset import DatasetH
     from qlib.data.dataset.handler import DataHandlerLP
 
@@ -320,7 +326,7 @@ def predict_alpha158_lightgbm(
         features = load_alpha158_features_for_date(qlib_dir, prediction_date)
     else:
         qlib.init(provider_uri=str(qlib_dir), region=REG_CN, kernels=2)
-        handler = Alpha158(
+        handler = MorningAlpha158(
             instruments="all",
             start_time=pd.Timestamp(calendar.min()).date(),
             end_time=prediction_date,
@@ -486,8 +492,8 @@ def automatic_model_segments(
         for value in calendar_path.read_text(encoding="utf-8").splitlines()
         if value.strip()
     ]
-    if len(calendar) < 120:
-        raise ValueError(f"自动切分至少需要 120 个交易日，当前={len(calendar)}")
+    if len(calendar) < 63:
+        raise ValueError(f"自动切分至少需要 63 个交易日，当前={len(calendar)}")
     ratios = split or (Decimal("70"), Decimal("15"), Decimal("15"))
     if any(not ratio.is_finite() or ratio <= 0 for ratio in ratios):
         raise ValueError("训练、验证和测试比例必须全部大于 0")
@@ -512,4 +518,4 @@ def automatic_model_segments(
         test_end=calendar[-1],
     )
 
-# AI_GENERATE_END -------------------------
+# AI_GENERATE_END --------------------------------

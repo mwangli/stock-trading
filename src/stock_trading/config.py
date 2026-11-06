@@ -1,4 +1,4 @@
-# AI_GENERATE_START -------------------------------------------------
+# AI_GENERATE_START ------------------------------------------------------
 from __future__ import annotations
 
 import logging
@@ -13,8 +13,11 @@ TRADING_MIN_PRICE = 0.01
 TRADING_MAX_PRICE = 1_000_000.0
 TRADING_ORDER_FEE = 5.0
 TRADING_ENTRY_RANK = 5
-TRADING_EXIT_RANK = 15
-EXECUTION_WINDOW_SECONDS = 15 * 60
+TRADING_EXIT_RANK = 10
+TRADING_MAX_HOLDING_DAYS = 3
+TRADING_LIMIT_DOWN_LOOKBACK_DAYS = 10
+TRADING_MAX_RECENT_LIMIT_DOWNS = 2
+EXECUTION_WINDOW_SECONDS = 60 * 60
 ORDER_WAIT_SECONDS = 60
 ORDER_POLL_SECONDS = 5
 CANCEL_CONFIRM_SECONDS = 30
@@ -46,7 +49,10 @@ class AppConfig:
     qlib_dir: Path
     artifact_dir: Path
     state_db_path: Path
+    tushare_token: str | None
     baostock_proxy: str | None
+    daily_market_provider: str
+    minute5_market_provider: str
     market_history_days: int
     bark_device_key: str
     broker_base_url: str
@@ -73,6 +79,9 @@ class AppConfig:
     trading_order_fee: float
     trading_entry_rank: int
     trading_exit_rank: int
+    trading_max_holding_days: int
+    trading_limit_down_lookback_days: int
+    trading_max_recent_limit_downs: int
     trading_allowed_prefixes: tuple[str, ...]
     trading_max_prediction_age_days: int
     trading_execution_strategy: str
@@ -99,14 +108,22 @@ class AppConfig:
         qlib_dir = runtime_dir / "qlib"
         artifact_dir = runtime_dir / "artifacts"
         state_db_path = runtime_dir / "state" / "trading.db"
-        proxy = _optional_env("BAOSTOCK_PROXY")
+        tushare_token = _optional_env("TUSHARE_TOKEN")
+        baostock_proxy = _optional_env("BAOSTOCK_PROXY")
+        daily_market_provider = _market_provider("DAILY_MARKET_PROVIDER", "tushare")
+        minute5_market_provider = _market_provider(
+            "MINUTE5_MARKET_PROVIDER", "baostock"
+        )
         broker_token = _optional_env("ZXBROKER_TOKEN")
         return cls(
             data_dir=data_dir,
             qlib_dir=qlib_dir,
             artifact_dir=artifact_dir,
             state_db_path=state_db_path,
-            baostock_proxy=proxy or None,
+            tushare_token=tushare_token,
+            baostock_proxy=baostock_proxy,
+            daily_market_provider=daily_market_provider,
+            minute5_market_provider=minute5_market_provider,
             market_history_days=min(
                 365 * 5,
                 max(365, _env_int("STOCK_TRADING_HISTORY_DAYS", 365 * 3)),
@@ -163,6 +180,9 @@ class AppConfig:
             trading_order_fee=TRADING_ORDER_FEE,
             trading_entry_rank=TRADING_ENTRY_RANK,
             trading_exit_rank=TRADING_EXIT_RANK,
+            trading_max_holding_days=TRADING_MAX_HOLDING_DAYS,
+            trading_limit_down_lookback_days=TRADING_LIMIT_DOWN_LOOKBACK_DAYS,
+            trading_max_recent_limit_downs=TRADING_MAX_RECENT_LIMIT_DOWNS,
             trading_allowed_prefixes=tuple(
                 value.strip().upper()
                 for value in os.getenv(
@@ -279,4 +299,11 @@ def _env_float(name: str, default: float) -> float:
         return float(value)
     except ValueError:
         raise ValueError(f"环境变量 {name} 必须是数字") from None
-# AI_GENERATE_END -------------------------------------------------
+
+
+def _market_provider(name: str, default: str) -> str:
+    value = os.getenv(name, default).strip().lower()
+    if value not in {"tushare", "baostock"}:
+        raise ValueError(f"环境变量 {name} 只能是 tushare 或 baostock")
+    return value
+# AI_GENERATE_END ------------------------------------------------------

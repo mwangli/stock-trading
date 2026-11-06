@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----
+# AI_GENERATE_START ------
 from __future__ import annotations
 
 import logging
@@ -11,7 +11,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 def permission_scope(instrument: str | None) -> str | None:
-    """把券商、BaoStock 或 Qlib 股票代码统一映射为交易权限范围。"""
+    """把券商、行情或 Qlib 股票代码统一映射为交易权限范围。"""
     try:
         normalized = normalize_instrument(instrument)
     except ValueError:
@@ -75,4 +75,4 @@ def _unknown_permission(scope: str, observed_date: date) -> dict[str, str]:
         "evidenceDetail": "没有找到可确认权限的历史成功委托",
         "observedAt": observed_date.isoformat(),
     }
-# AI_GENERATE_END -----
+# AI_GENERATE_END ------

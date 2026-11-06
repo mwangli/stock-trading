@@ -863,25 +863,25 @@ class StateStore(SQLiteStateDatabase):
 
     def latest_prediction_candidates(
         self,
-        before_business_date: str,
+        through_business_date: str,
         limit: int | None = None,
         model_version_id: int | None = None,
     ) -> list[dict[str, Any]]:
-        """用途：读取目标日前最近一批排名；输入：截止日期、可选数量和模型；输出：排序列表。"""
+        """用途：读取目标日及之前最近一批排名；输入：截止日期、可选数量和模型；输出：排序列表。"""
         self.initialize()
         with self._connect() as connection:
             if model_version_id is None:
                 prediction_date = connection.execute(
-                    "SELECT MAX(prediction_date) FROM prediction_rank WHERE prediction_date < ?",
-                    (before_business_date,),
+                    "SELECT MAX(prediction_date) FROM prediction_rank WHERE prediction_date <= ?",
+                    (through_business_date,),
                 ).fetchone()[0]
             else:
                 prediction_date = connection.execute(
                     """
                     SELECT MAX(prediction_date) FROM prediction_rank
-                    WHERE prediction_date < ? AND model_version_id = ?
+                    WHERE prediction_date <= ? AND model_version_id = ?
                     """,
-                    (before_business_date, model_version_id),
+                    (through_business_date, model_version_id),
                 ).fetchone()[0]
             if prediction_date is None:
                 return []

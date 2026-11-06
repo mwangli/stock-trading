@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------------------
+# AI_GENERATE_START --------------------
 from __future__ import annotations
 
 import logging
@@ -16,8 +16,13 @@ import baostock.common.context as bs_context
 import baostock.common.contants as bs_constants
 import baostock.util.socketutil as bs_socket
 
+from stock_trading.market.models import (
+    CumulativeAdjustmentFactor,
+    DailyBar,
+    MinuteBar,
+    StockBasic,
+)
 from stock_trading.utils.logging_utils import set_log_context
-from stock_trading.market.models import AdjustmentFactor, DailyBar, MinuteBar, StockBasic
 
 DAILY_FIELDS = (
     "date,code,open,high,low,close,preclose,volume,amount,adjustflag,turn,"
@@ -30,23 +35,24 @@ T = TypeVar("T")
 
 
 class BaoStockError(RuntimeError):
-    """Raised when BaoStock returns a protocol or data error."""
+    """BaoStock 协议或数据错误。"""
 
 
 class BaoStockClient:
-    """Small BaoStock client limited to the market data required by the T+1 flow."""
+    """提供统一模型对象的 BaoStock 客户端。"""
 
-    def __init__(self, proxy_url: str | None = None, socket_timeout_seconds: int = 60) -> None:
+    def __init__(
+        self, proxy_url: str | None = None, socket_timeout_seconds: int = 60
+    ) -> None:
         self._proxy_url = proxy_url
         self._socket_timeout_seconds = socket_timeout_seconds
         self._original_connect: Any = None
         self._logged_in = False
 
     def __enter__(self) -> "BaoStockClient":
-        LOGGER.info("正在连接 BaoStock：代理=%s", "已配置" if self._proxy_url else "未配置")
         self._install_connector()
         try:
-            result = self._request("BaoStock 登录", bs.login)
+            result = self._request(bs.login)
         except BaseException:
             self._close_connection()
             self._restore_connector()
@@ -54,7 +60,9 @@ class BaoStockClient:
         if result.error_code != "0":
             self._close_connection()
             self._restore_connector()
-            raise BaoStockError(f"BaoStock login failed: {result.error_code} {result.error_msg}")
+            raise BaoStockError(
+                f"BaoStock 登录失败：{result.error_code} {result.error_msg}"
+            )
         self._logged_in = True
         LOGGER.info("BaoStock 登录成功")
         return self
@@ -67,19 +75,16 @@ class BaoStockClient:
     ) -> None:
         try:
             if exc_type is None and self._logged_in:
-                self._request("BaoStock 登出", bs.logout)
+                self._request(bs.logout)
         finally:
             self._logged_in = False
             self._close_connection()
             self._restore_connector()
 
     def fetch_stock_basics(self, snapshot_date: date) -> list[StockBasic]:
-        """读取全部 A 股基础资料，并合并指定日期的交易状态。"""
-        LOGGER.info("正在请求全部股票基础信息：快照日期=%s", snapshot_date)
         market_rows = self._rows(
             self._request(
-                f"证券列表 {snapshot_date}",
-                lambda: bs.query_all_stock(day=snapshot_date.isoformat()),
+                lambda: bs.query_all_stock(day=snapshot_date.isoformat())
             ),
             f"证券列表 {snapshot_date}",
         )
@@ -88,26 +93,18 @@ class BaoStockClient:
             for row in market_rows
             if str(row.get("code") or "").lower().startswith(("sh.", "sz."))
         }
-        if len(market_by_code) < 100:
-            raise BaoStockError(
-                f"BaoStock 证券列表数量异常: 日期={snapshot_date}; "
-                f"有效证券={len(market_by_code)}"
-            )
         basic_rows = self._rows(
-            self._request("股票基础资料", bs.query_stock_basic),
-            "股票基础资料",
+            self._request(bs.query_stock_basic), "股票基础资料"
         )
         basic_by_code = {
             str(row.get("code") or "").lower(): row
             for row in basic_rows
             if str(row.get("code") or "").lower().startswith(("sh.", "sz."))
         }
-        if len(basic_by_code) < 100:
-            raise BaoStockError(
-                f"BaoStock 股票基础资料数量异常: 有效证券={len(basic_by_code)}"
-            )
         codes = sorted(set(market_by_code) | set(basic_by_code))
-        result = [
+        if len(codes) < 100:
+            raise BaoStockError(f"BaoStock 股票基础信息数量异常：{len(codes)}")
+        return [
             StockBasic.from_baostock(
                 basic_by_code.get(code, {}),
                 market_by_code.get(code, {}),
@@ -115,32 +112,11 @@ class BaoStockClient:
             )
             for code in codes
         ]
-        LOGGER.info(
-            "股票基础信息接收完成：证券列表=%d；基础资料=%d；合并结果=%d",
-            len(market_rows),
-            len(basic_rows),
-            len(result),
-        )
-        return result
 
-    def fetch_daily(self, code: str, trade_date: date) -> DailyBar | None:
+    def fetch_daily_history(
+        self, code: str, start_date: date, end_date: date
+    ) -> list[DailyBar]:
         result = self._request(
-            f"单股日线 {code} {trade_date}",
-            lambda: bs.query_history_k_data_plus(
-                code,
-                DAILY_FIELDS,
-                start_date=trade_date.isoformat(),
-                end_date=trade_date.isoformat(),
-                frequency="d",
-                adjustflag="3",
-            ),
-        )
-        rows = self._rows(result, f"单股日线 {code} {trade_date}")
-        return DailyBar.from_baostock(rows[0]) if rows else None
-
-    def fetch_daily_history(self, code: str, start_date: date, end_date: date) -> list[DailyBar]:
-        result = self._request(
-            f"日线历史 {code}",
             lambda: bs.query_history_k_data_plus(
                 code,
                 DAILY_FIELDS,
@@ -148,32 +124,45 @@ class BaoStockClient:
                 end_date=end_date.isoformat(),
                 frequency="d",
                 adjustflag="3",
-            ),
+            )
         )
         return [
             DailyBar.from_baostock(row)
             for row in self._rows(result, f"日线历史 {code}")
         ]
 
+    def fetch_trade_dates(self, start_date: date, end_date: date) -> list[date]:
+        result = self._request(
+            lambda: bs.query_trade_dates(
+                start_date=start_date.isoformat(),
+                end_date=end_date.isoformat(),
+            )
+        )
+        return sorted(
+            date.fromisoformat(row["calendar_date"])
+            for row in self._rows(result, "交易日历")
+            if str(row.get("is_trading_day")) == "1"
+        )
+
     def fetch_adjustment_factors(
         self, code: str, start_date: date, end_date: date
-    ) -> list[AdjustmentFactor]:
+    ) -> list[CumulativeAdjustmentFactor]:
         result = self._request(
-            f"复权因子 {code}",
             lambda: bs.query_adjust_factor(
                 code,
                 start_date=start_date.isoformat(),
                 end_date=end_date.isoformat(),
-            ),
+            )
         )
         return [
-            AdjustmentFactor.from_baostock(row)
+            CumulativeAdjustmentFactor.from_baostock(row)
             for row in self._rows(result, f"复权因子 {code}")
         ]
 
-    def fetch_minutes(self, code: str, start_date: date, end_date: date) -> list[MinuteBar]:
+    def fetch_minutes(
+        self, code: str, start_date: date, end_date: date
+    ) -> list[MinuteBar]:
         result = self._request(
-            f"5分钟K线 {code}",
             lambda: bs.query_history_k_data_plus(
                 code,
                 MINUTE_FIELDS,
@@ -181,24 +170,24 @@ class BaoStockClient:
                 end_date=end_date.isoformat(),
                 frequency="5",
                 adjustflag="3",
-            ),
+            )
         )
         return [
             MinuteBar.from_baostock(row)
-            for row in self._rows(result, f"5分钟K线 {code}")
+            for row in self._rows(result, f"5分钟线 {code}")
         ]
 
     @staticmethod
     def _rows(result: Any, operation: str) -> list[dict[str, str]]:
         if result is None:
-            raise BaoStockError("BaoStock returned no result object")
+            raise BaoStockError("BaoStock 未返回结果对象")
         if result.error_code != "0":
-            raise BaoStockError(f"BaoStock query failed: {result.error_code} {result.error_msg}")
+            raise BaoStockError(
+                f"BaoStock 查询失败：{result.error_code} {result.error_msg}"
+            )
         rows: list[dict[str, str]] = []
         estimated_total = len(result.data)
         interval = max(1, estimated_total // ROW_PROGRESS_STEPS)
-        set_log_context(progress=f"0/{estimated_total}", target=operation)
-        LOGGER.info("开始接收数据")
         while result.next():
             rows.append(dict(zip(result.fields, result.get_row_data(), strict=True)))
             page_remaining = max(0, len(result.data) - int(result.cur_row_num))
@@ -208,9 +197,7 @@ class BaoStockClient:
                 set_log_context(
                     progress=f"{len(rows)}/{estimated_total}", target=operation
                 )
-                LOGGER.info("正在接收数据")
-        set_log_context(progress=f"{len(rows)}/{len(rows)}", target=operation)
-        LOGGER.info("数据接收完成：总数=%d 条", len(rows))
+                LOGGER.info("正在接收 BaoStock 数据")
         return rows
 
     def _install_connector(self) -> None:
@@ -219,11 +206,12 @@ class BaoStockClient:
         proxy = urlparse(self._proxy_url or "")
         if self._proxy_url:
             if proxy.scheme not in {"http", "https"} or not proxy.hostname or not proxy.port:
-                raise ValueError("BAOSTOCK_PROXY must be an HTTP proxy URL with an explicit port")
+                raise ValueError("BAOSTOCK_PROXY 必须是包含端口的 HTTP 代理地址")
             if proxy.username or proxy.password:
-                raise ValueError("Authenticated BAOSTOCK_PROXY is not supported")
+                raise ValueError("BAOSTOCK_PROXY 不支持代理认证")
 
         def connect_with_timeout(socket_util: Any, api_key: str) -> None:
+            del socket_util
             target_host = (
                 bs_constants.BAOSTOCK_VIP_SERVER_IP
                 if api_key.startswith("bs-")
@@ -236,7 +224,9 @@ class BaoStockClient:
                 connection.settimeout(timeout)
                 setattr(bs_context, "default_socket", connection)
                 return
-            connection = socket.create_connection((proxy.hostname, proxy.port), timeout=timeout)
+            connection = socket.create_connection(
+                (proxy.hostname, proxy.port), timeout=timeout
+            )
             request = (
                 f"CONNECT {target_host}:{bs_constants.BAOSTOCK_SERVER_PORT} HTTP/1.1\r\n"
                 f"Host: {target_host}:{bs_constants.BAOSTOCK_SERVER_PORT}\r\n"
@@ -248,13 +238,11 @@ class BaoStockClient:
                 chunk = connection.recv(4096)
                 if not chunk:
                     connection.close()
-                    raise BaoStockError("Proxy closed before establishing the BaoStock tunnel")
+                    raise BaoStockError("BaoStock 代理连接提前关闭")
                 response += chunk
-            status_line = response.split(b"\r\n", 1)[0]
-            if b" 200 " not in status_line:
+            if b" 200 " not in response.split(b"\r\n", 1)[0]:
                 connection.close()
-                status = status_line.decode("ascii", errors="replace")
-                raise BaoStockError(f"BaoStock proxy tunnel failed: {status}")
+                raise BaoStockError("BaoStock 代理隧道建立失败")
             connection.settimeout(timeout)
             setattr(bs_context, "default_socket", connection)
 
@@ -262,7 +250,6 @@ class BaoStockClient:
 
     @staticmethod
     def _close_connection() -> None:
-        """关闭当前 BaoStock socket，不额外创建中断控制线程。"""
         connection = getattr(bs_context, "default_socket", None)
         if connection is None:
             return
@@ -274,8 +261,7 @@ class BaoStockClient:
             setattr(bs_context, "default_socket", None)
 
     @staticmethod
-    def _request(_operation: str, request: Callable[[], T]) -> T:
-        """同步执行单个 BaoStock 请求并屏蔽 SDK 控制台输出。"""
+    def _request(request: Callable[[], T]) -> T:
         console_noise = StringIO()
         with redirect_stdout(console_noise), redirect_stderr(console_noise):
             return request()
@@ -284,4 +270,4 @@ class BaoStockClient:
         if self._original_connect is not None:
             bs_socket.SocketUtil.connect = self._original_connect
             self._original_connect = None
-# AI_GENERATE_END ------------------
+# AI_GENERATE_END --------------------

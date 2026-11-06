@@ -1,4 +1,4 @@
-# AI_GENERATE_START -------------------------------------------------
+# AI_GENERATE_START --------------------------------------------------------
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -6,14 +6,18 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 import logging
 from pathlib import Path
-import shutil
 from uuid import uuid4
 
 import pandas as pd
 import pyarrow.parquet as pq
 
-from stock_trading.market.minute_summary import summarize_t1_windows
-from stock_trading.market.models import AdjustmentFactor, DailyBar, MinuteBar, StockBasic
+from stock_trading.market.minute_summary import summarize_trading_windows
+from stock_trading.market.models import (
+    CumulativeAdjustmentFactor,
+    DailyBar,
+    MinuteBar,
+    StockBasic,
+)
 from stock_trading.utils.logging_utils import set_log_context, should_log_progress
 
 LOGGER = logging.getLogger(__name__)
@@ -25,7 +29,7 @@ MINUTE_SUMMARY_RETENTION_DAYS = 366 * 5
 class CollectionPlan:
     code: str
     needs_daily: bool
-    needs_adjustment: bool
+    needs_factor: bool
     needs_minute5: bool
 
 
@@ -42,7 +46,7 @@ class ResearchDataAudit:
 
 
 class ParquetMarketStore:
-    """管理日线、紧凑分钟原始数据和长期交易窗口聚合结果。"""
+    """管理统一基础信息、日线、复权因子和5分钟行情。"""
 
     def __init__(self, root: Path) -> None:
         self._root = root
@@ -53,12 +57,12 @@ class ParquetMarketStore:
 
     def write_stock_basics(self, stocks: list[StockBasic]) -> Path:
         """原子写入当前股票基础信息快照。"""
-        target = self._root / "instruments" / "stocks.parquet"
+        target = self._root / "basic" / "stocks.parquet"
         return self._write(target, [stock.as_record() for stock in stocks])
 
     def read_stock_basics(self) -> pd.DataFrame:
         """读取股票基础信息快照。"""
-        target = self._root / "instruments" / "stocks.parquet"
+        target = self._root / "basic" / "stocks.parquet"
         frame = _read_parquet_file(target)
         for field in ("ipo_date", "out_date", "snapshot_date"):
             frame[field] = pd.to_datetime(frame[field], errors="coerce")
@@ -86,52 +90,43 @@ class ParquetMarketStore:
             and frame["snapshot_date"].dt.date.eq(snapshot_date).all()
         )
 
-    def write_minute_history(
+    def write_daily_history(self, code: str, bars: list[DailyBar]) -> Path:
+        target = self._root / "daily" / f"code={code}" / "bars.parquet"
+        records = [_without(bar.as_record(), "code") for bar in bars]
+        return self._merge_history(target, records, "trade_date")
+
+    def write_factors(
         self,
         code: str,
-        bars: list[MinuteBar],
-        reference_date: date,
+        factors: list[CumulativeAdjustmentFactor],
+    ) -> Path:
+        """保存 TuShare 每日累计复权因子。"""
+        target = self._root / "factor" / f"code={code}" / "factors.parquet"
+        records = [_without(factor.as_record(), "code") for factor in factors]
+        return self._merge_history(target, records, "operate_date")
+
+    def write_minute_history(
+        self, code: str, bars: list[MinuteBar], reference_date: date
     ) -> dict[str, object]:
-        """合并分钟行情，原始数据保留 90 天，交易窗口聚合保留 5 年。"""
         if not bars:
             raise ValueError(f"Refusing to write empty minute history: {code}")
         incoming = pd.DataFrame.from_records([bar.as_record() for bar in bars])
         existing = self.read_minutes(code)
-        frames = [frame for frame in (existing, incoming) if not frame.empty]
-        combined = pd.concat(frames, ignore_index=True)
-        return self._store_minute_frames(code, combined, reference_date)
-
-    def write_daily_history(self, code: str, bars: list[DailyBar]) -> Path:
-        target = self._root / "daily_history" / f"code={code}" / "bars.parquet"
-        records = [_without(bar.as_record(), "code") for bar in bars]
-        return self._merge_history(target, records, "trade_date")
-
-    def write_adjustment_factors(
-        self,
-        code: str,
-        factors: list[AdjustmentFactor],
-    ) -> Path:
-        target = self._root / "adjustment_factor" / f"code={code}" / "factors.parquet"
-        records = [_without(factor.as_record(), "code") for factor in factors]
-        if not records:
-            if target.is_file():
-                return target
-            return self._write_frame(
-                target,
-                pd.DataFrame(columns=["operate_date", "forward_factor"]),
-            )
-        return self._merge_history(target, records, "operate_date")
+        frames = [value for value in (existing, incoming) if not value.empty]
+        return self._store_minute_frames(
+            code, pd.concat(frames, ignore_index=True), reference_date
+        )
 
     def read_daily_history(self, code: str) -> pd.DataFrame:
-        target = self._root / "daily_history" / f"code={code}" / "bars.parquet"
+        target = self._root / "daily" / f"code={code}" / "bars.parquet"
         frame = _read_parquet_file(target)
         if "code" not in frame:
             frame.insert(0, "code", code)
         frame["trade_date"] = pd.to_datetime(frame["trade_date"])
         return frame.sort_values("trade_date").reset_index(drop=True)
 
-    def read_adjustment_factors(self, code: str) -> pd.DataFrame:
-        target = self._root / "adjustment_factor" / f"code={code}" / "factors.parquet"
+    def read_factors(self, code: str) -> pd.DataFrame:
+        target = self._root / "factor" / f"code={code}" / "factors.parquet"
         frame = _read_parquet_file(target)
         if "code" not in frame:
             frame.insert(0, "code", code)
@@ -139,36 +134,20 @@ class ParquetMarketStore:
         return frame.sort_values("operate_date").reset_index(drop=True)
 
     def read_minutes(self, code: str) -> pd.DataFrame:
-        """读取紧凑原始文件，并兼容尚未迁移的按日旧分区。"""
-        directory = self._root / "minute_5m" / f"code={code}"
-        paths: list[Path] = []
-        compact = directory / "bars.parquet"
-        if compact.is_file():
-            paths.append(compact)
-        paths.extend(sorted(directory.glob("trade_date=*/bars.parquet")))
-        if not paths:
+        target = self._root / "minute5" / f"code={code}" / "bars.parquet"
+        if not target.is_file():
             return pd.DataFrame()
-        frames: list[pd.DataFrame] = []
-        for path in paths:
-            frame = _read_parquet_file(path)
-            if "code" not in frame:
-                frame.insert(0, "code", code)
-            if "trade_date" not in frame and path.parent.name.startswith("trade_date="):
-                frame.insert(1, "trade_date", path.parent.name.removeprefix("trade_date="))
-            frames.append(frame)
-        result = pd.concat(frames, ignore_index=True)
-        result = result.drop_duplicates(subset=["bar_end"], keep="last")
-        result["trade_date"] = pd.to_datetime(result["trade_date"])
-        result["bar_start"] = pd.to_datetime(result["bar_start"], utc=True).dt.tz_convert(
-            "Asia/Shanghai"
-        )
-        result["bar_end"] = pd.to_datetime(result["bar_end"], utc=True).dt.tz_convert(
-            "Asia/Shanghai"
-        )
-        return result.sort_values(["trade_date", "bar_end"]).reset_index(drop=True)
+        frame = _read_parquet_file(target)
+        if "code" not in frame:
+            frame.insert(0, "code", code)
+        frame["trade_date"] = pd.to_datetime(frame["trade_date"], errors="raise")
+        for field in ("bar_start", "bar_end"):
+            frame[field] = pd.to_datetime(frame[field], utc=True).dt.tz_convert(
+                "Asia/Shanghai"
+            )
+        return frame.sort_values("bar_end").reset_index(drop=True)
 
     def read_minute_summaries(self, code: str) -> pd.DataFrame:
-        """读取长期保留的 T+1 买卖窗口聚合结果。"""
         target = self._minute_summary_path(code)
         if not target.is_file():
             return pd.DataFrame()
@@ -192,67 +171,94 @@ class ParquetMarketStore:
             and not frame.empty
         )
 
-    def adjustment_factors_valid(self, code: str, end_date: date) -> bool:
+    def factors_valid(self, code: str, end_date: date) -> bool:
         """检查复权因子文件可读、字段完整且日期不超过目标日。"""
         try:
-            frame = self.read_adjustment_factors(code)
+            frame = self.read_factors(code)
         except (OSError, ValueError, KeyError, AttributeError):
             return False
-        required = {"code", "operate_date", "forward_factor"}
+        required = {"code", "operate_date", "cumulative_factor"}
         if not required.issubset(frame.columns):
             return False
-        if not frame.empty:
-            dates = pd.to_datetime(frame["operate_date"], errors="coerce").dt.date
-            if not dates.notna().all() or dates.max() > end_date:
-                return False
-        return True
+        dates = pd.to_datetime(frame["operate_date"], errors="coerce").dt.date
+        return bool(
+            not frame.empty
+            and dates.notna().all()
+            and dates.max() <= end_date
+            and frame["cumulative_factor"].astype(float).gt(0).all()
+        )
 
     def minute_summaries_valid(
-        self, code: str, start_date: date, end_date: date
+        self,
+        code: str,
+        start_date: date,
+        end_date: date,
+        require_full_end: bool = False,
     ) -> bool:
-        """检查分钟聚合可读、字段完整且覆盖研究窗口首尾。"""
         try:
-            daily = self._eligible_daily_rows(self.read_daily_history(code))
-            daily_dates = pd.to_datetime(daily["trade_date"], errors="raise").dt.date
-            daily_window = daily[daily_dates.between(start_date, end_date)]
             summaries = self.read_minute_summaries(code)
         except (OSError, ValueError, KeyError, AttributeError):
             return False
-        if daily_window.empty:
-            return True
-        return self._minute_summaries_usable(summaries, daily_window)
-
-    @staticmethod
-    def _minute_summaries_usable(
-        summaries: pd.DataFrame,
-        daily_window: pd.DataFrame,
-    ) -> bool:
         required = {
-            "trade_date", "buy_vwap", "buy_low", "buy_high", "buy_bars",
-            "buy_complete", "sell_vwap", "sell_low", "sell_high", "sell_bars",
+            "trade_date",
+            "morning_complete",
             "sell_complete",
+            "buy_complete",
+            "morning_open",
+            "morning_high",
+            "morning_low",
+            "morning_close",
+            "morning_volume",
+            "morning_amount",
+            "morning_vwap",
+            "sell_vwap",
+            "buy_vwap",
         }
         if not required.issubset(summaries.columns) or summaries.empty:
             return False
-        expected_dates = pd.to_datetime(
-            daily_window["trade_date"], errors="raise"
-        ).dt.date
-        summary_dates = pd.to_datetime(
-            summaries["trade_date"], errors="raise"
-        ).dt.date
-        actual_dates = set(summary_dates)
-        if (
-            expected_dates.min() not in actual_dates
-            or expected_dates.max() not in actual_dates
+        dates = summaries["trade_date"].dt.date
+        window = summaries[dates.between(start_date, end_date)]
+        try:
+            daily = self._eligible_daily_rows(self.read_daily_history(code))
+            daily_dates = pd.to_datetime(daily["trade_date"], errors="raise").dt.date
+        except (OSError, ValueError, KeyError, AttributeError):
+            return False
+        expected_history = set(
+            daily_dates[
+                daily_dates.between(start_date, end_date)
+                & daily_dates.lt(end_date)
+            ]
+        )
+        return self._minute_window_usable(
+            window, end_date, expected_history, require_full_end
+        )
+
+    @staticmethod
+    def _minute_window_usable(
+        window: pd.DataFrame,
+        end_date: date,
+        expected_history: set[date] | None = None,
+        require_full_end: bool = False,
+    ) -> bool:
+        if window.empty:
+            return False
+        dates = window["trade_date"].dt.date
+        current = window[dates == end_date]
+        history = window[dates < end_date]
+        if current.empty or not current["morning_complete"].fillna(False).astype(bool).all():
+            return False
+        if require_full_end and not bool(
+            current["buy_complete"].fillna(False).astype(bool).all()
+            and current["sell_complete"].fillna(False).astype(bool).all()
         ):
             return False
-        expected = set(expected_dates)
-        covered = summaries[summary_dates.isin(expected)]
-        if not covered["buy_complete"].astype(bool).all():
-            return False
-        if len(expected) == 1:
-            return True
-        return bool(covered["sell_complete"].astype(bool).any())
+        complete_history = history[
+            history["morning_complete"].fillna(False).astype(bool)
+            & history["buy_complete"].fillna(False).astype(bool)
+            & history["sell_complete"].fillna(False).astype(bool)
+        ]
+        complete_dates = set(complete_history["trade_date"].dt.date)
+        return bool((expected_history or set()).issubset(complete_dates))
 
     def valid_daily_codes(
         self, codes: list[str], start_date: date, end_date: date
@@ -261,26 +267,25 @@ class ParquetMarketStore:
         return [
             code for code in codes
             if self.daily_history_valid(code, start_date, end_date)
-            and self.adjustment_factors_valid(code, end_date)
-        ]
-
-    def valid_minute5_codes(
-        self, codes: list[str], start_date: date, end_date: date
-    ) -> list[str]:
-        """返回分钟聚合覆盖研究窗口内可交易日的股票编号。"""
-        return [
-            code for code in codes
-            if self.minute_summaries_valid(code, start_date, end_date)
+            and self.factors_valid(code, end_date)
         ]
 
     def valid_research_codes(
-        self, codes: list[str], start_date: date, end_date: date
+        self,
+        codes: list[str],
+        start_date: date,
+        end_date: date,
+        require_full_end: bool = False,
     ) -> list[str]:
-        """返回日线、复权和分钟聚合均覆盖研究窗口的股票编号。"""
+        """返回日线、复权因子和分钟窗口均覆盖研究范围的股票编号。"""
         daily = set(self.valid_daily_codes(codes, start_date, end_date))
         return [
-            code for code in codes
-            if code in daily and self.minute_summaries_valid(code, start_date, end_date)
+            code
+            for code in codes
+            if code in daily
+            and self.minute_summaries_valid(
+                code, start_date, end_date, require_full_end
+            )
         ]
 
     def audit_research_data(
@@ -299,7 +304,7 @@ class ParquetMarketStore:
             "code", "trade_date", "open", "high", "low", "close", "volume",
             "tradestatus", "is_st",
         }
-        adjustment_required = {"code", "operate_date", "forward_factor"}
+        factor_required = {"code", "operate_date", "cumulative_factor"}
         total = len(codes)
         for index, code in enumerate(codes, start=1):
             code_start, code_end, exact_end = (
@@ -329,58 +334,67 @@ class ParquetMarketStore:
             )
 
             try:
-                factors = self.read_adjustment_factors(code)
+                factors = self.read_factors(code)
                 factor_dates = pd.to_datetime(
                     factors["operate_date"], errors="coerce"
                 ).dt.date
-                adjustment_valid = (
-                    adjustment_required.issubset(factors.columns)
+                factor_valid = (
+                    factor_required.issubset(factors.columns)
+                    and not factors.empty
+                    and factor_dates.notna().all()
+                    and factors["cumulative_factor"].astype(float).gt(0).all()
                     and (
-                        factors.empty
-                        or (factor_dates.notna().all() and factor_dates.max() <= end_date)
+                        raw_window_dates.empty
+                        or factor_dates.min() <= raw_window_dates.min()
                     )
                 )
             except (OSError, ValueError, KeyError, AttributeError):
-                adjustment_valid = False
+                factor_valid = False
 
-            eligible = pd.DataFrame()
-            if daily_required.issubset(daily.columns):
-                eligible = self._eligible_daily_rows(daily)
+            eligible = (
+                self._eligible_daily_rows(daily)
+                if daily_required.issubset(daily.columns)
+                else pd.DataFrame()
+            )
             eligible_dates = (
                 daily_dates.loc[eligible.index]
                 if not eligible.empty
                 else pd.Series(dtype="object")
             )
-            daily_window = (
-                eligible[eligible_dates.between(code_start, code_end)]
-                if not eligible.empty
-                else eligible
-            )
+            daily_window = eligible[eligible_dates.between(code_start, code_end)]
             try:
                 summaries = self.read_minute_summaries(code)
-            except (OSError, ValueError, KeyError, AttributeError):
-                summaries = pd.DataFrame()
-            if not daily_required.issubset(daily.columns) or daily.empty:
-                minute_valid = False
-            elif daily_window.empty:
-                minute_valid = True
-            else:
-                minute_valid = self._minute_summaries_usable(
-                    summaries, daily_window
+                summary_dates = summaries["trade_date"].dt.date
+                summary_window = summaries[
+                    summary_dates.between(code_start, code_end)
+                ]
+                expected_history = set(
+                    eligible_dates[
+                        eligible_dates.between(code_start, code_end)
+                        & eligible_dates.lt(code_end)
+                    ]
                 )
-
-            if daily_valid and adjustment_valid and minute_valid:
+                minute_valid = self._minute_window_usable(
+                    summary_window,
+                    code_end,
+                    expected_history,
+                    require_full_end=code_end < end_date,
+                )
+            except (OSError, ValueError, KeyError, AttributeError):
+                minute_valid = False
+            data_valid = daily_valid and factor_valid and minute_valid
+            if data_valid:
                 valid_codes.append(code)
                 if not daily_window.empty:
                     model_codes.append(code)
             if not eligible.empty and eligible_dates.eq(end_date).any():
                 tradable_codes.append(code)
-            if not all((daily_valid, adjustment_valid, minute_valid)):
+            if not data_valid:
                 pending.append(
                     CollectionPlan(
                         code=code,
                         needs_daily=not daily_valid,
-                        needs_adjustment=not adjustment_valid,
+                        needs_factor=not factor_valid,
                         needs_minute5=not minute_valid,
                     )
                 )
@@ -423,6 +437,37 @@ class ParquetMarketStore:
                 continue
         return result
 
+    def minute5_codes_on(self, codes: list[str], trade_date: date) -> list[str]:
+        result: list[str] = []
+        for code in codes:
+            try:
+                summaries = self.read_minute_summaries(code)
+                dates = summaries["trade_date"].dt.date
+                rows = summaries[dates == trade_date]
+                if (
+                    not rows.empty
+                    and rows["morning_complete"].fillna(False).astype(bool).all()
+                ):
+                    result.append(code)
+            except (OSError, ValueError, KeyError, AttributeError):
+                continue
+        return result
+
+    def cleanup_minutes(self, reference_date: date) -> dict[str, int]:
+        root = self._root / "minute5"
+        directories = sorted(root.glob("code=*")) if root.is_dir() else []
+        raw_rows = 0
+        summary_rows = 0
+        for directory in directories:
+            code = directory.name.removeprefix("code=")
+            minutes = self.read_minutes(code)
+            if minutes.empty:
+                continue
+            result = self._store_minute_frames(code, minutes, reference_date)
+            raw_rows += int(result["rawRows"])
+            summary_rows += int(result["summaryRows"])
+        return {"codes": len(directories), "rawRows": raw_rows, "summaryRows": summary_rows}
+
     @staticmethod
     def _eligible_daily_rows(frame: pd.DataFrame) -> pd.DataFrame:
         return frame[
@@ -431,108 +476,6 @@ class ParquetMarketStore:
             & (frame["close"].astype(float) > 0)
             & (frame["volume"].astype(float) > 0)
         ]
-
-    def cleanup_minutes(self, reference_date: date) -> dict[str, int]:
-        """迁移旧分钟分区并执行原始 90 天、聚合 5 年保留规则。"""
-        root = self._root / "minute_5m"
-        code_directories = sorted(root.glob("code=*")) if root.is_dir() else []
-        compacted = 0
-        raw_rows = 0
-        summary_rows = 0
-        removed_partitions = 0
-        total_codes = len(code_directories)
-        for index, directory in enumerate(code_directories, start=1):
-            code = directory.name.removeprefix("code=")
-            legacy_count = sum(1 for _ in directory.glob("trade_date=*"))
-            minutes = self.read_minutes(code)
-            if minutes.empty:
-                continue
-            result = self._store_minute_frames(code, minutes, reference_date)
-            compacted += 1
-            raw_rows += int(result["rawRows"])
-            summary_rows += int(result["summaryRows"])
-            removed_partitions += legacy_count
-            if should_log_progress(index, total_codes):
-                set_log_context(progress=f"{index}/{total_codes}", target=code)
-                LOGGER.info("分钟数据清理完成：移除旧分区=%d", removed_partitions)
-        set_log_context(progress=f"{total_codes}/{total_codes}", target="分钟数据")
-        LOGGER.info(
-            "分钟数据清理完成：股票=%d；原始行=%d；聚合行=%d；移除旧分区=%d",
-            compacted,
-            raw_rows,
-            summary_rows,
-            removed_partitions,
-        )
-        return {
-            "codes": compacted,
-            "rawRows": raw_rows,
-            "summaryRows": summary_rows,
-            "legacyPartitionsRemoved": removed_partitions,
-        }
-
-    def _store_minute_frames(
-        self,
-        code: str,
-        minutes: pd.DataFrame,
-        reference_date: date,
-    ) -> dict[str, object]:
-        frame = minutes.copy()
-        frame["trade_date"] = pd.to_datetime(frame["trade_date"], errors="raise")
-        frame["bar_start"] = pd.to_datetime(frame["bar_start"], utc=True).dt.tz_convert(
-            "Asia/Shanghai"
-        )
-        frame["bar_end"] = pd.to_datetime(frame["bar_end"], utc=True).dt.tz_convert(
-            "Asia/Shanghai"
-        )
-        frame = (
-            frame.drop_duplicates(subset=["bar_end"], keep="last")
-            .sort_values("bar_end")
-            .reset_index(drop=True)
-        )
-
-        generated = summarize_t1_windows(frame)
-        existing_summary = self.read_minute_summaries(code)
-        summaries = [value for value in (existing_summary, generated) if not value.empty]
-        summary = (
-            pd.concat(summaries, ignore_index=True)
-            if summaries
-            else generated.copy()
-        )
-        for field in ("buy_complete", "sell_complete"):
-            summary[field] = summary[field].fillna(False).astype(bool)
-        summary = (
-            summary.drop_duplicates(subset=["trade_date"], keep="last")
-            .sort_values("trade_date")
-            .reset_index(drop=True)
-        )
-        summary_cutoff = reference_date - timedelta(days=MINUTE_SUMMARY_RETENTION_DAYS)
-        summary = summary[summary["trade_date"].dt.date >= summary_cutoff]
-
-        raw_cutoff = reference_date - timedelta(days=RAW_MINUTE_RETENTION_DAYS - 1)
-        raw = frame[frame["trade_date"].dt.date >= raw_cutoff]
-        raw_path = self._root / "minute_5m" / f"code={code}" / "bars.parquet"
-        summary_path = self._minute_summary_path(code)
-        if raw.empty:
-            raw_path.unlink(missing_ok=True)
-        else:
-            self._write(raw_path, raw.to_dict(orient="records"))
-        if summary.empty:
-            summary_path.unlink(missing_ok=True)
-        else:
-            self._write(summary_path, summary.to_dict(orient="records"))
-
-        for legacy in raw_path.parent.glob("trade_date=*"):
-            if legacy.is_dir():
-                shutil.rmtree(legacy)
-        return {
-            "rawPath": str(raw_path),
-            "summaryPath": str(summary_path),
-            "rawRows": len(raw),
-            "summaryRows": len(summary),
-        }
-
-    def _minute_summary_path(self, code: str) -> Path:
-        return self._root / "minute_summary" / f"code={code}" / "windows.parquet"
 
     def _merge_history(
         self,
@@ -562,6 +505,55 @@ class ParquetMarketStore:
         )
         return self._write(target, merged.to_dict(orient="records"))
 
+    def _store_minute_frames(
+        self, code: str, minutes: pd.DataFrame, reference_date: date
+    ) -> dict[str, object]:
+        frame = minutes.copy()
+        frame["trade_date"] = pd.to_datetime(frame["trade_date"], errors="raise")
+        for field in ("bar_start", "bar_end"):
+            frame[field] = pd.to_datetime(frame[field], utc=True).dt.tz_convert(
+                "Asia/Shanghai"
+            )
+        frame = (
+            frame.drop_duplicates(subset=["bar_end"], keep="last")
+            .sort_values("bar_end")
+            .reset_index(drop=True)
+        )
+        generated = summarize_trading_windows(frame)
+        existing = self.read_minute_summaries(code)
+        summaries = [value for value in (existing, generated) if not value.empty]
+        summary = pd.concat(summaries, ignore_index=True) if summaries else generated
+        for field in ("morning_complete", "sell_complete", "buy_complete"):
+            summary[field] = summary[field].fillna(False).astype(bool)
+        summary = (
+            summary.drop_duplicates(subset=["trade_date"], keep="last")
+            .sort_values("trade_date")
+            .reset_index(drop=True)
+        )
+        summary_cutoff = reference_date - timedelta(days=MINUTE_SUMMARY_RETENTION_DAYS)
+        summary = summary[summary["trade_date"].dt.date >= summary_cutoff]
+        raw_cutoff = reference_date - timedelta(days=RAW_MINUTE_RETENTION_DAYS - 1)
+        raw = frame[frame["trade_date"].dt.date >= raw_cutoff]
+        raw_path = self._root / "minute5" / f"code={code}" / "bars.parquet"
+        summary_path = self._minute_summary_path(code)
+        if raw.empty:
+            raw_path.unlink(missing_ok=True)
+        else:
+            self._write(raw_path, raw.to_dict(orient="records"))
+        if summary.empty:
+            summary_path.unlink(missing_ok=True)
+        else:
+            self._write(summary_path, summary.to_dict(orient="records"))
+        return {
+            "rawPath": str(raw_path),
+            "summaryPath": str(summary_path),
+            "rawRows": len(raw),
+            "summaryRows": len(summary),
+        }
+
+    def _minute_summary_path(self, code: str) -> Path:
+        return self._root / "minute5_summary" / f"code={code}" / "windows.parquet"
+
     @staticmethod
     def _write(target: Path, rows: list[dict[str, object]]) -> Path:
         if not rows:
@@ -589,4 +581,4 @@ def _without(record: dict[str, object], *fields: str) -> dict[str, object]:
 def _read_parquet_file(path: Path) -> pd.DataFrame:
     """读取单个文件，避免 key=value 父目录触发 Hive 分区字段合并。"""
     return pq.ParquetFile(path).read().to_pandas()
-# AI_GENERATE_END -------------------------------------------------
+# AI_GENERATE_END --------------------------------------------------------

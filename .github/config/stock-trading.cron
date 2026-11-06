@@ -12,14 +12,15 @@ SCHEDULER=__PROJECT_DIR__/config/scheduler.sh
 LOGROTATE=__PROJECT_DIR__/config/stock-trading.logrotate
 LOGROTATE_STATE=__PROJECT_DIR__/data/state/logrotate.status
 
-# Sell first, then buy immediately
-35 9 * * 1-5 "$SCHEDULER" run "stock-trading"
+# Morning observation, Qlib and same-day ranking
+35 11 * * 1-5 "$SCHEDULER" run "stock-collect --minute5" stock-prepare stock-rank
 
-# Afternoon buy retry
-5 13 * * 1-5 "$SCHEDULER" run "stock-trading --buy"
+# Sell first, then buy in separate afternoon windows
+0 13 * * 1-5 "$SCHEDULER" run "stock-trading --sell"
+0 14 * * 1-5 "$SCHEDULER" run "stock-trading --buy"
 
-# Market data, Qlib and ranking
-30 16 * * 1-5 "$SCHEDULER" run stock-collect stock-prepare stock-rank
+# Complete intraday windows, daily facts and matured labels
+10 16 * * 1-5 "$SCHEDULER" run "stock-collect --minute5" "stock-collect --daily" stock-prepare
 
 # Historical orders and model review
 20 20 * * 1-5 "$SCHEDULER" run stock-order stock-review

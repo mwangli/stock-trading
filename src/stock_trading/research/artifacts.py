@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------------
+# AI_GENERATE_START -----------------
 from __future__ import annotations
 
 import json
@@ -11,6 +11,7 @@ from uuid import uuid4
 import pandas as pd
 
 from stock_trading.research.model import (
+    MODEL_LABEL_CONTRACT,
     ModelSegments,
     train_alpha158_lightgbm_adaptive,
 )
@@ -125,7 +126,11 @@ def model_artifacts_valid(directory: Path) -> bool:
         top = pd.read_parquet(directory / "top5.parquet")
     except Exception:
         return False
-    return metrics.get("model") == "LightGBM Regression" and not top.empty
+    return (
+        metrics.get("model") == "LightGBM Regression"
+        and metrics.get("labelContract") == MODEL_LABEL_CONTRACT
+        and not top.empty
+    )
 
 
 def validate_model_artifacts(directory: Path) -> None:
@@ -145,4 +150,4 @@ def validate_model_artifacts(directory: Path) -> None:
         raise ValueError(f"训练模型无法反序列化: {directory / 'model.pkl'}") from error
 
 
-# AI_GENERATE_END --------------
+# AI_GENERATE_END -----------------

@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---------------------------
+# AI_GENERATE_START -------------------------------
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -25,7 +25,7 @@ COMMAND_GROUPS = (
     (
         "数据与模型",
         (
-            ("stock-collect", "采集股票基础信息、日线、复权因子和 5 分钟行情。"),
+            ("stock-collect", "采集日线研究数据或5分钟行情。"),
             ("stock-prepare", "从现有原始数据增量、幂等准备 Qlib。"),
             ("stock-train", "使用现有 Qlib 数据训练、评估并回测模型。"),
         ),
@@ -34,7 +34,7 @@ COMMAND_GROUPS = (
         "排名与交易",
         (
             ("stock-rank", "生成指定交易日的完整横截面排名。"),
-            ("stock-trading", "卖出后立即尝试买入，也可单独执行买入或卖出。"),
+            ("stock-trading", "在独立下午窗口执行买入或卖出。"),
         ),
     ),
     (
@@ -113,19 +113,22 @@ def collect() -> None:
     _run(
         "stock-collect",
         collect_command,
-        "采集股票基础信息、日线、复权因子和 5 分钟行情。",
+        "采集日线研究数据或5分钟行情。",
         (
-            "先检查最近交易日的股票基础信息快照，不存在时自动下载。",
-            "无参数时只扫描最近交易日；指定 --date 时只扫描该历史范围。",
-            "根据缺失清单只下载缺少的原始数据，下载后重新检查。",
+            "无模式参数时默认按 --daily 执行，一次采集基础信息、日线和复权因子。",
+            "--minute5 采集5分钟线并生成上午观察、下午卖出和下午买入窗口。",
+            "--date 指定日期或日期范围，--code 可限制一个或多个股票。",
         ),
         (
             "stock-collect",
+            "stock-collect --daily --date 2026-11-03",
+            "stock-collect --minute5 --date 2026-11-03",
+            "stock-collect --date 2026-11-03 --code sh.600000",
             "stock-collect --date 2023-11-02:2026-11-02",
         ),
         (
             "命令不准备 Qlib、不执行模型训练或排名。",
-            "单类数据失败不阻止同一股票的其他类别继续处理。",
+            "日线数据和5分钟线使用独立数据源配置并写入统一字段。",
         ),
     )
 
@@ -136,8 +139,8 @@ def prepare() -> None:
         prepare_command,
         "从现有原始数据增量、幂等准备 Qlib。",
         (
-            "只读取本地 Parquet，不连接 BaoStock 或下载数据。",
-            "Qlib 已覆盖目标范围时跳过，只缺少新交易日时增量追加。",
+            "只读取本地 Parquet，不连接行情源或下载数据。",
+            "新增交易日时增量追加；范围不变时刷新最新特征和已成熟标签。",
             "使用 --force 时才忽略现有 Qlib 并全量重建。",
         ),
         (
@@ -146,7 +149,7 @@ def prepare() -> None:
             "stock-prepare --force",
         ),
         (
-            "原始数据不完整时终止并提示对应 stock-collect 命令。",
+            "日线、复权因子或5分钟聚合不完整时终止。",
             "命令不下载数据、不训练模型、不生成排名。",
         ),
     )
@@ -179,33 +182,27 @@ def _trading_command(
         typer.Option("--sell", help="只执行卖出。"),
     ] = False,
 ) -> None:
-    if not buy and not sell:
-        sell = True
-        buy = True
-    if sell:
-        trading_command("S")
-    if buy:
-        trading_command("B")
+    if buy == sell:
+        raise typer.BadParameter("必须且只能指定 --sell 或 --buy")
+    trading_command("B" if buy else "S")
 
 
 def trading() -> None:
     _run(
         "stock-trading",
         _trading_command,
-        "卖出后立即尝试买入，也可通过参数单独执行买入或卖出。",
+        "在独立下午窗口执行买入或卖出。",
         (
-            "读取最近完整横截面排名，Rank15以内的持仓继续保留。",
-            "卖出阶段完成后立即重新读取持仓；没有持仓时进入买入流程。",
+            "读取当天上午完整横截面排名，Rank10以内的持仓继续保留。",
+            "13:00-14:00 执行卖出，14:00-15:00 执行买入。",
             "从Top5依次检查允许前缀、已确认权限和实时价格范围。",
         ),
         (
-            "stock-trading",
             "stock-trading --sell",
             "stock-trading --buy",
-            "stock-trading --sell --buy",
         ),
         (
-            "无参数或同时指定 --sell 和 --buy 时，固定先卖后买。",
+            "必须且只能指定一个方向，两个窗口由调度分别调用。",
             "每个交易阶段开始前都会重新同步最新账户快照。",
             "最终合法性以及成交状态由券商判断。",
         ),
@@ -258,7 +255,7 @@ def clean() -> None:
         clean_command,
         "清理超过保留期的数据和已终结业务状态。",
         (
-            "清理分钟数据、历史任务、快照、预测、绩效和已终结委托等。",
+            "清理分钟原始数据、历史任务、快照、预测、绩效和已终结委托等。",
             "完成后执行 SQLite WAL 截断、VACUUM 和优化。",
         ),
         ("stock-clean", "stock-clean --date 2026-11-02"),
@@ -291,4 +288,4 @@ def sync() -> None:
             "服务器连接只读取 SERVER_IP、SERVER_USER 和 SERVER_PASS。",
         ),
     )
-# AI_GENERATE_END ---------------------------
+# AI_GENERATE_END -------------------------------

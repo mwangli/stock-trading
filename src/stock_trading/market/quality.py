@@ -1,4 +1,4 @@
-# AI_GENERATE_START
+# AI_GENERATE_START ---
 from __future__ import annotations
 
 import logging
@@ -61,18 +61,16 @@ def require_data_quality(
         "threshold": threshold,
     }
     missing_daily = 0
-    missing_adjustment = 0
+    missing_factor = 0
     missing_minute5 = 0
     if audit is not None:
         missing_daily = sum(plan.needs_daily for plan in audit.pending)
-        missing_adjustment = sum(
-            plan.needs_adjustment for plan in audit.pending
-        )
+        missing_factor = sum(plan.needs_factor for plan in audit.pending)
         missing_minute5 = sum(plan.needs_minute5 for plan in audit.pending)
         details.update(
             {
                 "missingDaily": missing_daily,
-                "missingAdjustment": missing_adjustment,
+                "missingFactor": missing_factor,
                 "missingMinute5": missing_minute5,
             }
         )
@@ -89,7 +87,7 @@ def require_data_quality(
     )
     if audit is not None:
         message += "；日线缺失=%d；复权缺失=%d；5分钟线缺失=%d"
-        values += (missing_daily, missing_adjustment, missing_minute5)
+        values += (missing_daily, missing_factor, missing_minute5)
     if coverage_rate < threshold:
         raise ValueError(
             f"{stage} 数据覆盖率不足：覆盖率={coverage_rate:.2%}；"
@@ -102,4 +100,4 @@ def require_data_quality(
     return details
 
 
-# AI_GENERATE_END
+# AI_GENERATE_END ---

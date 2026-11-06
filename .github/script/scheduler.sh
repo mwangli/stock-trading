@@ -62,7 +62,7 @@ extract_managed_cron() {
 run_scheduled() {
   exec > /dev/null 2>> "${LOG:?}"
   exec 9> "${LOCK:?}"
-  flock -n 9
+  flock -w 120 9
 
   cd "${PROJECT_DIR:?}"
   local command_spec command_name

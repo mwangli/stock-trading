@@ -1,9 +1,9 @@
-# AI_GENERATE_START ---
+# AI_GENERATE_START ----
 from __future__ import annotations
 
 
 def normalize_instrument(value: object, market: str | None = None) -> str:
-    """将 BaoStock、券商或 Qlib 代码统一为 SH600000 格式。"""
+    """将行情、券商或 Qlib 代码统一为 SH600000 格式。"""
     raw = str(value or "").strip().upper()
     if "." in raw:
         exchange, symbol = raw.split(".", maxsplit=1)
@@ -26,8 +26,8 @@ def normalize_instrument(value: object, market: str | None = None) -> str:
     return f"{exchange}{symbol}"
 
 
-def to_baostock_code(instrument: object) -> str:
-    """将内部标准证券代码转换为 BaoStock 代码。"""
+def to_market_code(instrument: object) -> str:
+    """将内部标准证券代码转换为行情存储代码。"""
     normalized = normalize_instrument(instrument)
     return f"{normalized[:2].lower()}.{normalized[2:]}"
 
@@ -35,4 +35,4 @@ def to_baostock_code(instrument: object) -> str:
 def to_broker_code(instrument: object) -> str:
     """将内部标准证券代码转换为券商六位证券代码。"""
     return normalize_instrument(instrument)[2:]
-# AI_GENERATE_END ---
+# AI_GENERATE_END ----

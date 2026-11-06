@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------
+# AI_GENERATE_START ---------
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -64,7 +64,7 @@ def show_command_groups(groups: CommandGroups) -> None:
     )
     console = Console(highlight=False)
     console.print(
-        Text("STOCK TRADING A股 T+1 自动交易命令", style="bold yellow")
+        Text("  STOCK TRADING A股 T+1 自动交易命令", style="bold yellow")
     )
     table = Table(
         box=None,
@@ -97,4 +97,4 @@ def show_command_groups(groups: CommandGroups) -> None:
             title_align="left",
         )
     )
-# AI_GENERATE_END --------
+# AI_GENERATE_END ---------

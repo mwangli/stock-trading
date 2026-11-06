@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------------------
+# AI_GENERATE_START -------------------------
 from __future__ import annotations
 
 import logging
@@ -15,10 +15,11 @@ from stock_trading.utils.logging_utils import set_log_context, should_log_progre
 from stock_trading.research.labels import build_t1_labels
 
 LOGGER = logging.getLogger(__name__)
-QLIB_CONTRACT_VERSION = "1"
+QLIB_CONTRACT_VERSION = "5"
 QLIB_FIELDS = (
     "open", "high", "low", "close", "volume",
-    "amount", "vwap", "factor", "label",
+    "amount", "vwap", "factor", "morning_return", "morning_range",
+    "morning_close_vwap", "morning_last30_return", "label",
 )
 
 
@@ -66,19 +67,6 @@ class QlibBinaryStore:
 
         effective_start = existing_range[0]
         effective_end = max(existing_range[1], end_date)
-        if (
-            existing_range[1] >= end_date
-            and existing_instruments == expected
-            and self.is_valid(codes, effective_start, existing_range[1])
-        ):
-            return {
-                "mode": "skipped",
-                "skipped": True,
-                "codes": len(codes),
-                "startDate": effective_start.isoformat(),
-                "endDate": existing_range[1].isoformat(),
-                "path": str(self._target),
-            }
         result = self._increment(
             codes,
             effective_start,
@@ -86,7 +74,12 @@ class QlibBinaryStore:
             existing_range,
             existing_instruments,
         )
-        return {"mode": "incremental", "skipped": False} | result
+        mode = (
+            "incremental"
+            if result["appendedDays"] or result["newInstruments"]
+            else "refreshed"
+        )
+        return {"mode": mode, "skipped": False} | result
 
     def rebuild(
         self, codes: list[str], start_date: date, end_date: date
@@ -119,9 +112,7 @@ class QlibBinaryStore:
         LOGGER.info("开始生成标签和特征：交易日数=%d", len(calendar))
         for index, (code, frame) in enumerate(frames.items(), start=1):
             aligned = frame.reindex(calendar)
-            labels = build_t1_labels(
-                self._market_store.read_minute_summaries(code), calendar
-            )
+            labels = build_t1_labels(frame, calendar)
             aligned["label"] = labels.reindex(calendar)
             qlib_code = normalize_instrument(code)
             self._write_features(temporary, qlib_code, aligned)
@@ -273,32 +264,58 @@ class QlibBinaryStore:
     def _adjusted_daily(
         self, code: str, start_date: date, end_date: date
     ) -> pd.DataFrame:
-        daily = self._market_store.read_daily_history(code).set_index("trade_date")
-        daily = daily[
-            (daily.index.date >= start_date) & (daily.index.date <= end_date)
-        ]
-        daily = daily[
-            (daily["tradestatus"].astype(str) == "1")
-            & (daily["is_st"].astype(str) != "1")
-            & (daily["close"].astype(float) > 0)
-            & (daily["volume"].astype(float) > 0)
-        ]
-        factors = self._market_store.read_adjustment_factors(code).set_index(
-            "operate_date"
+        summaries = self._market_store.read_minute_summaries(code).set_index(
+            "trade_date"
         )
-        if factors.empty:
-            factor = pd.Series(1.0, index=daily.index, dtype=float)
-        else:
-            factor = factors["forward_factor"].reindex(
-                daily.index, method="ffill"
-            ).fillna(1.0)
-        adjusted = pd.DataFrame(index=daily.index)
+        summaries = summaries[
+            (summaries.index.date >= start_date)
+            & (summaries.index.date <= end_date)
+            & summaries["morning_complete"].fillna(False).astype(bool)
+        ]
+        if summaries.empty:
+            return pd.DataFrame(
+                index=summaries.index,
+                columns=QLIB_FIELDS[:-1],
+                dtype=float,
+            )
+        daily = self._market_store.read_daily_history(code).set_index("trade_date")
+        status = daily[["tradestatus", "is_st"]].reindex(
+            summaries.index, method="ffill"
+        )
+        summaries = summaries[
+            status["tradestatus"].astype(str).eq("1")
+            & ~status["is_st"].astype(str).eq("1")
+        ]
+        if summaries.empty:
+            return pd.DataFrame(
+                index=summaries.index, columns=QLIB_FIELDS[:-1], dtype=float
+            )
+        factors = self._market_store.read_factors(code).set_index("operate_date")
+        cumulative = factors["cumulative_factor"].astype(float).reindex(
+            summaries.index, method="ffill"
+        ).bfill()
+        if cumulative.isna().any() or cumulative.le(0).any():
+            raise ValueError(f"复权因子不能覆盖分钟聚合范围：{code}")
+        factor = cumulative / float(factors["cumulative_factor"].iloc[0])
+        adjusted = pd.DataFrame(index=summaries.index)
         for field in ("open", "high", "low", "close"):
-            adjusted[field] = daily[field].astype(float) * factor
-        adjusted["volume"] = daily["volume"].astype(float) / factor
-        adjusted["amount"] = daily["amount"].astype(float)
+            adjusted[field] = summaries[f"morning_{field}"].astype(float) * factor
+        adjusted["volume"] = summaries["morning_volume"].astype(float) / factor
+        adjusted["amount"] = summaries["morning_amount"].astype(float)
         adjusted["vwap"] = adjusted["amount"] / adjusted["volume"].replace(0, np.nan)
         adjusted["factor"] = factor.astype(float)
+        for field in (
+            "morning_return",
+            "morning_range",
+            "morning_close_vwap",
+            "morning_last30_return",
+        ):
+            adjusted[field] = summaries[field].astype(float)
+        adjusted["morning_complete"] = summaries["morning_complete"].astype(bool)
+        adjusted["buy_complete"] = summaries["buy_complete"].astype(bool)
+        adjusted["sell_complete"] = summaries["sell_complete"].astype(bool)
+        adjusted["buy_vwap"] = summaries["buy_vwap"].astype(float) * factor
+        adjusted["sell_vwap"] = summaries["sell_vwap"].astype(float) * factor
         return adjusted
 
     @staticmethod
@@ -335,17 +352,6 @@ class QlibBinaryStore:
         new_instruments = {
             normalize_instrument(code) for code in codes
         } - existing_instruments
-        if new_calendar.empty and not new_instruments:
-            return {
-                "codes": len(codes),
-                "calendarDays": len(existing_calendar),
-                "appendedDays": 0,
-                "newInstruments": 0,
-                "startDate": existing_range[0].isoformat(),
-                "endDate": existing_range[1].isoformat(),
-                "path": str(self._target),
-            }
-
         calendar = existing_calendar.append(new_calendar)
         temporary = self._target.with_name(f".{self._target.name}.building")
         shutil.rmtree(temporary, ignore_errors=True)
@@ -362,12 +368,20 @@ class QlibBinaryStore:
         try:
             for index, code in enumerate(codes, start=1):
                 instrument = normalize_instrument(code)
+                full = self._adjusted_daily(code, start_date, end_date)
                 if instrument in existing_instruments:
-                    aligned = new_frames[code].reindex(new_calendar)
-                    for field in QLIB_FIELDS[:-1]:
-                        self._append_field(
-                            temporary, instrument, field, aligned[field]
-                        )
+                    if new_calendar.empty:
+                        latest = full.reindex(calendar[-1:])
+                        for field in QLIB_FIELDS[:-1]:
+                            self._overwrite_last_field(
+                                temporary, instrument, field, latest[field]
+                            )
+                    else:
+                        aligned = new_frames[code].reindex(new_calendar)
+                        for field in QLIB_FIELDS[:-1]:
+                            self._append_field(
+                                temporary, instrument, field, aligned[field]
+                            )
                     valid = new_frames[code].dropna(subset=["close"])
                     old_start, old_end = intervals[instrument]
                     intervals[instrument] = (
@@ -377,11 +391,8 @@ class QlibBinaryStore:
                         else old_end,
                     )
                 else:
-                    full = self._adjusted_daily(code, start_date, end_date)
                     aligned = full.reindex(calendar)
-                    labels = build_t1_labels(
-                        self._market_store.read_minute_summaries(code), calendar
-                    )
+                    labels = build_t1_labels(full, calendar)
                     aligned["label"] = labels.reindex(calendar)
                     self._write_features(temporary, instrument, aligned)
                     valid = full.dropna(subset=["close"])
@@ -392,9 +403,7 @@ class QlibBinaryStore:
                         valid.index.max().date(),
                     )
 
-                labels = build_t1_labels(
-                    self._market_store.read_minute_summaries(code), calendar
-                ).reindex(calendar)
+                labels = build_t1_labels(full, calendar).reindex(calendar)
                 self._write_field(temporary, instrument, "label", labels)
                 label_count += int(labels.notna().sum())
                 if should_log_progress(index, total_codes):
@@ -445,6 +454,18 @@ class QlibBinaryStore:
         path = target / "features" / code.lower() / f"{field}.day.bin"
         with path.open("ab") as stream:
             stream.write(values.to_numpy(dtype="<f4").tobytes())
+
+    @staticmethod
+    def _overwrite_last_field(
+        target: Path, code: str, field: str, values: pd.Series
+    ) -> None:
+        path = target / "features" / code.lower() / f"{field}.day.bin"
+        payload = values.to_numpy(dtype="<f4")
+        if len(payload) != 1:
+            raise ValueError(f"Qlib 最新字段刷新行数异常：{code}:{field}")
+        with path.open("r+b") as stream:
+            stream.seek(-4, 2)
+            stream.write(payload.tobytes())
 
     @staticmethod
     def _read_calendar(target: Path) -> pd.DatetimeIndex:
@@ -516,4 +537,4 @@ class QlibBinaryStore:
             raise
         shutil.rmtree(backup, ignore_errors=True)
 
-# AI_GENERATE_END --------------------
+# AI_GENERATE_END -------------------------

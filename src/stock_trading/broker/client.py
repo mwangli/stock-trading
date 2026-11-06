@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----------------------------
+# AI_GENERATE_START ------------------------------
 from __future__ import annotations
 
 import base64
@@ -238,14 +238,10 @@ class ZXBrokerClient:
                 {
                     "stockcode": stock_code,
                     "action": ACTION_GET_PRICE,
-                    "ReqlinkType": 1,
-                    "Level": 5,
-                    "UseBPrice": 1,
                 }
             )
         )
-        bids = tuple(_required_price(response, f"BUY{level}", f"BID{level}") for level in range(1, 6))
-        asks = tuple(_required_price(response, f"SELL{level}", f"ASK{level}") for level in range(1, 6))
+        bids, asks = _parse_five_level_prices(response)
         quote = FiveLevelQuote(
             stock_code=stock_code,
             price=parse_decimal(response.get("PRICE")),
@@ -576,9 +572,20 @@ def _post_form(url: str, params: dict[str, object], timeout: float) -> dict[str,
     return result
 
 
-def _required_price(response: dict[str, Any], primary: str, alternate: str) -> Decimal:
-    value = parse_decimal(response.get(primary)) or parse_decimal(response.get(alternate))
-    if value is None or value <= 0:
+def _parse_five_level_prices(
+    response: dict[str, Any],
+) -> tuple[
+    tuple[Decimal, Decimal, Decimal, Decimal, Decimal],
+    tuple[Decimal, Decimal, Decimal, Decimal, Decimal],
+]:
+    fields = str(response.get("BUYSELL") or "").split("|")
+    bid_indexes = (1, 8, 10, 12, 14)
+    ask_indexes = (3, 16, 18, 20, 22)
+    if len(fields) <= max(*bid_indexes, *ask_indexes):
         raise BrokerProtocolError("券商未返回完整五档行情")
-    return value
-# AI_GENERATE_END -----------------------------
+    bids = tuple(parse_decimal(fields[index]) for index in bid_indexes)
+    asks = tuple(parse_decimal(fields[index]) for index in ask_indexes)
+    if any(price is None or price <= 0 for price in bids + asks):
+        raise BrokerProtocolError("券商未返回完整五档行情")
+    return bids, asks
+# AI_GENERATE_END ------------------------------

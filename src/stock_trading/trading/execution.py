@@ -1,9 +1,9 @@
-# AI_GENERATE_START ---------------------------
+# AI_GENERATE_START -----------------------------
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time
 from decimal import Decimal
 from time import monotonic, sleep
 from typing import Protocol
@@ -71,7 +71,7 @@ class OrderExecutionOrchestrator:
         """在固定执行窗口内按时间紧迫度策略处理一个买入或卖出目标。"""
         instrument = str(target["instrument"])
         side = str(target["side"])
-        mode = "AFTERNOON_BUY" if side == "BUY" else "MORNING_SELL"
+        mode = "AFTERNOON_BUY" if side == "BUY" else "AFTERNOON_SELL"
         prefix = f"LIVE:{mode}:{business_date.isoformat()}:{instrument}"
         started_at = monotonic()
         attempts: list[dict[str, object]] = []
@@ -86,9 +86,14 @@ class OrderExecutionOrchestrator:
         self._reconcile_orders(reason="EXECUTION_START")
         existing = self._matching_intents(prefix)
         elapsed_before_resume = self._elapsed_before_resume(existing)
+        remaining_window = self._remaining_window_seconds(business_date, side)
         deadline = started_at + max(
             0.0,
-            self._config.trading_execution_window_seconds - elapsed_before_resume,
+            min(
+                self._config.trading_execution_window_seconds,
+                remaining_window,
+            )
+            - elapsed_before_resume,
         )
         filled = next((row for row in reversed(existing) if row["status"] == "FILLED"), None)
         if filled is not None:
@@ -494,6 +499,14 @@ class OrderExecutionOrchestrator:
             if str(row["client_order_id"]).startswith(f"{prefix}:A")
         ]
 
+    def _remaining_window_seconds(self, business_date: date, side: str) -> float:
+        now = shanghai_now()
+        if now.date() != business_date:
+            return float(self._config.trading_execution_window_seconds)
+        end_time = time(14, 0) if side == "SELL" else time(15, 0)
+        window_end = datetime.combine(business_date, end_time, tzinfo=now.tzinfo)
+        return max(0.0, (window_end - now).total_seconds())
+
     @staticmethod
     def _next_attempt_number(intents: list[dict[str, object]]) -> int:
         numbers: list[int] = []
@@ -585,4 +598,4 @@ def _is_permission_denial(message: str) -> bool:
         keyword in normalized
         for keyword in ("无权限", "没有权限", "未开通", "禁止交易", "不允许交易")
     )
-# AI_GENERATE_END ---------------------------
+# AI_GENERATE_END -----------------------------

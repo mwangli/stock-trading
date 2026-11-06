@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---------
+# AI_GENERATE_START --------------
 from __future__ import annotations
 
 import gc
@@ -25,7 +25,7 @@ LOGGER = logging.getLogger(__name__)
 GIB = 1024**3
 MEMORY_THRESHOLD_BYTES = 16 * GIB
 CHECKPOINT_SCHEMA_VERSION = 1
-FEATURE_CONFIG_VERSION = "alpha158-kbar-price-rolling-v1"
+FEATURE_CONFIG_VERSION = "morning-alpha158-t1-afternoon-windows-v4"
 
 
 @dataclass(frozen=True)
@@ -465,15 +465,9 @@ def _write_json(path: Path, payload: dict[str, object]) -> None:
 
 
 def _alpha158_feature_config() -> tuple[list[str], list[str]]:
-    from qlib.contrib.data.loader import Alpha158DL
+    from stock_trading.research.features import morning_alpha158_feature_config
 
-    return Alpha158DL.get_feature_config(
-        {
-            "kbar": {},
-            "price": {"windows": [0], "feature": ["OPEN", "HIGH", "LOW", "VWAP"]},
-            "rolling": {},
-        }
-    )
+    return morning_alpha158_feature_config()
 
 
 def _normalize_index(frame: pd.DataFrame) -> pd.DataFrame:
@@ -581,4 +575,4 @@ class _NpyFeatureSequence(lgb.Sequence):
     def __getitem__(self, index):
         return np.asarray(self._values[index], dtype=np.float64)
 
-# AI_GENERATE_END ---------
+# AI_GENERATE_END --------------

@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------
+# AI_GENERATE_START -----------
 from __future__ import annotations
 
 import logging
@@ -6,10 +6,12 @@ import os
 import re
 import subprocess
 import sys
+import tarfile
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
+from uuid import uuid4
 
 from stock_trading.config import AppConfig
 
@@ -22,6 +24,14 @@ DIRECTORY_SCOPES = {
     "qlib": ("qlib",),
     "model": ("artifacts",),
 }
+MARKET_ARCHIVE_DIRECTORIES = ("basic", "calendar", "daily", "factor")
+MODEL_REQUIRED_FILES = (
+    "model.pkl",
+    "metrics.json",
+    "top5.parquet",
+    "test_predictions.parquet",
+    "evaluation.json",
+)
 
 
 def sync_data(
@@ -45,7 +55,7 @@ def sync_data(
             completed.append(_pull_state(config, server, password))
             continue
         for directory in DIRECTORY_SCOPES[scope]:
-            LOGGER.info("开始拉取数据：类型=%s；目录=%s", scope, directory)
+            LOGGER.info("%s 数据正在拉取：目录=%s", scope, directory)
             local_data_root.mkdir(parents=True, exist_ok=True)
             _run_command(
                 "scp",
@@ -54,7 +64,9 @@ def sync_data(
                 f"{server}:{REMOTE_DATA_ROOT}/{directory}",
                 str(local_data_root),
                 password=password,
+                show_progress=True,
             )
+            LOGGER.info("%s 数据拉取完成：目录=%s", scope, directory)
             completed.append(
                 {"direction": "pull", "scope": scope, "directory": directory}
             )
@@ -64,17 +76,23 @@ def sync_data(
             source = local_data_root / directory
             if not source.is_dir():
                 raise ValueError(f"本地同步目录不存在：{source}")
-            LOGGER.info("开始推送数据：类型=%s；目录=%s", scope, directory)
-            _run_command(
-                "scp",
-                *_ssh_options(),
-                "-r",
-                str(source),
-                f"{server}:{REMOTE_DATA_ROOT}/",
-                password=password,
+            LOGGER.info("%s 数据正在推送：目录=%s", scope, directory)
+            file_count = _push_directory_archive(
+                local_data_root, directory, server, password
+            )
+            LOGGER.info(
+                "%s 数据推送完成：目录=%s；文件数=%d",
+                scope,
+                directory,
+                file_count,
             )
             completed.append(
-                {"direction": "push", "scope": scope, "directory": directory}
+                {
+                    "direction": "push",
+                    "scope": scope,
+                    "directory": directory,
+                    "files": str(file_count),
+                }
             )
 
     return {"status": "SUCCESS", "operations": completed}
@@ -83,7 +101,8 @@ def sync_data(
 def _pull_state(config: AppConfig, server: str, password: str) -> dict[str, str]:
     target = config.state_db_path
     target.parent.mkdir(parents=True, exist_ok=True)
-    LOGGER.info("开始拉取服务器 SQLite 状态库")
+    _ensure_file_not_in_use(target)
+    LOGGER.info("state 数据正在拉取：数据库=trading.db")
     _run_command(
         "scp",
         *_ssh_options(),
@@ -91,13 +110,155 @@ def _pull_state(config: AppConfig, server: str, password: str) -> dict[str, str]
         f"{server}:{REMOTE_DATA_ROOT}/state/trading.db",
         str(target),
         password=password,
+        show_progress=True,
     )
-    LOGGER.info("SQLite 状态拉取完成：数据库=%s", target)
+    LOGGER.info("state 数据拉取完成：数据库=%s", target)
     return {
         "direction": "pull",
         "scope": "state",
         "database": str(target),
     }
+
+
+def _push_directory_archive(
+    local_data_root: Path,
+    directory: str,
+    server: str,
+    password: str,
+) -> int:
+    transfer_id = uuid4().hex
+    remote_archive = f"/tmp/stock-sync-{transfer_id}.tar.gz"
+    staging = f"{REMOTE_DATA_ROOT}/.{directory}.sync-{transfer_id}"
+    target = f"{REMOTE_DATA_ROOT}/{directory}"
+    with tempfile.TemporaryDirectory(prefix="stock-sync-archive-") as temporary:
+        archive = Path(temporary) / f"{directory}.tar.gz"
+        file_count = _create_push_archive(
+            local_data_root / directory, archive
+        )
+        LOGGER.info(
+            "同步归档生成完成：目录=%s；文件数=%d；大小=%d",
+            directory,
+            file_count,
+            archive.stat().st_size,
+        )
+        _run_command(
+            "scp",
+            *_ssh_options(),
+            str(archive),
+            f"{server}:{remote_archive}",
+            password=password,
+            show_progress=True,
+        )
+        remote = _run_command(
+            "ssh",
+            *_ssh_options(),
+            server,
+            (
+                "set -e; "
+                f"mkdir -p '{REMOTE_DATA_ROOT}'; "
+                f"rm -rf '{staging}'; mkdir -p '{staging}'; "
+                f"tar -xzf '{remote_archive}' -C '{staging}'; "
+                f"test -d '{staging}/{directory}'; "
+                f"count=$(find '{staging}/{directory}' -type f | wc -l); "
+                f"test \"$count\" -eq '{file_count}'; "
+                f"rm -rf '{target}'; "
+                f"mv '{staging}/{directory}' '{target}'; "
+                f"rm -rf '{staging}' '{remote_archive}'; "
+                "printf '%s' \"$count\""
+            ),
+            password=password,
+        )
+    remote_count = int(remote.stdout.strip())
+    if remote_count != file_count:
+        raise RuntimeError(
+            f"远端同步文件数不一致：目录={directory}；"
+            f"本地={file_count}；远端={remote_count}"
+        )
+    return file_count
+
+
+def _create_push_archive(source: Path, archive: Path) -> int:
+    files = _push_files(source)
+    if not files:
+        raise ValueError(f"本地同步目录没有文件：{source}")
+    with tarfile.open(archive, "w:gz", compresslevel=1) as stream:
+        for path in files:
+            stream.add(path, arcname=(Path(source.name) / path.relative_to(source)))
+    return len(files)
+
+
+def _push_files(source: Path) -> list[Path]:
+    if source.name == "artifacts":
+        versions = source / "alpha158-lightgbm" / "versions"
+        candidates = sorted(
+            (
+                path
+                for path in versions.iterdir()
+                if path.is_dir() and not path.name.startswith(".")
+            ),
+            reverse=True,
+        )
+        current = next(
+            (
+                path
+                for path in candidates
+                if all((path / name).is_file() for name in MODEL_REQUIRED_FILES)
+            ),
+            None,
+        )
+        if current is None:
+            raise ValueError(f"没有可同步的完整模型版本：{versions}")
+        return sorted(path for path in current.rglob("*") if path.is_file())
+    if source.name != "market":
+        return sorted(path for path in source.rglob("*") if path.is_file())
+    files: list[Path] = []
+    for name in MARKET_ARCHIVE_DIRECTORIES:
+        root = source / name
+        if not root.is_dir():
+            raise ValueError(f"本地 market 数据目录缺失：{root}")
+        if name == "daily":
+            files.extend(
+                path
+                for partition in root.glob("code=*")
+                for path in partition.rglob("*")
+                if path.is_file()
+            )
+            continue
+        files.extend(path for path in root.rglob("*") if path.is_file())
+    return sorted(files)
+
+
+def _ensure_file_not_in_use(path: Path) -> None:
+    if os.name != "nt" or not path.is_file():
+        return
+
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    create_file = kernel32.CreateFileW
+    create_file.argtypes = (
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.LPVOID,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HANDLE,
+    )
+    create_file.restype = wintypes.HANDLE
+    close_handle = kernel32.CloseHandle
+    close_handle.argtypes = (wintypes.HANDLE,)
+    close_handle.restype = wintypes.BOOL
+    handle = create_file(str(path), 0xC0000000, 0, None, 3, 0x80, None)
+    if handle == wintypes.HANDLE(-1).value:
+        error_code = ctypes.get_last_error()
+        if error_code in {32, 33}:
+            raise ValueError(
+                f"本地文件被占用，请关闭相关资源后重试：{path}"
+            )
+        raise ctypes.WinError(error_code)
+    close_handle(handle)
 
 
 def _build_plan(
@@ -187,13 +348,14 @@ def _run_command(
     *command: str,
     check: bool = True,
     password: str,
+    show_progress: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     try:
         with _askpass_environment(password) as environment:
             return subprocess.run(
                 command,
                 check=check,
-                capture_output=True,
+                capture_output=not show_progress,
                 text=True,
                 encoding="utf-8",
                 errors="replace",
@@ -207,4 +369,4 @@ def _run_command(
         raise RuntimeError(detail) from error
 
 
-# AI_GENERATE_END ------
+# AI_GENERATE_END -----------

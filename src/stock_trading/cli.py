@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----------------------------------------------------------------------------------------------------------------------------------
+# AI_GENERATE_START ---------------------------------------------------------------------------------------------------------------------------------------
 from __future__ import annotations
 
 import json
@@ -64,8 +64,12 @@ def _execute(
             )
             result = operation(config)
         except typer.BadParameter as error:
-            LOGGER.warning("业务命令参数错误：原因=%s", error)
-            raise
+            LOGGER.error(
+                "业务命令参数错误：耗时=%.2f 秒；原因=%s",
+                perf_counter() - started_at,
+                error,
+            )
+            raise typer.Exit(code=2) from None
         except Exception as error:
             LOGGER.error(
                 "业务命令失败：耗时=%.2f 秒；原因=%s",
@@ -73,7 +77,7 @@ def _execute(
                 error,
             )
             push_system_failure(config, command, error)
-            raise
+            raise typer.Exit(code=1) from None
         except KeyboardInterrupt:
             LOGGER.warning(
                 "收到 Ctrl+C，业务命令已终止：耗时=%.2f 秒",
@@ -104,24 +108,50 @@ def order_command(
 
 
 def collect_command(
+    daily: Annotated[
+        bool,
+        typer.Option("--daily", help="采集基础信息、日线和复权因子。"),
+    ] = False,
+    minute5: Annotated[
+        bool,
+        typer.Option("--minute5", help="采集5分钟线并生成上午和下午交易窗口。"),
+    ] = False,
     date_value: Annotated[
         str | None,
         typer.Option("--date", help="采集日期或日期范围，默认最近交易日。"),
     ] = None,
+    code_value: Annotated[
+        str | None,
+        typer.Option("--code", help="股票代码，多个代码使用逗号分隔。"),
+    ] = None,
 ) -> None:
+    if daily and minute5:
+        raise typer.BadParameter("--daily 和 --minute5 不能同时指定")
+    mode = "minute5" if minute5 else "daily"
+    selected_codes = _parse_stock_codes(code_value) if code_value else None
+
     def run(config: AppConfig) -> dict[str, object]:
         latest = latest_completed_trade_date(shanghai_now())
-        start, end = _parse_date_expression(date_value, latest, latest)
+        default_date = shanghai_today() if mode == "minute5" else latest
+        start, end = _parse_date_expression(date_value, default_date, default_date)
         return collect_workflow(
             config,
             start,
             end,
             latest,
+            requested_codes=selected_codes,
+            mode=mode,
         )
 
     result = _execute(
         "collect",
-        {"date": date_value},
+        {
+            "mode": mode,
+            "daily": daily,
+            "minute5": minute5,
+            "date": date_value,
+            "code": code_value,
+        },
         run,
     )
     _print_json(result)
@@ -138,7 +168,7 @@ def prepare_command(
     ] = False,
 ) -> None:
     def run(config: AppConfig) -> dict[str, object]:
-        latest = latest_completed_trade_date(shanghai_now())
+        latest = shanghai_today()
         qlib = QlibBinaryStore(
             ParquetMarketStore(config.data_dir), config.qlib_dir
         )
@@ -439,8 +469,7 @@ def _log_cleanup_summary(result: dict[str, object]) -> None:
     market = dict(result["market"])
     state = dict(result["state"])
     LOGGER.info(
-        "数据清理完成：日期=%s；分钟股票=%s；原始行=%s；聚合行=%s；"
-        "SQLite删除=%s",
+        "数据清理完成：日期=%s；分钟股票=%s；原始行=%s；聚合行=%s；SQLite删除=%s",
         result["referenceDate"],
         market.get("codes", 0),
         market.get("rawRows", 0),
@@ -453,4 +482,4 @@ def _format_amount(value: object) -> str:
     return "-" if value is None else f"{float(value):,.2f}"
 
 
-# AI_GENERATE_END -----------------------------------------------------------------------------------------------------------------------------------
+# AI_GENERATE_END ---------------------------------------------------------------------------------------------------------------------------------------
