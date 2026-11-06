@@ -440,6 +440,16 @@ public class MarketRepository {
         }
     }
 
+    /**
+     * 绑定基础信息、日线、每日指标和股票关键字查询参数。
+     *
+     * @param statement 查询语句
+     * @param instruments 基础信息文件
+     * @param daily 日线横截面文件
+     * @param dailyBasic 每日指标文件
+     * @param keyword 股票关键字
+     * @throws Exception 参数绑定失败
+     */
     private void bindInstrumentFilter(
             PreparedStatement statement, String instruments, String daily,
             String dailyBasic, String keyword) throws Exception {
