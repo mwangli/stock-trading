@@ -1,4 +1,4 @@
-/* AI_GENERATE_START -- */
+/* AI_GENERATE_START --- */
 .documentation-page {
   display: grid;
   width: 100%;
@@ -72,7 +72,7 @@
 .documentation-code-toolbar { display: flex; height: 36px; align-items: center; justify-content: space-between; padding: 0 8px 0 13px; border-bottom: 1px solid var(--border-color); color: var(--text-muted); font-size: 11px; text-transform: uppercase; }
 .documentation-code-toolbar button { display: inline-flex; width: 28px; height: 28px; align-items: center; justify-content: center; border: 0; border-radius: 3px; background: transparent; color: var(--text-muted); cursor: pointer; }
 .documentation-code-toolbar button:hover { background: var(--brand-soft); color: var(--brand); }
-.documentation-code-block pre { margin: 0 !important; padding: 16px 18px !important; overflow: auto; font-family: var(--font-mono) !important; font-size: 13px; line-height: 1.7; }
+.documentation-code-block pre { margin: 0 !important; padding: 16px 18px !important; overflow: auto; background: color-mix(in srgb, var(--panel-muted) 78%, var(--panel-bg)) !important; font-family: var(--font-mono) !important; font-size: 13px; line-height: 1.7; }
 .documentation-table-wrap { width: 100%; margin: 20px 0; overflow-x: auto; border: 1px solid var(--border-color); border-radius: 4px; }
 .documentation-markdown table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .documentation-markdown th,
@@ -96,4 +96,4 @@
 .documentation-toc-empty { display: block; padding: 4px 8px; color: var(--text-muted); font-size: 12px; }
 .documentation-not-found { display: flex; height: 100%; align-items: center; justify-content: center; background: var(--panel-bg); }
 
-/* AI_GENERATE_END -- */
+/* AI_GENERATE_END --- */
