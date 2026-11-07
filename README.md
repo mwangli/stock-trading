@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START----------------- -->
+<!-- AI_GENERATE_START------------------- -->
 # 智能股票交易系统
 
 面向个人量化交易场景的只读 Web 控制台，将账户收益、市场行情、交易记录、模型预测、运行状态与 Agent 智能分析集中在一个简洁的工作台中。
@@ -41,20 +41,18 @@ Agent 基于交易数据库、任务状态、模型结果和项目文档进行�
 
 ## 移动端体验
 
-移动端聚焦高频查看场景，通过底部导航快速切换收益、交易、Agent 对话和运行日志。
+移动端聚焦高频查看场景，集中展示收益总览、交易记录和 Agent 智能分析。
 
-<table cellpadding="8">
+<table width="100%" cellpadding="10" cellspacing="12">
   <tr>
-    <td width="25%" align="center"><strong>收益总览</strong></td>
-    <td width="25%" align="center"><strong>交易记录</strong></td>
-    <td width="25%" align="center"><strong>Agent 智能分析</strong></td>
-    <td width="25%" align="center"><strong>运行日志</strong></td>
+    <td width="33.33%" align="center"><strong>收益总览</strong></td>
+    <td width="33.33%" align="center"><strong>交易记录</strong></td>
+    <td width="33.33%" align="center"><strong>Agent 智能分析</strong></td>
   </tr>
   <tr>
-    <td width="25%" valign="top" align="center"><img src="https://raw.githubusercontent.com/mwangli/stock-trading/stock-web/documents/images/readme/mobile-dashboard.png" alt="移动端收益总览" width="88%" /></td>
-    <td width="25%" valign="top" align="center"><img src="https://raw.githubusercontent.com/mwangli/stock-trading/stock-web/documents/images/readme/mobile-trades.png" alt="移动端交易记录" width="88%" /></td>
-    <td width="25%" valign="top" align="center"><img src="https://raw.githubusercontent.com/mwangli/stock-trading/stock-web/documents/images/readme/mobile-agent.png" alt="移动端 Agent 智能对话" width="88%" /></td>
-    <td width="25%" valign="top" align="center"><img src="https://raw.githubusercontent.com/mwangli/stock-trading/stock-web/documents/images/readme/mobile-logs.png" alt="移动端运行日志" width="88%" /></td>
+    <td width="33.33%" valign="top" align="center"><img src="documents/images/readme/mobile-dashboard-2026.jpg" alt="移动端收益总览" width="90%" /></td>
+    <td width="33.33%" valign="top" align="center"><img src="documents/images/readme/mobile-trades-2026.jpg" alt="移动端交易记录" width="90%" /></td>
+    <td width="33.33%" valign="top" align="center"><img src="documents/images/readme/mobile-agent-2026.jpg" alt="移动端 Agent 智能对话" width="90%" /></td>
   </tr>
 </table>
 
@@ -105,4 +103,4 @@ mvn -pl stock-server spring-boot:run
 ## License
 
 本项目许可证见 [LICENSE.txt](LICENSE.txt)。
-<!-- AI_GENERATE_END----------------- -->
+<!-- AI_GENERATE_END------------------- -->
