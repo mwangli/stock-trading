@@ -1,12 +1,7 @@
-/* Hallmark · checked: 2026-11-06 · app screen · Edge Ledger · AI_GENERATE_START ---------------- */
+/* Hallmark · checked: 2026-11-06 · app screen · Edge Ledger · AI_GENERATE_START ------------------ */
 :root[data-theme='light'] { --logs-console-bg: #ffffff; --logs-console-fg: #111827; --logs-console-divider: #e5e7eb; --logs-console-scrollbar: #cbd5e1; }
-:root[data-theme='dark'] { --logs-console-bg: #000000; --logs-console-fg: #ffffff; --logs-console-divider: #1f2937; --logs-console-scrollbar: #475569; }
+:root[data-theme='dark'] { --logs-console-bg: var(--sidebar-bg); --logs-console-fg: #ffffff; --logs-console-divider: var(--border-soft); --logs-console-scrollbar: #475569; }
 .logs-page { display: flex; width: 100%; height: calc(100dvh - 70px - env(safe-area-inset-top)); min-height: 0 !important; flex-direction: column; gap: 0; margin-inline: 0; overflow: hidden; padding-bottom: 0; }
-.logs-toolbar { display: flex; min-height: 52px; flex: 0 0 auto; align-items: center; justify-content: flex-start !important; border-bottom: 1px solid var(--border-color); padding: 4px 8px 4px 12px; background: var(--panel-bg); }
-.logs-toolbar::before { color: var(--text-secondary); font-size: 13px; font-weight: 650; content: '日志流'; }
-.logs-mobile-actions { display: flex; align-items: center; gap: 2px; margin-left: auto; }
-.logs-pause-button.ant-btn,
-.logs-toolbar-bottom-button.ant-btn { width: 44px; min-width: 44px; height: 44px; color: var(--brand); }
 .logs-console { position: relative; min-height: 0; flex: 1 1 0; border: 0; border-radius: 0; padding: 0; overflow: hidden; background: var(--logs-console-bg); color: var(--logs-console-fg); box-shadow: inset 0 1px 0 var(--logs-console-divider); font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; }
 .logs-scroll-viewport { position: relative; z-index: 1; max-width: 100%; overflow-x: hidden; overflow-y: auto; padding: 6px 0 10px; touch-action: pan-y; scrollbar-color: var(--logs-console-scrollbar) transparent; scrollbar-width: thin; }
 .logs-line { width: 100%; min-width: 0; min-height: 22px; border-bottom: 1px solid var(--logs-console-divider); padding: 3px 10px; transition: background-color 140ms ease; }
@@ -19,4 +14,4 @@
 @media (prefers-reduced-motion: reduce) {
   .logs-page * { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
 }
-/* AI_GENERATE_END ---------------- */
+/* AI_GENERATE_END ------------------ */

@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------
+// AI_GENERATE_START --------
 import React, {
   useEffect,
   useMemo,
@@ -13,7 +13,6 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Avatar, Button, Dropdown, Layout, Tooltip, type MenuProps } from 'antd';
 import { Reorder, useDragControls } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
-import { BookOpenText } from 'lucide-react';
 import {
   ArrowLeftOutlined,
   CheckOutlined,
@@ -360,15 +359,14 @@ const DesktopLayout: React.FC = () => {
                   <span className="app-header-documentation-label">{RETURN_TO_SYSTEM_LABEL}</span>
                 </Button>
               ) : (
-                <Tooltip title="系统文档">
-                  <Button
-                    type="text"
-                    className="app-documentation-button"
-                    icon={<BookOpenText size={18} />}
-                    aria-label="打开系统文档"
-                    onClick={() => navigate('/docs')}
-                  />
-                </Tooltip>
+                <Button
+                  type="text"
+                  className="app-documentation-button"
+                  aria-label={t('layout.viewDocumentation')}
+                  onClick={() => navigate('/docs')}
+                >
+                  {t('layout.viewDocumentation')}
+                </Button>
               )}
               <Button type="text" className="app-header-language !h-8 !px-2 text-xs" onClick={() => void i18n.changeLanguage(i18n.language.startsWith('en') ? 'zh' : 'en')}>
                 {i18n.language.startsWith('en') ? 'EN' : '中文'}
@@ -392,4 +390,4 @@ const DesktopLayout: React.FC = () => {
 };
 
 export default DesktopLayout;
-// AI_GENERATE_END ------
+// AI_GENERATE_END --------

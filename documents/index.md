@@ -5,7 +5,7 @@ sidebar_position: 1
 owner: system
 type: overview
 status: SOURCE_VERIFIED
-last_verified: 2026-11-06
+last_verified: 2026-11-07
 slug: /
 source_paths:
   - stock-trading@README.md
@@ -53,8 +53,7 @@ flowchart LR
 | 本地体验或生产安装 | [快速部署手册](04-operations/quick-deployment-guide.md) |
 | 理解发布和调度 | [部署、发布与数据挂载](04-operations/deployment-and-data-mounts.md) |
 | 理解关键架构取舍 | [Python 交易权威 ADR](05-decisions/adr-python-only-t1.md) |
-| 查看版本与技术栈演进 | [历史版本说明](06-history/version-history.md) |
-| 查看历史方案如何收口 | [历史设计演进](06-history/retained-design-evolution.md) |
+| 查看版本、技术栈与历史方案收口 | [历史版本与设计演进](06-history/version-history.md) |
 
 ## 文档证据等级
 

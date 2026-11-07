@@ -1,4 +1,4 @@
-// AI_GENERATE_START---------------------------
+// AI_GENERATE_START----------------------------
 import './styles.css';
 import React, { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { Button, Input, Spin, Tag, message, type InputRef } from 'antd';
@@ -255,6 +255,7 @@ const AgentConversation: React.FC = () => {
       const response = await request.post('/agent/chat', {
         sessionId: activeSessionId,
         question: normalizedQuestion,
+        resource: 'mobile',
       }) as ApiResponse<AgentChatResponse>;
       const result = readApiData(response, 'Agent 分析失败');
       appendMessage(ownerId, {
@@ -397,4 +398,4 @@ const AgentConversation: React.FC = () => {
 };
 
 export default AgentConversation;
-// AI_GENERATE_END---------------------------
+// AI_GENERATE_END----------------------------

@@ -69,7 +69,8 @@
     "checking": "Checking",
     "lightMode": "Switch to light mode",
     "darkMode": "Switch to dark mode",
-    "adaptiveTheme": "Adaptive theme"
+    "adaptiveTheme": "Adaptive theme",
+    "viewDocumentation": "View Docs"
   },
   "historyOrders": {
     "subtitle": "Filled orders returned by the broker and stored locally",

@@ -69,7 +69,8 @@
     "checking": "检测中",
     "lightMode": "切换浅色模式",
     "darkMode": "切换深色模式",
-    "adaptiveTheme": "自适应主题"
+    "adaptiveTheme": "自适应主题",
+    "viewDocumentation": "查看文档"
   },
   "historyOrders": {
     "subtitle": "仅展示券商返回并已落库的全部成交委托",

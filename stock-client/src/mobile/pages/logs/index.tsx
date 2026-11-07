@@ -1,8 +1,6 @@
-// AI_GENERATE_START ---------
+// AI_GENERATE_START -----------
 import './styles.css';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Button } from 'antd';
-import { ArrowDownOutlined, CaretRightOutlined, PauseOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { usePageHeader } from '../../layouts/PageHeaderContext';
 import request from '@shared/utils/request';
@@ -30,14 +28,10 @@ const Logs: React.FC = () => {
   const [logState, setLogState] = useState<LogState>(globalLogState);
   const [logPath, setLogPath] = useState(globalLogPath);
   const [logError, setLogError] = useState(globalLogError);
-  const [paused, setPaused] = useState(false);
-  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const logsContainerRef = useRef<HTMLDivElement | null>(null);
   const mobileFollowRef = useRef(true);
 
   useEffect(() => {
-    if (paused) return undefined;
-
     let active = true;
     const loadLogs = async () => {
       try {
@@ -83,14 +77,13 @@ const Logs: React.FC = () => {
       active = false;
       window.clearInterval(timer);
     };
-  }, [paused]);
+  }, []);
 
   useEffect(() => {
     const container = logsContainerRef.current;
     if (container && mobileFollowRef.current) {
       const frame = window.requestAnimationFrame(() => {
         container.scrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
-        setShowScrollToBottom(false);
       });
       return () => window.cancelAnimationFrame(frame);
     }
@@ -102,18 +95,7 @@ const Logs: React.FC = () => {
     if (!container) return;
 
     const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-    const isAtBottom = distanceFromBottom <= BOTTOM_FOLLOW_THRESHOLD;
-    mobileFollowRef.current = isAtBottom;
-    setShowScrollToBottom(!isAtBottom);
-  }, []);
-
-  const scrollToBottom = useCallback(() => {
-    const container = logsContainerRef.current;
-    if (!container) return;
-
-    mobileFollowRef.current = true;
-    container.scrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
-    setShowScrollToBottom(false);
+    mobileFollowRef.current = distanceFromBottom <= BOTTOM_FOLLOW_THRESHOLD;
   }, []);
 
   const emptyMessage = logState === 'offline'
@@ -128,31 +110,6 @@ const Logs: React.FC = () => {
 
   return (
     <div className="app-page logs-page h-full min-h-[520px]">
-      <div className="logs-toolbar flex flex-wrap items-center justify-end gap-3">
-        <div className="logs-mobile-actions">
-          <Button
-            className="logs-pause-button"
-            type="text"
-            shape="circle"
-            icon={paused ? <CaretRightOutlined /> : <PauseOutlined />}
-            aria-label={t(paused ? 'logs.resume' : 'logs.pause')}
-            aria-pressed={paused}
-            title={t(paused ? 'logs.resume' : 'logs.pause')}
-            onClick={() => setPaused((value) => !value)}
-          />
-          {showScrollToBottom && (
-            <Button
-              className="logs-toolbar-bottom-button"
-              type="text"
-              shape="circle"
-              icon={<ArrowDownOutlined />}
-              aria-label="回到底部"
-              title="回到底部"
-              onClick={scrollToBottom}
-            />
-          )}
-        </div>
-      </div>
       <div className="logs-console relative flex min-h-0 flex-1 flex-col overflow-hidden font-mono text-sm">
         <div
           ref={logsContainerRef}
@@ -176,5 +133,5 @@ const Logs: React.FC = () => {
   );
 };
 
-export default Logs;
-// AI_GENERATE_END ---------
+export default React.memo(Logs);
+// AI_GENERATE_END -----------

@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----------------
+// AI_GENERATE_START ------------------
 package com.stock.console.agent;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -20,6 +20,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 @Service
@@ -27,6 +28,8 @@ public class AgentService {
 
     public static final int MAX_QUESTION_LENGTH = 20_000;
     static final int MAX_ANALYSIS_LENGTH = 4_000;
+    static final String RESOURCE_COMPUTER = "computer";
+    static final String RESOURCE_MOBILE = "mobile";
     private static final Logger LOGGER = LoggerFactory.getLogger(AgentService.class);
 
     private static final String SYSTEM_PROMPT = """
@@ -52,6 +55,18 @@ public class AgentService {
             你可以进行业务问答和受限代码修复分析，但不能自动下单。答案使用中文，代码、字段和异常保留英文；说明查询范围、收益口径以及事实/推断/未知项。
             """;
 
+    private static final String MOBILE_SUMMARY_PROMPT = """
+            你是移动端回答精简器。你的输入包含用户问题和已经完成事实核验的完整回答。
+
+            精简规则：
+            1. 只压缩表达，不新增事实，不重新分析，不调用工具，不改变数字、日期、正负号、结论和收益口径。
+            2. 保留关键结论、最重要的两到四项事实，以及必要的风险、未知项和数据限制。
+            3. 删除推理过程、重复说明、冗长背景、来源展开、表格和多级标题。
+            4. 优先使用两到五条短句或短列表，总长度尽量控制在三百个中文字符以内。
+            5. 输入已经足够简洁时直接保留，不要添加“精简如下”等前缀。
+            6. 只输出最终展示给用户的中文回答。
+            """;
+
     private final ConsoleProperties properties;
     private final AgentConversationStore store;
     private final TradingFacts facts;
@@ -61,7 +76,20 @@ public class AgentService {
     private final AgentToolAudit toolAudit;
     private final SensitiveDataMasker masker;
     private volatile ConsoleAssistant assistant;
+    private volatile ConsoleAssistant mobileSummarizer;
 
+    /**
+     * 创建只读智能对话服务并注入会话、事实、文档和审计依赖。
+     *
+     * @param properties 控制台配置
+     * @param store 临时会话存储
+     * @param facts 交易事实服务
+     * @param documents 文档服务
+     * @param objectMapper JSON 序列化器
+     * @param readTools 只读工具集合
+     * @param toolAudit 工具审计器
+     * @param masker 敏感数据脱敏器
+     */
     public AgentService(
             ConsoleProperties properties,
             AgentConversationStore store,
@@ -81,23 +109,53 @@ public class AgentService {
         this.masker = masker;
     }
 
+    /**
+     * 创建当前进程内的临时智能对话会话。
+     *
+     * @param httpSession 当前 HTTP 会话
+     * @param title 会话标题
+     * @return 新建会话信息
+     */
     public Map<String, Object> createSession(HttpSession httpSession, String title) {
         return store.createSession(title);
     }
 
+    /**
+     * 查询当前进程内的临时智能对话会话。
+     *
+     * @param httpSession 当前 HTTP 会话
+     * @return 会话列表
+     */
     public List<Map<String, Object>> sessions(HttpSession httpSession) {
         return store.sessions();
     }
 
+    /**
+     * 查询指定智能对话会话的历史消息。
+     *
+     * @param httpSession 当前 HTTP 会话
+     * @param sessionId 会话 ID
+     * @return 历史消息列表
+     */
     public List<Map<String, Object>> history(HttpSession httpSession, String sessionId) {
         return store.messages(sessionId);
     }
 
-    public Map<String, Object> chat(HttpSession httpSession, String sessionId, String question) {
+    /**
+     * 按会话来源处理用户问题，移动端在完整回答后追加精简步骤。
+     *
+     * @param httpSession 当前 HTTP 会话
+     * @param sessionId 会话 ID，空值时自动创建
+     * @param question 用户问题
+     * @param resource 会话来源，支持 computer 和 mobile
+     * @return 智能对话回答、会话 ID 和证据引用
+     */
+    public Map<String, Object> chat(HttpSession httpSession, String sessionId, String question, String resource) {
         if (question == null || question.isBlank()) {
             throw new IllegalArgumentException("问题不能为空");
         }
         String trimmedQuestion = question.trim();
+        String resolvedResource = normalizeResource(resource);
         if (trimmedQuestion.length() > MAX_QUESTION_LENGTH) {
             throw new IllegalArgumentException("问题不能超过 " + MAX_QUESTION_LENGTH + " 个字符");
         }
@@ -109,10 +167,15 @@ public class AgentService {
                     trimmedQuestion.substring(0, Math.min(30, trimmedQuestion.length()))).get("id"));
         }
         synchronized (store.conversationLock(resolvedSession)) {
-            return execute(resolvedSession, input);
+            return execute(resolvedSession, input, resolvedResource);
         }
     }
 
+    /**
+     * 查询智能对话的模型配置和运行能力状态。
+     *
+     * @return 智能对话状态信息
+     */
     public Map<String, Object> status() {
         ConsoleProperties.Agent config = properties.agent();
         return Map.of(
@@ -124,7 +187,15 @@ public class AgentService {
                 "persistentState", false);
     }
 
-    private Map<String, Object> execute(String sessionId, QuestionInput input) {
+    /**
+     * 执行完整智能分析，并在移动端来源下精简最终展示内容。
+     *
+     * @param sessionId 会话 ID
+     * @param input 归一化后的问题
+     * @param resource 已校验的会话来源
+     * @return 最终回答和证据引用
+     */
+    private Map<String, Object> execute(String sessionId, QuestionInput input, String resource) {
         String question = input.content();
         store.appendMessage(sessionId, "user", masker.mask(question), null);
         List<DocumentService.SearchHit> hits = documents.search(question, 5);
@@ -132,10 +203,11 @@ public class AgentService {
         evidence.add("java-agent:read-only-tools");
         hits.forEach(hit -> evidence.add("document:" + hit.path()));
         String answer;
+        boolean providerAnswer = false;
         toolAudit.begin(sessionId);
         try {
             if (!properties.agent().enabled() || !providerConfigured()) {
-                answer = localFallbackAnswer("模型服务未配置", question);
+                answer = localFallbackAnswer("模型服务未配置", question, resource);
                 evidence.add("sqlite:trading-status:fallback");
             } else {
                 Result<String> result = assistant().chat(prompt(sessionId, question, hits), SYSTEM_PROMPT);
@@ -143,11 +215,12 @@ public class AgentService {
                 if (answer == null || answer.isBlank()) {
                     throw new IllegalStateException("模型未返回有效回答");
                 }
+                providerAnswer = true;
             }
         } catch (RuntimeException exception) {
             LOGGER.warn("Agent Provider 调用失败，已切换本地只读回答: {}",
                     masker.mask(providerFailureDetail(exception)));
-            answer = localFallbackAnswer("模型服务暂时不可用", question);
+            answer = localFallbackAnswer("模型服务暂时不可用", question, resource);
             evidence.add("sqlite:trading-status:fallback");
         } finally {
             evidence.addAll(toolAudit.finish());
@@ -156,6 +229,9 @@ public class AgentService {
         answer = masker.mask(input.truncated()
                 ? input.notice() + "\n" + answer
                 : answer);
+        if (RESOURCE_MOBILE.equals(resource) && providerAnswer) {
+            answer = refineMobileAnswer(question, answer);
+        }
         store.appendMessage(sessionId, "assistant", answer, refs);
         return Map.of(
                 "sessionId", sessionId,
@@ -164,6 +240,14 @@ public class AgentService {
                 "createdAt", Instant.now().toString());
     }
 
+    /**
+     * 组合用户问题、最近对话、数据源状态和文档检索结果。
+     *
+     * @param sessionId 会话 ID
+     * @param question 用户问题
+     * @param hits 文档检索结果
+     * @return 主分析流程使用的完整提示词
+     */
     private String prompt(
             String sessionId,
             String question,
@@ -177,6 +261,47 @@ public class AgentService {
                 + "\n\n文档检索结果：\n" + json(hits);
     }
 
+    /**
+     * 将完整回答压缩为适合移动端展示的短回答，失败时保留完整回答。
+     *
+     * @param question 用户问题
+     * @param answer 已完成事实核验和脱敏的完整回答
+     * @return 移动端短回答或原始完整回答
+     */
+    private String refineMobileAnswer(String question, String answer) {
+        try {
+            Result<String> result = mobileSummarizer().chat(
+                    mobileSummaryPrompt(question, answer),
+                    MOBILE_SUMMARY_PROMPT);
+            String refined = result.content();
+            if (refined == null || refined.isBlank()) {
+                return answer;
+            }
+            return masker.mask(refined.trim());
+        } catch (RuntimeException exception) {
+            LOGGER.warn("移动端回答精简失败，保留完整回答: {}",
+                    masker.mask(providerFailureDetail(exception)));
+            return answer;
+        }
+    }
+
+    /**
+     * 组合移动端精简步骤所需的用户问题和完整回答。
+     *
+     * @param question 用户问题
+     * @param answer 已完成事实核验的完整回答
+     * @return 移动端精简提示词
+     */
+    private String mobileSummaryPrompt(String question, String answer) {
+        return "用户问题：\n" + masker.mask(question)
+                + "\n\n完整回答：\n" + answer;
+    }
+
+    /**
+     * 延迟创建具备只读工具能力的主分析模型服务。
+     *
+     * @return 主分析模型服务
+     */
     private ConsoleAssistant assistant() {
         ConsoleAssistant current = assistant;
         if (current != null) {
@@ -185,16 +310,8 @@ public class AgentService {
         synchronized (this) {
             if (assistant == null) {
                 ConsoleProperties.Agent config = properties.agent();
-                OpenAiChatModel model = OpenAiChatModel.builder()
-                        .baseUrl(config.baseUrl())
-                        .apiKey(config.apiKey())
-                        .modelName(config.model())
-                        .maxTokens(Math.max(1, config.maxTokens()))
-                        .timeout(Duration.ofSeconds(Math.max(1, config.timeoutSeconds())))
-                        .maxRetries(0)
-                        .build();
                 assistant = AiServices.builder(ConsoleAssistant.class)
-                        .chatModel(model)
+                        .chatModel(providerModel(config.maxTokens()))
                         .tools(readTools)
                         .maxToolCallingRoundTrips(6)
                         .toolArgumentsErrorHandler(ToolArgumentsErrorHandler.sendExceptionMessageToLlm())
@@ -206,6 +323,50 @@ public class AgentService {
         }
     }
 
+    /**
+     * 延迟创建不带工具的移动端回答精简模型服务。
+     *
+     * @return 移动端回答精简模型服务
+     */
+    private ConsoleAssistant mobileSummarizer() {
+        ConsoleAssistant current = mobileSummarizer;
+        if (current != null) {
+            return current;
+        }
+        synchronized (this) {
+            if (mobileSummarizer == null) {
+                ConsoleProperties.Agent config = properties.agent();
+                mobileSummarizer = AiServices.builder(ConsoleAssistant.class)
+                        .chatModel(providerModel(Math.min(config.maxTokens(), 600)))
+                        .build();
+            }
+            return mobileSummarizer;
+        }
+    }
+
+    /**
+     * 按给定输出上限创建远程对话模型。
+     *
+     * @param maxTokens 最大输出令牌数
+     * @return 远程对话模型
+     */
+    private OpenAiChatModel providerModel(int maxTokens) {
+        ConsoleProperties.Agent config = properties.agent();
+        return OpenAiChatModel.builder()
+                .baseUrl(config.baseUrl())
+                .apiKey(config.apiKey())
+                .modelName(config.model())
+                .maxTokens(Math.max(1, maxTokens))
+                .timeout(Duration.ofSeconds(Math.max(1, config.timeoutSeconds())))
+                .maxRetries(0)
+                .build();
+    }
+
+    /**
+     * 判断远程模型地址和密钥是否满足调用条件。
+     *
+     * @return 配置可调用时返回 true
+     */
     private boolean providerConfigured() {
         ConsoleProperties.Agent config = properties.agent();
         String baseUrl = config.baseUrl();
@@ -217,6 +378,12 @@ public class AgentService {
                 && !"DEEPSEEK_API_KEY".equals(apiKey);
     }
 
+    /**
+     * 提取异常链中最深层的有效信息并移除多行噪声。
+     *
+     * @param throwable 模型调用异常
+     * @return 适合日志记录的异常摘要
+     */
     static String providerFailureDetail(Throwable throwable) {
         Throwable current = throwable;
         Throwable selected = throwable;
@@ -241,6 +408,12 @@ public class AgentService {
         return type + ": " + normalized;
     }
 
+    /**
+     * 限制进入分析流程的问题长度，同时保留首尾关键内容。
+     *
+     * @param question 已去除首尾空白的问题
+     * @return 归一化后的问题和截断提示
+     */
     static QuestionInput normalizeQuestion(String question) {
         if (question.length() <= MAX_ANALYSIS_LENGTH) {
             return new QuestionInput(question, false, "");
@@ -255,8 +428,39 @@ public class AgentService {
         return new QuestionInput(content, true, notice);
     }
 
-    private String localFallbackAnswer(String reason, String question) {
+    /**
+     * 校验会话来源，空值默认使用电脑端来源。
+     *
+     * @param resource 原始会话来源
+     * @return 归一化后的会话来源
+     */
+    static String normalizeResource(String resource) {
+        if (resource == null || resource.isBlank()) {
+            return RESOURCE_COMPUTER;
+        }
+        String normalized = resource.trim().toLowerCase(Locale.ROOT);
+        if (!RESOURCE_COMPUTER.equals(normalized) && !RESOURCE_MOBILE.equals(normalized)) {
+            throw new IllegalArgumentException("resource 仅支持 computer 或 mobile");
+        }
+        return normalized;
+    }
+
+    /**
+     * 在远程模型不可用时生成本地只读摘要，移动端使用更短格式。
+     *
+     * @param reason 降级原因
+     * @param question 用户问题
+     * @param resource 已校验的会话来源
+     * @return 本地事实摘要
+     */
+    private String localFallbackAnswer(String reason, String question, String resource) {
         Map<String, Object> status = facts.tradingStatus();
+        if (RESOURCE_MOBILE.equals(resource)) {
+            return reason + "，已使用本地数据。\n"
+                    + "历史订单 " + status.getOrDefault("order_count", 0)
+                    + " 笔，已实现交易 " + status.getOrDefault("realized_trade_count", 0) + " 笔。\n"
+                    + "仅依据本地 SQLite 事实。";
+        }
         return reason + "，已切换到本地只读摘要。\n"
                 + "当前问题：" + question + "\n"
                 + "历史订单：" + status.getOrDefault("order_count", 0)
@@ -265,6 +469,12 @@ public class AgentService {
                 + "当前回答仅依据本地 SQLite 事实，不包含远程模型推断。";
     }
 
+    /**
+     * 将对象安全序列化并执行敏感数据脱敏。
+     *
+     * @param value 待序列化对象
+     * @return 脱敏后的 JSON 文本，失败时返回空数组
+     */
     private String json(Object value) {
         try {
             return masker.mask(objectMapper.writeValueAsString(value));
@@ -273,7 +483,15 @@ public class AgentService {
         }
     }
 
+    /**
+     * 表示归一化后的问题内容和截断状态。
+     *
+     * @param content 用于分析的问题内容
+     * @param truncated 是否发生截断
+     * @param notice 截断提示
+     * @return 归一化问题记录
+     */
     record QuestionInput(String content, boolean truncated, String notice) {
     }
 }
-// AI_GENERATE_END -----------------
+// AI_GENERATE_END ------------------

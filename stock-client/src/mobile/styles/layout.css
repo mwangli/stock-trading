@@ -1,4 +1,4 @@
-/* AI_GENERATE_START ------------ */
+/* AI_GENERATE_START --------------- */
 .app-header {
   min-height: calc(64px + env(safe-area-inset-top));
   padding: env(safe-area-inset-top) 4px 0;
@@ -32,8 +32,39 @@
   color: var(--brand) !important;
 }
 
+.app-theme-picker-button,
+.app-mobile-user-menu-button {
+  border-radius: 50%;
+  transition: background-color 140ms ease, color 140ms ease, transform 140ms ease;
+}
+
+.app-mobile-user-menu-button .app-header-avatar {
+  background: transparent !important;
+  color: var(--brand) !important;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .app-theme-picker-button:hover,
+  .app-mobile-user-menu-button:hover {
+    background: var(--brand-soft) !important;
+    color: var(--brand) !important;
+    transform: translateY(-1px);
+  }
+}
+
+.app-theme-picker-button:active,
+.app-mobile-user-menu-button:active {
+  transform: scale(0.92);
+}
+
+.app-theme-picker-button:focus-visible,
+.app-mobile-user-menu-button:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
 .app-mobile-navigation-popover {
-  width: min(360px, calc(100vw - 16px));
+  width: 40vw;
   min-width: 0 !important;
 }
 
@@ -41,7 +72,7 @@
   display: grid;
   width: 100%;
   min-width: 0;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 4px;
   padding: 6px;
   border: 1px solid var(--border-color);
@@ -137,4 +168,4 @@
   margin: 4px 0;
   border-color: var(--border-color);
 }
-/* AI_GENERATE_END ------------ */
+/* AI_GENERATE_END --------------- */

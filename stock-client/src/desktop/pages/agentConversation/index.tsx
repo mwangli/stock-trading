@@ -1,4 +1,4 @@
-// AI_GENERATE_START------------------------
+// AI_GENERATE_START-------------------------
 import './styles.css';
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Button, Drawer, Input, Spin, Tag, Tooltip, message, type InputRef } from 'antd';
@@ -9,7 +9,6 @@ import {
   PlusOutlined,
   ReloadOutlined,
   RobotOutlined,
-  SendOutlined,
 } from '@ant-design/icons';
 import { useAuth } from '@shared/auth/AuthContext';
 import { usePageHeader } from '../../layouts/PageHeaderContext';
@@ -415,10 +414,11 @@ const AgentConversation: React.FC = () => {
             )}
           </div>
 
-          <footer className="agent-composer border-t border-slate-200 p-4 dark:border-slate-700">
-            <div className="agent-composer-row flex items-end gap-3">
+          <footer className="agent-composer">
+            <div className="agent-composer-row">
               <Input.TextArea
                 ref={inputRef}
+                className="agent-question-input"
                 value={question}
                 onChange={(event) => setQuestion(ownerId, event.target.value)}
                 autoSize={{ minRows: 2, maxRows: 5 }}
@@ -430,15 +430,6 @@ const AgentConversation: React.FC = () => {
                 }}
                 placeholder="询问行情、收益、交易记录、模型预测、运行异常或代码问题"
               />
-              <Button
-                type="primary"
-                icon={<SendOutlined />}
-                loading={loading}
-                disabled={!question.trim()}
-                onClick={() => void submit()}
-              >
-                发送
-              </Button>
             </div>
           </footer>
         </main>
@@ -521,4 +512,4 @@ const AgentConversation: React.FC = () => {
 };
 
 export default AgentConversation;
-// AI_GENERATE_END------------------------
+// AI_GENERATE_END-------------------------

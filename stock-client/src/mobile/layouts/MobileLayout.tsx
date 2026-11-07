@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------------
+// AI_GENERATE_START --------------
 import React, {
   useEffect,
   useRef,
@@ -8,7 +8,7 @@ import React, {
 } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { Avatar, Button, Dropdown, Layout, Tooltip, type MenuProps } from 'antd';
+import { Avatar, Button, Dropdown, Layout, type MenuProps } from 'antd';
 import { useTranslation } from 'react-i18next';
 import {
   CheckOutlined,
@@ -27,7 +27,7 @@ const MOBILE_ROUTES = ['/dashboard', '/tradeRecords', '/agentConversation', '/lo
 const MOBILE_ROUTE_LABELS: Record<(typeof MOBILE_ROUTES)[number], string> = {
   '/dashboard': '收益总览',
   '/tradeRecords': '交易记录',
-  '/agentConversation': '智能分析',
+  '/agentConversation': '智能对话',
   '/logs': '运行日志',
 };
 
@@ -170,7 +170,7 @@ const MobileLayout: React.FC = () => {
   const pageTitles: Record<string, string> = {
     '/dashboard': t('layout.pageTitles.dashboard'),
     '/tradeRecords': t('layout.pageTitles.tradeRecords'),
-    '/agentConversation': 'Agent 智能分析',
+    '/agentConversation': '智能对话',
     '/logs': t('layout.pageTitles.logs'),
   };
 
@@ -221,9 +221,13 @@ const MobileLayout: React.FC = () => {
               </div>
             </div>
             <div className="app-header-tools">
-              <Tooltip title={mode === 'dark' ? t('layout.lightMode') : t('layout.darkMode')}>
-                <Button type="text" className="app-theme-picker-button" icon={mode === 'dark' ? <SunOutlined /> : <MoonOutlined />} onClick={toggleMode} />
-              </Tooltip>
+              <Button
+                type="text"
+                className="app-theme-picker-button"
+                icon={mode === 'dark' ? <SunOutlined /> : <MoonOutlined />}
+                aria-label={mode === 'dark' ? t('layout.lightMode') : t('layout.darkMode')}
+                onClick={toggleMode}
+              />
               <Dropdown
                 rootClassName="app-mobile-user-popover"
                 placement="bottomRight"
@@ -296,4 +300,4 @@ const MobileLayout: React.FC = () => {
 };
 
 export default MobileLayout;
-// AI_GENERATE_END ------------
+// AI_GENERATE_END --------------

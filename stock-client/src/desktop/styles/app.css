@@ -1,4 +1,4 @@
-/* AI_GENERATE_START ----- */
+/* AI_GENERATE_START ------ */
 @import "tailwindcss";
 
 :root,
@@ -394,10 +394,10 @@ button,
 }
 
 .app-documentation-button {
-  width: 34px;
-  height: 34px;
-  padding: 0 !important;
+  height: 32px;
+  padding-inline: 8px !important;
   color: var(--text-secondary) !important;
+  font-size: 12px !important;
 }
 
 .app-documentation-button:hover,
@@ -1664,4 +1664,4 @@ button,
     border-bottom: 0;
   }
 }
-/* AI_GENERATE_END ----- */
+/* AI_GENERATE_END ------ */

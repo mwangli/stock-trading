@@ -1,5 +1,5 @@
-// AI_GENERATE_START------------------
-import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useState } from 'react';
+// AI_GENERATE_START--------------------
+import React, { createContext, startTransition, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { App as AntdApp, ConfigProvider, theme } from 'antd';
 
 export type ThemeMode = 'light' | 'dark';
@@ -91,6 +91,11 @@ const resolveInitialThemeMode = (): ThemeMode => (
   readAutoThemeEnabled() ? resolveBeijingThemeMode() : (readStoredMode() ?? resolveBeijingThemeMode())
 );
 
+const applyDocumentTheme = (nextMode: ThemeMode) => {
+  document.documentElement.dataset.theme = nextMode;
+  delete document.documentElement.dataset.themePreset;
+};
+
 /**
  * 全局应用主题提供器。
  * 同步管理明暗主题、Ant Design Token、页面属性和本地持久化偏好。
@@ -101,12 +106,13 @@ export const AppThemeProvider: React.FC<React.PropsWithChildren> = ({ children }
   const palette = THEME_PALETTES[mode];
 
   const applyManualMode = useCallback((nextMode: ThemeMode) => {
+    applyDocumentTheme(nextMode);
     setAutoThemeEnabledState(false);
     window.localStorage.setItem(AUTO_THEME_STORAGE_KEY, 'false');
     window.localStorage.setItem(THEME_MODE_STORAGE_KEY, nextMode);
     window.localStorage.removeItem(THEME_PRESET_STORAGE_KEY);
     window.localStorage.removeItem(LAST_LIGHT_THEME_STORAGE_KEY);
-    setModeState(nextMode);
+    startTransition(() => setModeState(nextMode));
   }, []);
 
   const setAutoThemeEnabled = useCallback((enabled: boolean) => {
@@ -123,8 +129,7 @@ export const AppThemeProvider: React.FC<React.PropsWithChildren> = ({ children }
   }, [mode]);
 
   useLayoutEffect(() => {
-    document.documentElement.dataset.theme = mode;
-    delete document.documentElement.dataset.themePreset;
+    applyDocumentTheme(mode);
   }, [mode]);
 
   useEffect(() => {
@@ -149,41 +154,42 @@ export const AppThemeProvider: React.FC<React.PropsWithChildren> = ({ children }
     toggleMode: () => applyManualMode(mode === 'light' ? 'dark' : 'light'),
   }), [applyManualMode, autoThemeEnabled, mode, setAutoThemeEnabled]);
 
+  const antdTheme = useMemo(() => ({
+    cssVar: { key: 'stock-console' },
+    algorithm: mode === 'dark' ? theme.darkAlgorithm : theme.defaultAlgorithm,
+    token: {
+      colorPrimary: palette.brand,
+      colorInfo: palette.brand,
+      colorBgBase: palette.panelBg,
+      colorBgLayout: palette.appBg,
+      colorBgContainer: palette.panelBg,
+      colorBgElevated: palette.panelBg,
+      colorBorder: palette.border,
+      colorSplit: palette.border,
+      colorTextBase: palette.textPrimary,
+      borderRadius: 4,
+      controlHeight: 34,
+      fontSize: 14,
+    },
+    components: {
+      Card: { headerHeight: 48 },
+      Table: {
+        headerBg: palette.panelMuted,
+        headerColor: palette.textSecondary,
+        rowHoverBg: palette.rowHover,
+      },
+      Menu: {
+        darkItemBg: THEME_PALETTES.dark.panelBg,
+        darkItemSelectedBg: THEME_PALETTES.dark.brandSoft,
+        itemSelectedBg: palette.brandSoft,
+        itemSelectedColor: palette.brand,
+      },
+    },
+  }), [mode, palette]);
+
   return (
     <AppThemeContext.Provider value={contextValue}>
-      <ConfigProvider
-        theme={{
-          algorithm: mode === 'dark' ? theme.darkAlgorithm : theme.defaultAlgorithm,
-          token: {
-            colorPrimary: palette.brand,
-            colorInfo: palette.brand,
-            colorBgBase: palette.panelBg,
-            colorBgLayout: palette.appBg,
-            colorBgContainer: palette.panelBg,
-            colorBgElevated: palette.panelBg,
-            colorBorder: palette.border,
-            colorSplit: palette.border,
-            colorTextBase: palette.textPrimary,
-            borderRadius: 4,
-            controlHeight: 34,
-            fontSize: 14,
-          },
-          components: {
-            Card: { headerHeight: 48 },
-            Table: {
-              headerBg: palette.panelMuted,
-              headerColor: palette.textSecondary,
-              rowHoverBg: palette.rowHover,
-            },
-            Menu: {
-              darkItemBg: THEME_PALETTES.dark.panelBg,
-              darkItemSelectedBg: THEME_PALETTES.dark.brandSoft,
-              itemSelectedBg: palette.brandSoft,
-              itemSelectedColor: palette.brand,
-            },
-          },
-        }}
-      >
+      <ConfigProvider theme={antdTheme}>
         <AntdApp>{children}</AntdApp>
       </ConfigProvider>
     </AppThemeContext.Provider>
@@ -202,4 +208,4 @@ export const useAppTheme = (): AppThemeContextValue => {
   }
   return context;
 };
-// AI_GENERATE_END------------------
+// AI_GENERATE_END--------------------

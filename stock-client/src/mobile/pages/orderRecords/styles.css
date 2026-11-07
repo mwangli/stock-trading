@@ -1,4 +1,4 @@
-/* Hallmark · checked: 2026-11-06 · app screen · Edge Ledger · AI_GENERATE_START ------------ */
+/* Hallmark · checked: 2026-11-06 · app screen · Edge Ledger · AI_GENERATE_START ------------- */
 .order-records-shell { min-width: 0; overflow: hidden; border-radius: 0 !important; padding: 0 16px 16px; }
 .order-records-shell .ant-tabs-nav { min-height: 52px; margin-bottom: 16px; border-bottom: 1px solid var(--border-color); }
 .order-records-shell .ant-tabs-nav::before { border-bottom: 0; }
@@ -52,7 +52,7 @@
   .order-records-mobile-lead-result .is-up { color: var(--danger-color, #dc2626); }
   .order-records-mobile-lead-result .is-down { color: var(--success-color, #059669); }
   .order-records-mobile-list { display: grid; margin-top: 10px; border-block: 1px solid var(--border-color); background: var(--panel-bg); }
-  .order-records-mobile-row { display: grid; width: 100%; min-width: 0; min-height: 64px; grid-template-columns: 26% 56% 18%; align-items: center; border-bottom: 1px solid var(--border-color); padding: 10px 8px 10px 12px; background: var(--panel-bg); color: var(--text-primary); text-align: left; }
+  .order-records-mobile-row { display: grid; width: 100%; min-width: 0; min-height: 64px; grid-template-columns: 26% 56% 18%; align-items: center; border-bottom: 1px solid var(--border-color); padding: 10px 12px; background: var(--panel-bg); color: var(--text-primary); text-align: left; }
   .order-records-mobile-row:last-of-type { border-bottom: 0; }
   .order-records-mobile-row-main,
   .order-records-mobile-row-result { display: flex; min-width: 0; flex-direction: column; gap: 5px; }
@@ -75,4 +75,4 @@
 @media (prefers-reduced-motion: reduce) {
   .order-records-shell * { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
 }
-/* AI_GENERATE_END ------------ */
+/* AI_GENERATE_END ------------- */
