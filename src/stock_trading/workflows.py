@@ -1,9 +1,11 @@
-# AI_GENERATE_START--------------------- ---------------------------------
+# AI_GENERATE_START---------------------- ------------------------------------
 from __future__ import annotations
 
 import json
 import logging
 from datetime import date, time
+from contextlib import contextmanager
+from collections.abc import Iterator
 from pathlib import Path
 
 import pandas as pd
@@ -13,6 +15,8 @@ from stock_trading.broker.client import ZXBrokerClient
 from stock_trading.config import AppConfig
 from stock_trading.utils.instruments import normalize_instrument
 from stock_trading.market.storage import ParquetMarketStore, ResearchDataAudit
+from stock_trading.contracts import BUY_START, BUY_END, SELL_START, SELL_END
+from stock_trading.market.trade_calendar import trade_dates
 from stock_trading.market.quality import (
     audit_research_quality,
     require_data_quality,
@@ -22,6 +26,8 @@ from stock_trading.market.providers import (
     preferred_market_provider,
 )
 from stock_trading.market.sync import (
+    ensure_trade_calendar,
+    resolve_completed_trade_date,
     live_codes,
     research_codes,
     sync_daily,
@@ -36,24 +42,37 @@ from stock_trading.research.artifacts import (
     model_artifacts_valid,
     model_directory,
     prediction_artifact_path,
-    prediction_artifact_valid,
+    load_valid_prediction_artifact,
 )
 from stock_trading.research.model_adapter import create_research_model
 from stock_trading.research.model_config import ModelSpec
 from stock_trading.state.store import StateStore
-from stock_trading.trading.broker_sync import BrokerOrderSyncService
+from stock_trading.trading.post_trade import BrokerOrderSyncService
 from stock_trading.trading.execution import OrderExecutionOrchestrator
 from stock_trading.trading.orchestrator import LiveTradingOrchestrator
-from stock_trading.trading.review import (
+from stock_trading.trading.post_trade import (
     ModelReviewService,
     RealizedProfitService,
 )
-from stock_trading.trading.permissions import refresh_permissions
+from stock_trading.trading.post_trade import refresh_permissions
 from stock_trading.utils.time_utils import shanghai_now, shanghai_today
+from stock_trading.market.trade_calendar import shift_trade_date
 
 LOGGER = logging.getLogger(__name__)
 MINUTE1_MIN_TRAINING_DAYS = 252
 COLLECTION_TYPES = ("basic", "factor", "daily", "minute5", "minute")
+
+
+@contextmanager
+def _record_task(store: StateStore, task_type: str, business_date: date) -> Iterator[None]:
+    """记录一次完整工作流；异常原样向上传递。"""
+    business_key = store.start_task(task_type, business_date)
+    try:
+        yield
+    except BaseException as error:
+        store.finish_task(business_key, False, error)
+        raise
+    store.finish_task(business_key, True)
 
 
 def collect_workflow(
@@ -66,7 +85,7 @@ def collect_workflow(
     if requested_codes:
         LOGGER.warning("basic 始终写入全市场快照，--codes 对 basic 不生效")
 
-    state = StateStore(config.state_db_path)
+    state = StateStore(config.state_db_path, calendar_dir=config.data_dir / "calendar")
     store = ParquetMarketStore(config.data_dir)
     collection: dict[str, object] = {}
     errors: dict[str, str] = {}
@@ -376,8 +395,11 @@ def prepare_workflow(
     end_date: date,
     force: bool = False,
 ) -> dict[str, object]:
-    """只读取原始 Parquet，幂等准备指定范围的 Qlib。"""
+    """读取原始 Parquet，补齐可信年度日历后幂等准备指定范围的 Qlib。"""
     store = ParquetMarketStore(config.data_dir)
+    ensure_trade_calendar(
+        store, preferred_market_provider(config), range(start_date.year, end_date.year + 1)
+    )
     try:
         stocks = store.read_stock_basics()
     except (OSError, ValueError, KeyError) as error:
@@ -465,7 +487,7 @@ def _requires_complete_end_window(end_date: date) -> bool:
 def cleanup_workflow(config: AppConfig, reference_date: date) -> dict[str, object]:
     """按统一基准日期清理可淘汰状态，不删除长期业务事实。"""
     LOGGER.info("开始清理持久化数据：基准日期=%s", reference_date)
-    store = StateStore(config.state_db_path)
+    store = StateStore(config.state_db_path, calendar_dir=config.data_dir / "calendar")
     business_key = store.start_task("CLEAN", reference_date)
     before_bytes = _cleanup_storage_bytes(config)
     try:
@@ -516,10 +538,9 @@ def sync_order_workflow(
 ) -> dict[str, object]:
     """同步券商已成交事实、费用和权限，并完成可闭环的 FIFO 收益。"""
     LOGGER.info("开始同步券商历史订单：日期=%s 至 %s", start_date, end_date)
-    store = StateStore(config.state_db_path)
+    store = StateStore(config.state_db_path, calendar_dir=config.data_dir / "calendar")
     active_broker = broker or _build_broker(config)
-    business_key = store.start_task("ORDER", end_date)
-    try:
+    with _record_task(store, "ORDER", end_date):
         account_snapshot = store.save_account_snapshot(
             active_broker.get_account()
         )
@@ -539,10 +560,6 @@ def sync_order_workflow(
         result["permissions"] = refresh_permissions(
             store, store.broker_orders(), end_date
         )
-    except BaseException as error:
-        store.finish_task(business_key, False, error)
-        raise
-    store.finish_task(business_key, True)
     LOGGER.info(
         "券商历史订单同步完成：日期=%s 至 %s；有效订单=%s；新增闭环=%s",
         start_date,
@@ -554,16 +571,31 @@ def sync_order_workflow(
 
 
 def rank_workflow(
-    config: AppConfig, spec: ModelSpec, prediction_date: date
+    config: AppConfig, spec: ModelSpec, prediction_date: date | None
 ) -> dict[str, object]:
-    """校验当日采集结果，生成完整横截面排名并导入 SQLite。"""
+    """收盘且数据就绪后生成 D 信号，明确用于下一交易日买入。"""
+    now = shanghai_now()
+    store = ParquetMarketStore(config.data_dir)
+    provider = preferred_market_provider(config)
+    calendar_dir = config.data_dir / "calendar"
+    if prediction_date is None:
+        prediction_date = resolve_completed_trade_date(store, provider, now)
+    if prediction_date > now.date() or (
+        prediction_date == now.date() and now.time() < time(15, 0)
+    ):
+        raise ValueError("排名只能使用已经收盘的交易日数据")
+    ensure_trade_calendar(store, provider, (prediction_date.year,))
+    if prediction_date == trade_dates(prediction_date.year, calendar_dir)[-1]:
+        ensure_trade_calendar(store, provider, (prediction_date.year + 1,))
+    execution_date = shift_trade_date(prediction_date, 1, calendar_dir)
     LOGGER.info("开始生成完整横截面预测：预测日期=%s", prediction_date)
-    state_store = StateStore(config.state_db_path)
+    state_store = StateStore(config.state_db_path, calendar_dir=config.data_dir / "calendar")
+    _assert_task_success(state_store, "COLLECT_DAILY", prediction_date)
+    _assert_task_success(state_store, "COLLECT_FACTOR", prediction_date)
     if spec.feature_frequency == "minute5":
         _assert_task_success(state_store, "COLLECT_MINUTE5", prediction_date)
     elif spec.feature_frequency == "minute1":
         _assert_task_success(state_store, "COLLECT_MINUTE", prediction_date)
-    store = ParquetMarketStore(config.data_dir)
     model = create_research_model(config, spec)
     stocks = store.read_stock_basics()
     metadata_codes = live_codes(stocks, prediction_date)
@@ -600,6 +632,7 @@ def rank_workflow(
         prediction_path,
         prediction_date,
         ready_instruments,
+        calendar_dir,
     )
     if existing is None:
         prediction = model.rank(
@@ -611,7 +644,7 @@ def rank_workflow(
     else:
         prediction = existing
         if state_store.prediction_registered(
-            model_dir / "model.pkl", prediction_date.isoformat()
+            model_dir / "model.pkl", prediction_date.isoformat(), prediction_path
         ):
             state = {
                 "status": "SUCCESS",
@@ -636,6 +669,8 @@ def rank_workflow(
     )
     return {
         "modelId": spec.model_id,
+        "featureDate": prediction_date.isoformat(),
+        "executionDate": execution_date.isoformat(),
         "prediction": prediction,
         "state": state,
         "dataQuality": quality,
@@ -647,10 +682,11 @@ def _existing_prediction_summary(
     path: Path,
     prediction_date: date,
     expected_instruments: set[str],
+    calendar_dir: Path,
 ) -> dict[str, object] | None:
-    if not prediction_artifact_valid(model_dir, prediction_date):
+    frame = load_valid_prediction_artifact(model_dir, prediction_date, calendar_dir)
+    if frame is None:
         return None
-    frame = pd.read_parquet(path)
     actual_instruments = {
         normalize_instrument(value) for value in frame["instrument"]
     }
@@ -684,9 +720,9 @@ def trading_workflow(
         raise ValueError("交易方向必须是 BUY 或 SELL")
     now = shanghai_now()
     start_time, end_time = (
-        (time(14, 0), time(15, 0))
+        (BUY_START, BUY_END)
         if side == "BUY"
-        else (time(13, 0), time(14, 0))
+        else (SELL_START, SELL_END)
     )
     if now.date() != business_date or not start_time <= now.time() < end_time:
         action = "买入" if side == "BUY" else "卖出"
@@ -694,6 +730,15 @@ def trading_workflow(
             f"{action}只能在 {start_time.strftime('%H:%M')}-"
             f"{end_time.strftime('%H:%M')} 执行"
         )
+    calendar_dir = config.data_dir / "calendar"
+    calendar_store = ParquetMarketStore(config.data_dir)
+    provider = preferred_market_provider(config)
+    ensure_trade_calendar(calendar_store, provider, (business_date.year,))
+    dates = trade_dates(business_date.year, calendar_dir)
+    if business_date not in dates:
+        raise ValueError(f"不是交易日: {business_date}")
+    if side == "BUY" and business_date == dates[0]:
+        ensure_trade_calendar(calendar_store, provider, (business_date.year - 1,))
     mode = "AFTERNOON_BUY" if side == "BUY" else "AFTERNOON_SELL"
     mode_name = "下午买入" if side == "BUY" else "下午卖出"
     LOGGER.info(
@@ -703,7 +748,7 @@ def trading_workflow(
         config.trading_execution_strategy,
         config.trading_execution_window_seconds,
     )
-    store = StateStore(config.state_db_path)
+    store = StateStore(config.state_db_path, calendar_dir=config.data_dir / "calendar")
     broker = _build_broker(config)
     account_snapshot = store.save_account_snapshot(broker.get_account())
     LOGGER.info(
@@ -744,20 +789,15 @@ def review_workflow(
     config: AppConfig, spec: ModelSpec, business_date: date
 ) -> dict[str, object]:
     """汇总已实现收益并判断模型是否需要重训。"""
-    store = StateStore(config.state_db_path)
+    store = StateStore(config.state_db_path, calendar_dir=config.data_dir / "calendar")
     _assert_task_success(store, "ORDER", business_date)
-    business_key = store.start_task("REVIEW", business_date)
-    try:
+    with _record_task(store, "REVIEW", business_date):
         profit = RealizedProfitService(store).summarize(
             spec.model_id, business_date
         )
         review = ModelReviewService(config, store).review(
             spec.model_id, business_date
         )
-    except BaseException as error:
-        store.finish_task(business_key, False, error)
-        raise
-    store.finish_task(business_key, True)
     return {
         "modelId": spec.model_id,
         "businessDate": business_date.isoformat(),
@@ -786,4 +826,4 @@ def _build_broker(config: AppConfig) -> ZXBrokerClient:
     return ZXBrokerClient(config, captcha_solver=BaiduCaptchaSolver(config).solve)
 
 
-# AI_GENERATE_END--------------------- ---------------------------------
+# AI_GENERATE_END---------------------- ------------------------------------

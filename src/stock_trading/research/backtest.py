@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---------------------------
+# AI_GENERATE_START -----------------------------
 from __future__ import annotations
 
 import json
@@ -15,6 +15,8 @@ from stock_trading.config import AppConfig
 from stock_trading.market.rules import limit_price, limit_rate, recent_limit_down_count
 from stock_trading.utils.instruments import normalize_instrument, to_market_code
 from stock_trading.market.storage import ParquetMarketStore
+from stock_trading.market.minute5_summary import require_window_contract
+from stock_trading.research.qlib_contract import TRADING_TIME_CONTRACT, trading_time_contract
 from stock_trading.utils.logging_utils import set_log_context, should_log_progress
 
 
@@ -63,7 +65,7 @@ class Position:
 
 
 class PortfolioBacktester:
-    """按上一交易日排名，下午买入并在下一交易日上午卖出的 T+1 回测。"""
+    """按上一交易日排名，下午买入并在下一交易日 13:00–14:00 卖出的 T+1 回测。"""
 
     def __init__(
         self,
@@ -137,7 +139,7 @@ class PortfolioBacktester:
                         sale,
                         None,
                         holding_days,
-                        "T1_MORNING_EXIT" if holding_days == 1 else "T1_RETRY_EXIT",
+                        "T1_AFTERNOON_EXIT" if holding_days == 1 else "T1_RETRY_EXIT",
                     )
                     trades.append(trade)
                     realized_gross_profit += float(trade["grossPnl"])
@@ -219,6 +221,7 @@ class PortfolioBacktester:
             self._windows[code] = self._market_store.read_minute_summaries(code).set_index(
                 "trade_date"
             )
+            require_window_contract(self._windows[code])
             if should_log_progress(index, total_codes):
                 set_log_context(progress=f"{index}/{total_codes}", target=code)
                 LOGGER.info("回测行情加载完成")
@@ -431,6 +434,12 @@ class PortfolioBacktester:
         reject_counts = pd.Series([row["reason"] for row in rejects]).value_counts().to_dict()
         return {
             "config": asdict(self._config),
+            "timeContractVersion": TRADING_TIME_CONTRACT,
+            "timeContract": trading_time_contract(None),
+            "simulationType": "window-vwap-benchmark",
+            "executionLimitations": (
+                "窗口VWAP基准，并非逐分钟成交回放；不模拟盘口排队、部分成交和撤单。"
+            ),
             "initialCash": self._config.initial_cash,
             "finalEquity": _money(self._config.initial_cash + gross_profit),
             "realizedGrossEquity": _money(self._config.initial_cash + gross_profit),
@@ -592,7 +601,9 @@ def backtest_artifact_valid(
     required_equity = {"realizedGrossEquity", "realizedNetEquity"}
     config = summary.get("config")
     if (
-        not required_summary.issubset(summary)
+        summary.get("timeContractVersion") != TRADING_TIME_CONTRACT
+        or summary.get("simulationType") != "window-vwap-benchmark"
+        or not required_summary.issubset(summary)
         or not required_equity.issubset(equity.columns)
         or not isinstance(config, dict)
         or equity.empty
@@ -630,4 +641,4 @@ def read_backtest_summary(directory: Path) -> dict[str, object]:
     """读取模型回测摘要。"""
     return json.loads((directory / "summary.json").read_text(encoding="utf-8"))
 
-# AI_GENERATE_END ---------------------------
+# AI_GENERATE_END -----------------------------

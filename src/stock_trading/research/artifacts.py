@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---------------------
+# AI_GENERATE_START- -------------------------
 from __future__ import annotations
 
 import json
@@ -11,6 +11,8 @@ from uuid import uuid4
 import pandas as pd
 
 from stock_trading.research.model_config import ModelSpec
+from stock_trading.research.qlib_contract import TRADING_TIME_CONTRACT, expected_label_contract
+from stock_trading.market.trade_calendar import shift_trade_date
 
 _REQUIRED_FILES = (
     "model.pkl",
@@ -31,8 +33,7 @@ def staging_model_directory(target: Path) -> Path:
 
 def replace_model_directory(staging: Path, target: Path) -> None:
     """校验完成后原子替换同一模型 ID 的当前制品。"""
-    backup = target.with_name(f".{target.name}.previous")
-    shutil.rmtree(backup, ignore_errors=True)
+    backup = target.with_name(f".{target.name}.{uuid4().hex[:8]}.previous")
     if target.exists():
         target.replace(backup)
     try:
@@ -43,28 +44,54 @@ def replace_model_directory(staging: Path, target: Path) -> None:
         if backup.exists():
             backup.replace(target)
         raise
-    else:
-        shutil.rmtree(backup, ignore_errors=True)
+    # 保留上一版模型作为历史基线，不覆盖旧合同制品。
 
 
 def prediction_artifact_path(model_dir: Path, prediction_date: date) -> Path:
     return model_dir / "predictions" / f"ranking-{prediction_date.isoformat()}.parquet"
 
 
-def prediction_artifact_valid(model_dir: Path, prediction_date: date) -> bool:
+def load_valid_prediction_artifact(
+    model_dir: Path, prediction_date: date, calendar_dir: Path | None = None,
+) -> pd.DataFrame | None:
+    """读取一次排名制品，合同检查通过后返回可复用的数据。"""
     try:
         frame = pd.read_parquet(prediction_artifact_path(model_dir, prediction_date))
         dates = pd.to_datetime(frame["datetime"]).dt.date.unique()
+        execution_date = shift_trade_date(prediction_date, 1, calendar_dir).isoformat()
+        generated = pd.to_datetime(frame["generated_at"], utc=True, errors="coerce")
+        earliest = pd.Timestamp(prediction_date).tz_localize("Asia/Shanghai") + pd.Timedelta(hours=15)
+        latest = pd.Timestamp(execution_date).tz_localize("Asia/Shanghai") + pd.Timedelta(hours=14)
+        contract_valid = (
+            frame["execution_date"].eq(execution_date).all()
+            and frame["contract_version"].eq(TRADING_TIME_CONTRACT).all()
+            and generated.notna().all()
+            and generated.nunique() == 1
+            and generated.ge(earliest).all()
+            and generated.lt(latest).all()
+        )
     except (OSError, ValueError, KeyError, AttributeError):
-        return False
-    return (
+        return None
+    valid = (
         not frame.empty
+        and contract_valid
         and {"datetime", "instrument", "rank", "score", "label"}.issubset(frame.columns)
         and len(dates) == 1
         and dates[0] == prediction_date
         and frame["instrument"].is_unique
         and frame["score"].notna().all()
         and frame["rank"].tolist() == list(range(1, len(frame) + 1))
+    )
+    return frame if valid else None
+
+
+def prediction_artifact_valid(
+    model_dir: Path, prediction_date: date, calendar_dir: Path | None = None,
+) -> bool:
+    """保留布尔校验入口；需要内容的调用方直接使用加载函数。"""
+    return (
+        load_valid_prediction_artifact(model_dir, prediction_date, calendar_dir)
+        is not None
     )
 
 
@@ -108,6 +135,8 @@ def model_artifacts_valid(
     return (
         not predictions.empty
         and predictions["score"].notna().any()
+        and metrics.get("timeContractVersion") == TRADING_TIME_CONTRACT
+        and metrics.get("labelContract") == expected_label_contract(spec)
         and (spec is None or metrics.get("modelId") == spec.model_id)
         and metrics.get("algorithm") in {
             "LightGBM",
@@ -137,4 +166,4 @@ def validate_model_artifacts(directory: Path, spec: ModelSpec) -> None:
         raise ValueError(f"训练模型无法反序列化: {directory / 'model.pkl'}") from error
 
 
-# AI_GENERATE_END ---------------------
+# AI_GENERATE_END- -------------------------

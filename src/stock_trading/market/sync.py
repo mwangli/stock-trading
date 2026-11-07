@@ -1,13 +1,52 @@
-# AI_GENERATE_START -----------------------------------------------------
+# AI_GENERATE_START- ------------------------------------------------------
 from __future__ import annotations
 
-from datetime import date, timedelta
+import json
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
+from uuid import uuid4
 
 import pandas as pd
 
 from stock_trading.market.provider import MarketDataProvider
 from stock_trading.market.storage import ParquetMarketStore
+from stock_trading.market.trade_calendar import MissingTradeCalendarError, trade_dates, latest_completed_trade_date
+
+
+def ensure_trade_calendar(
+    store: ParquetMarketStore, provider: MarketDataProvider, years: range | tuple[int, ...]
+) -> None:
+    """用既有数据源补齐完整年度日历；供应商未发布时明确失败，不猜工作日。"""
+    directory = store.root / "calendar"
+    for year in years:
+        try:
+            trade_dates(year, directory)
+            continue
+        except MissingTradeCalendarError:
+            pass
+        values = provider.trading_dates(date(year, 1, 1), date(year, 12, 31))
+        if not values or values != sorted(set(values)) or any(value.year != year for value in values):
+            raise ValueError(f"{provider.name} 未返回有效的 {year} 年交易日历")
+        directory.mkdir(parents=True, exist_ok=True)
+        target = directory / f"trade_dates_{year}.json"
+        temporary = target.with_suffix(f".{uuid4().hex}.tmp")
+        temporary.write_text(json.dumps({
+            "year": year, "source": provider.name, "completeYear": True,
+            "tradeDates": [value.isoformat() for value in values],
+        }, ensure_ascii=False), encoding="utf-8")
+        temporary.replace(target)
+
+
+def resolve_completed_trade_date(
+    store: ParquetMarketStore, provider: MarketDataProvider, now: datetime,
+) -> date:
+    """显式补齐所需日历，再查询默认的最近完整交易日。"""
+    cutoff = now.date() if now.time() >= time(16, 0) else now.date() - timedelta(days=1)
+    calendar_dir = store.root / "calendar"
+    ensure_trade_calendar(store, provider, (cutoff.year,))
+    if cutoff < trade_dates(cutoff.year, calendar_dir)[0]:
+        ensure_trade_calendar(store, provider, (cutoff.year - 1,))
+    return latest_completed_trade_date(now, calendar_dir=calendar_dir)
 
 
 def research_codes(
@@ -118,4 +157,4 @@ def sync_minute(
     return provider.sync_minute(store, codes, start_date, end_date)
 
 
-# AI_GENERATE_END -----------------------------------------------------
+# AI_GENERATE_END- ------------------------------------------------------

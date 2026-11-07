@@ -1,10 +1,10 @@
-# AI_GENERATE_START -------------
+# AI_GENERATE_START --------------
 from __future__ import annotations
 
 import json
 import logging
 import time
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import ProxyHandler, Request, build_opener
@@ -55,10 +55,15 @@ class TushareClient:
                 "exchange": "SSE",
                 "start_date": start_date.strftime("%Y%m%d"),
                 "end_date": end_date.strftime("%Y%m%d"),
-                "is_open": "1",
             },
             "cal_date,is_open",
         )
+        expected = {start_date + timedelta(days=offset) for offset in range((end_date - start_date).days + 1)}
+        actual = [datetime.strptime(str(row["cal_date"]), "%Y%m%d").date() for row in rows]
+        if len(actual) != len(expected) or set(actual) != expected or any(
+            str(row.get("is_open")) not in {"0", "1"} for row in rows
+        ):
+            raise TushareError("交易日历尚未完整发布或响应缺日，不能推测交易日")
         return sorted(
             datetime.strptime(str(row["cal_date"]), "%Y%m%d").date()
             for row in rows
@@ -154,4 +159,4 @@ class TushareClient:
 def _normalized_code(value: object) -> str:
     symbol, exchange = str(value or "").split(".", maxsplit=1)
     return f"{exchange.lower()}.{symbol}"
-# AI_GENERATE_END -------------
+# AI_GENERATE_END --------------

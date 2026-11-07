@@ -1,4 +1,4 @@
-# AI_GENERATE_START-------- -----------------------------------------------------------
+# AI_GENERATE_START-------- --------------------------------------------------------------
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -11,7 +11,8 @@ from uuid import uuid4
 import pandas as pd
 import pyarrow.parquet as pq
 
-from stock_trading.market.minute_summary import summarize_trading_windows
+from stock_trading.market.minute5_summary import summarize_trading_windows
+from stock_trading.contracts import WINDOW_CONTRACT
 from stock_trading.market.minute1_summary import (
     summarize_minute1_days,
 )
@@ -288,6 +289,25 @@ class ParquetMarketStore:
             return pd.DataFrame()
         frame = _read_parquet_file(target)
         frame["trade_date"] = pd.to_datetime(frame["trade_date"], errors="raise")
+        current = (
+            frame["window_contract"].eq(WINDOW_CONTRACT)
+            if "window_contract" in frame
+            else pd.Series(False, index=frame.index)
+        )
+        if not current.all():
+            old_dates = set(frame.loc[~current, "trade_date"])
+            raw = self.read_minutes(code)
+            rebuilt = summarize_trading_windows(raw) if not raw.empty else pd.DataFrame()
+            if not rebuilt.empty:
+                rebuilt = rebuilt[rebuilt["trade_date"].isin(old_dates)]
+            missing = old_dates - (set(rebuilt["trade_date"]) if not rebuilt.empty else set())
+            if missing:
+                LOGGER.warning(
+                    "旧分钟摘要不能用于下午执行合同：股票=%s；缺原始数据日期=%s至%s，共%d日，请补采5分钟数据",
+                    code, min(missing).date(), max(missing).date(), len(missing),
+                )
+            valid_frames = [part for part in (frame.loc[current], rebuilt) if not part.empty]
+            frame = pd.concat(valid_frames, ignore_index=True) if valid_frames else frame.iloc[0:0]
         return frame.sort_values("trade_date").reset_index(drop=True)
 
     def daily_history_valid(self, code: str, start_date: date, end_date: date) -> bool:
@@ -727,7 +747,11 @@ class ParquetMarketStore:
             .reset_index(drop=True)
         )
         generated = summarize_trading_windows(frame)
-        existing = self.read_minute_summaries(code)
+        # 保留未重采的历史摘要原件；读取端只允许新合同或原始数据重算结果。
+        existing_path = self._minute_summary_path(code)
+        existing = _read_parquet_file(existing_path) if existing_path.is_file() else pd.DataFrame()
+        if not existing.empty:
+            existing["trade_date"] = pd.to_datetime(existing["trade_date"], errors="raise")
         before_raw_rows = len(frame)
         before_summary_rows = len(existing)
         summaries = [value for value in (existing, generated) if not value.empty]
@@ -845,4 +869,4 @@ def _normalize_minute1_frame(frame: pd.DataFrame, code: str) -> pd.DataFrame:
     )
 
 
-# AI_GENERATE_END-------- -----------------------------------------------------------
+# AI_GENERATE_END-------- --------------------------------------------------------------

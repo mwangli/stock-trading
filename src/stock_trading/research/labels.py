@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------
+# AI_GENERATE_START ---------
 from __future__ import annotations
 
 import pandas as pd
@@ -9,7 +9,7 @@ def build_forward_labels(
     calendar: pd.DatetimeIndex,
     horizon: int,
 ) -> pd.Series:
-    """生成次日下午买入、持有 N 个交易日后上午卖出的收益标签。"""
+    """生成次日下午买入、持有 N 个交易日后13:00–14:00 卖出的收益标签。"""
     if horizon <= 0:
         raise ValueError("标签交易日周期必须大于 0")
     labels = pd.Series(index=calendar, dtype="float32", name="label")
@@ -45,8 +45,8 @@ def build_forward_labels(
 
 
 def build_t1_labels(observation: pd.DataFrame, calendar: pd.DatetimeIndex) -> pd.Series:
-    """生成预测日 D、D+1 下午买入、D+2 上午卖出的 T+1 标签。"""
+    """生成预测日 D、D+1 14:00–15:00 买入、D+2 13:00–14:00 卖出的 T+1 标签。"""
     return build_forward_labels(observation, calendar, 1)
 
 
-# AI_GENERATE_END --------
+# AI_GENERATE_END ---------

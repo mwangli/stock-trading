@@ -1,11 +1,11 @@
-# AI_GENERATE_START --------------------
+# AI_GENERATE_START ---------------------
 from __future__ import annotations
 
 import logging
 import socket
 from collections.abc import Callable
 from contextlib import redirect_stderr, redirect_stdout
-from datetime import date
+from datetime import date, timedelta
 from io import StringIO
 from types import TracebackType
 from typing import Any, TypeVar
@@ -138,9 +138,16 @@ class BaoStockClient:
                 end_date=end_date.isoformat(),
             )
         )
+        rows = self._rows(result, "交易日历")
+        expected = {start_date + timedelta(days=offset) for offset in range((end_date - start_date).days + 1)}
+        actual = [date.fromisoformat(row["calendar_date"]) for row in rows]
+        if len(actual) != len(expected) or set(actual) != expected or any(
+            str(row.get("is_trading_day")) not in {"0", "1"} for row in rows
+        ):
+            raise BaoStockError("交易日历尚未完整发布或响应缺日，不能推测交易日")
         return sorted(
             date.fromisoformat(row["calendar_date"])
-            for row in self._rows(result, "交易日历")
+            for row in rows
             if str(row.get("is_trading_day")) == "1"
         )
 
@@ -270,4 +277,4 @@ class BaoStockClient:
         if self._original_connect is not None:
             bs_socket.SocketUtil.connect = self._original_connect
             self._original_connect = None
-# AI_GENERATE_END --------------------
+# AI_GENERATE_END ---------------------

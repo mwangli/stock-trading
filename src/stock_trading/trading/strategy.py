@@ -1,4 +1,4 @@
-# AI_GENERATE_START -------
+# AI_GENERATE_START --------
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -6,6 +6,7 @@ from decimal import Decimal, ROUND_FLOOR
 
 from stock_trading.broker.models import FiveLevelQuote
 from stock_trading.config import FIXED_TIME_URGENCY_STRATEGY
+from stock_trading.utils.instruments import normalize_instrument
 
 LOT_SIZE = 100
 
@@ -67,4 +68,16 @@ def affordable_quantity(
             return quantity
         quantity -= LOT_SIZE
     return 0
-# AI_GENERATE_END -------
+def permission_scope(instrument: str | None) -> str | None:
+    """把券商、行情或 Qlib 股票代码统一映射为交易权限范围。"""
+    try:
+        normalized = normalize_instrument(instrument)
+    except ValueError:
+        return None
+    if normalized.startswith("SH60"):
+        return "SH_MAIN"
+    if normalized.startswith("SZ00"):
+        return "SZ_MAIN"
+    return None
+
+# AI_GENERATE_END --------

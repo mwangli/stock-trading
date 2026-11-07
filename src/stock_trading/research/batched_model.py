@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------------
+# AI_GENERATE_START ---------------
 from __future__ import annotations
 
 import gc
@@ -25,7 +25,7 @@ LOGGER = logging.getLogger(__name__)
 GIB = 1024**3
 MEMORY_THRESHOLD_BYTES = 16 * GIB
 CHECKPOINT_SCHEMA_VERSION = 1
-FEATURE_CONFIG_VERSION = "morning-alpha158-t1-afternoon-windows-v4"
+FEATURE_CONFIG_VERSION = "morning-alpha158-eod-signal-afternoon-exit-v5"
 
 
 @dataclass(frozen=True)
@@ -575,4 +575,4 @@ class _NpyFeatureSequence(lgb.Sequence):
     def __getitem__(self, index):
         return np.asarray(self._values[index], dtype=np.float64)
 
-# AI_GENERATE_END --------------
+# AI_GENERATE_END ---------------

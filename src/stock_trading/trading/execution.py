@@ -1,9 +1,9 @@
-# AI_GENERATE_START -----------------------------
+# AI_GENERATE_START ---------------------------------
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, time
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from time import monotonic, sleep
 from typing import Protocol
@@ -16,9 +16,10 @@ from stock_trading.broker.models import (
     FiveLevelQuote,
 )
 from stock_trading.config import AppConfig
+from stock_trading.contracts import BUY_START, BUY_END, SELL_START, SELL_END
+from stock_trading.market.trade_calendar import trade_dates
 from stock_trading.state.store import ORDER_ACTIVE_STATUSES, StateStore
-from stock_trading.trading.permissions import permission_scope
-from stock_trading.trading.strategy import affordable_quantity, select_execution_price
+from stock_trading.trading.strategy import permission_scope, affordable_quantity, select_execution_price
 from stock_trading.utils.time_utils import shanghai_now, utc_now
 
 LOGGER = logging.getLogger(__name__)
@@ -131,6 +132,10 @@ class OrderExecutionOrchestrator:
                 if live_order is None:
                     status = "COMPLETED" if attempts else "SKIPPED"
                     return self._execution_result(target, status, stop_reason, attempts)
+
+                # 实时报价/账户读取可能跨越窗口截止，不能在过时检查后继续提交。
+                if monotonic() >= deadline or self._remaining_window_seconds(business_date, side) <= 0:
+                    break
 
                 client_order_id = f"{prefix}:A{attempt_number}"
                 active_client_id = client_order_id
@@ -501,9 +506,16 @@ class OrderExecutionOrchestrator:
 
     def _remaining_window_seconds(self, business_date: date, side: str) -> float:
         now = shanghai_now()
-        if now.date() != business_date:
-            return float(self._config.trading_execution_window_seconds)
-        end_time = time(14, 0) if side == "SELL" else time(15, 0)
+        start_time, end_time = (
+            (SELL_START, SELL_END) if side == "SELL" else (BUY_START, BUY_END)
+        )
+        if (
+            side not in {"BUY", "SELL"}
+            or now.date() != business_date
+            or business_date not in trade_dates(business_date.year, self._config.data_dir / "calendar")
+            or not start_time <= now.time() < end_time
+        ):
+            return 0.0
         window_end = datetime.combine(business_date, end_time, tzinfo=now.tzinfo)
         return max(0.0, (window_end - now).total_seconds())
 
@@ -598,4 +610,4 @@ def _is_permission_denial(message: str) -> bool:
         keyword in normalized
         for keyword in ("无权限", "没有权限", "未开通", "禁止交易", "不允许交易")
     )
-# AI_GENERATE_END -----------------------------
+# AI_GENERATE_END ---------------------------------

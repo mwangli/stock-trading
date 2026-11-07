@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------------------------------------
+# AI_GENERATE_START ----------------------------------------
 from __future__ import annotations
 
 import json
@@ -14,14 +14,19 @@ import pandas as pd
 
 from stock_trading.utils.logging_utils import set_log_context
 from stock_trading.research.model_config import ModelSpec
+from stock_trading.research.qlib_contract import (
+    TRADING_TIME_CONTRACT, expected_label_contract, trading_time_contract,
+)
+from stock_trading.utils.time_utils import utc_now
+from stock_trading.market.trade_calendar import shift_trade_date
 
 LOGGER = logging.getLogger(__name__)
 LIGHTGBM_NUM_BOOST_ROUND = 300
 LIGHTGBM_EARLY_STOPPING_ROUNDS = 30
-MODEL_LABEL_CONTRACT = "t1-next-day-entry-following-morning-exit-v4"
+MODEL_LABEL_CONTRACT = expected_label_contract(None)
 MODEL_LABEL_DESCRIPTION = (
-    "D+2 09:35-11:25 adjusted sell VWAP / "
-    "D+1 13:05-14:54 adjusted buy VWAP - 1; observed through D 11:30"
+    "D+2 13:00-14:00 adjusted sell VWAP / "
+    "D+1 14:00-15:00 adjusted buy VWAP - 1; signal after D close"
 )
 
 
@@ -466,11 +471,10 @@ def _persist_training_artifacts(
             if spec
             else "LightGBM Regression"
         ),
-        "labelContract": (
-            f"{spec.feature_frequency}-T+{spec.label_horizon}-v2"
-            if spec
-            else MODEL_LABEL_CONTRACT
-        ),
+        "labelContract": expected_label_contract(spec),
+        "timeContractVersion": TRADING_TIME_CONTRACT,
+        "timeContract": trading_time_contract(spec),
+        "labelPurgedTradeDays": 1 + (spec.label_horizon if spec else 1),
         "label": spec.label_description if spec else MODEL_LABEL_DESCRIPTION,
         "segments": _segments_record(segments),
         "metrics": metrics,
@@ -495,24 +499,15 @@ def predict_alpha158_lightgbm(
     model_dir: Path,
     prediction_date: date,
     eligible_instruments: set[str] | None = None,
+    calendar_dir: Path | None = None,
 ) -> dict[str, object]:
     """Run one deterministic cross-sectional prediction with an existing model."""
-    import qlib
-    from qlib.constant import REG_CN
     from stock_trading.research.features import MorningAlpha158
-    from qlib.data.dataset import DatasetH
-    from qlib.data.dataset.handler import DataHandlerLP
 
     set_log_context(step="1/4", progress="-/-", target="模型配置")
     LOGGER.info("读取模型配置和交易日历")
-    metrics = json.loads((model_dir / "metrics.json").read_text(encoding="utf-8"))
+    metrics, calendar = _prediction_context(qlib_dir, model_dir, prediction_date)
     segments = metrics["segments"]
-    calendar = pd.to_datetime(
-        (qlib_dir / "calendars" / "day.txt").read_text(encoding="utf-8").splitlines()
-    )
-    target = pd.Timestamp(prediction_date)
-    if target not in calendar:
-        raise ValueError(f"prediction date is absent from Qlib calendar: {prediction_date}")
 
     set_log_context(step="2/4", progress="-/-", target="Alpha158")
     LOGGER.info("初始化 Qlib 并生成特征")
@@ -525,21 +520,8 @@ def predict_alpha158_lightgbm(
     if use_batched_training(total_physical_memory_bytes()):
         features = load_alpha158_features_for_date(qlib_dir, prediction_date)
     else:
-        qlib.init(provider_uri=str(qlib_dir), region=REG_CN, kernels=2)
-        handler = MorningAlpha158(
-            instruments="all",
-            start_time=pd.Timestamp(calendar.min()).date(),
-            end_time=prediction_date,
-            fit_start_time=date.fromisoformat(segments["train_start"]),
-            fit_end_time=date.fromisoformat(segments["train_end"]),
-            label=(["$label"], ["LABEL0"]),
-        )
-        dataset = DatasetH(
-            handler=handler,
-            segments={"prediction": (prediction_date, prediction_date)},
-        )
-        features = dataset.prepare(
-            "prediction", col_set="feature", data_key=DataHandlerLP.DK_I
+        features = _prediction_features(
+            MorningAlpha158, qlib_dir, prediction_date, segments, calendar
         )
     if features.empty:
         raise ValueError(f"no Alpha158 features for prediction date: {prediction_date}")
@@ -551,6 +533,95 @@ def predict_alpha158_lightgbm(
     )
     set_log_context(step="3/4", progress="-/-", target="横截面评分")
     LOGGER.info("加载模型并计算评分")
+    scored = _prediction_scores(model_dir, features, eligible_instruments)
+    if scored.empty:
+        raise ValueError(f"no eligible prediction instruments for date: {prediction_date}")
+    set_log_context(step="4/4", progress="-/-", target=str(prediction_date))
+    LOGGER.info("生成完整横截面排名并写入制品：股票数=%d", len(scored))
+    return _persist_prediction(
+        scored, metrics, model_dir, prediction_date, calendar_dir
+    )
+
+
+def predict_configured_model(
+    spec: ModelSpec,
+    qlib_dir: Path,
+    model_dir: Path,
+    prediction_date: date,
+    eligible_instruments: set[str] | None = None,
+    calendar_dir: Path | None = None,
+) -> dict[str, object]:
+    """使用配置指定的特征处理器和已训练模型生成单日完整排名。"""
+
+    metrics, calendar = _prediction_context(qlib_dir, model_dir, prediction_date)
+    segments = metrics["segments"]
+    features = _prediction_features(
+        _configured_handler(spec), qlib_dir, prediction_date, segments, calendar
+    )
+    if features.empty:
+        raise ValueError(f"目标日期没有可用模型特征：{prediction_date}")
+    scored = _prediction_scores(model_dir, features, eligible_instruments)
+    if scored.empty:
+        raise ValueError(f"目标日期没有可排名股票：{prediction_date}")
+    return {
+        "modelId": spec.model_id,
+        **_persist_prediction(scored, metrics, model_dir, prediction_date, calendar_dir),
+    }
+
+
+def _prediction_features(
+    handler_type,
+    qlib_dir: Path,
+    prediction_date: date,
+    segments: dict[str, str],
+    calendar: pd.DatetimeIndex,
+) -> pd.DataFrame:
+    """共用单日特征数据集构建；低内存入口仍由调用方单独选择。"""
+    import qlib
+    from qlib.constant import REG_CN
+    from qlib.data.dataset import DatasetH
+    from qlib.data.dataset.handler import DataHandlerLP
+
+    qlib.init(provider_uri=str(qlib_dir), region=REG_CN, kernels=2)
+    handler = handler_type(
+        instruments="all",
+        start_time=pd.Timestamp(calendar.min()).date(),
+        end_time=prediction_date,
+        fit_start_time=date.fromisoformat(segments["train_start"]),
+        fit_end_time=date.fromisoformat(segments["train_end"]),
+        label=(["$label"], ["LABEL0"]),
+    )
+    dataset = DatasetH(
+        handler=handler,
+        segments={"prediction": (prediction_date, prediction_date)},
+    )
+    return dataset.prepare(
+        "prediction", col_set="feature", data_key=DataHandlerLP.DK_I
+    )
+
+
+def _prediction_context(
+    qlib_dir: Path, model_dir: Path, prediction_date: date
+) -> tuple[dict[str, object], pd.DatetimeIndex]:
+    """读取两条预测入口共用的模型时间合同和 Qlib 日历。"""
+    metrics = json.loads((model_dir / "metrics.json").read_text(encoding="utf-8"))
+    if metrics.get("timeContractVersion") != TRADING_TIME_CONTRACT:
+        raise ValueError("模型时间合同已过期；请先重新准备数据并训练模型")
+    calendar = pd.to_datetime(
+        (qlib_dir / "calendars" / "day.txt").read_text(encoding="utf-8").splitlines()
+    )
+    target = pd.Timestamp(prediction_date)
+    if target not in calendar:
+        raise ValueError(f"prediction date is absent from Qlib calendar: {prediction_date}")
+    return metrics, calendar
+
+
+def _prediction_scores(
+    model_dir: Path,
+    features: pd.DataFrame,
+    eligible_instruments: set[str] | None,
+) -> pd.Series:
+    """统一特征对齐、评分及候选过滤，不改变各入口的特征加载策略。"""
     with (model_dir / "model.pkl").open("rb") as stream:
         model = pickle.load(stream)
     model_columns = _model_feature_names(model)
@@ -567,8 +638,17 @@ def predict_alpha158_lightgbm(
         allowed = {value.upper() for value in eligible_instruments}
         instruments = scored.index.get_level_values("instrument").astype(str).str.upper()
         scored = scored[instruments.isin(allowed)]
-    if scored.empty:
-        raise ValueError(f"no eligible prediction instruments for date: {prediction_date}")
+    return scored
+
+
+def _persist_prediction(
+    scored: pd.Series,
+    metrics: dict[str, object],
+    model_dir: Path,
+    prediction_date: date,
+    calendar_dir: Path | None,
+) -> dict[str, object]:
+    """为所有模型写入同一格式的完整排名，并原子替换制品。"""
     ranking = (
         scored.reset_index()
         .sort_values(
@@ -578,8 +658,9 @@ def predict_alpha158_lightgbm(
     )
     ranking["rank"] = range(1, len(ranking) + 1)
     ranking["label"] = float("nan")
-    set_log_context(step="4/4", progress="-/-", target=str(prediction_date))
-    LOGGER.info("生成完整横截面排名并写入制品：股票数=%d", len(ranking))
+    ranking["execution_date"] = shift_trade_date(prediction_date, 1, calendar_dir).isoformat()
+    ranking["generated_at"] = utc_now().isoformat()
+    ranking["contract_version"] = TRADING_TIME_CONTRACT
     output_dir = model_dir / "predictions"
     output_dir.mkdir(parents=True, exist_ok=True)
     output = output_dir / f"ranking-{prediction_date.isoformat()}.parquet"
@@ -595,97 +676,6 @@ def predict_alpha158_lightgbm(
         "predictionDate": prediction_date.isoformat(),
         "universeRows": int(len(scored)),
         "rankingRows": int(len(ranking)),
-        "path": str(output),
-        "topCandidates": [
-            {
-                "instrument": str(row.instrument),
-                "rank": int(row.rank),
-                "score": float(row.score),
-            }
-            for row in ranking.head(5).itertuples(index=False)
-        ],
-    }
-
-
-def predict_configured_model(
-    spec: ModelSpec,
-    qlib_dir: Path,
-    model_dir: Path,
-    prediction_date: date,
-    eligible_instruments: set[str] | None = None,
-) -> dict[str, object]:
-    """使用配置指定的特征处理器和已训练模型生成单日完整排名。"""
-    import qlib
-    from qlib.constant import REG_CN
-    from qlib.data.dataset import DatasetH
-    from qlib.data.dataset.handler import DataHandlerLP
-
-    metrics = json.loads((model_dir / "metrics.json").read_text(encoding="utf-8"))
-    segments = metrics["segments"]
-    calendar = pd.to_datetime(
-        (qlib_dir / "calendars" / "day.txt").read_text(encoding="utf-8").splitlines()
-    )
-    target = pd.Timestamp(prediction_date)
-    if target not in calendar:
-        raise ValueError(f"prediction date is absent from Qlib calendar: {prediction_date}")
-    qlib.init(provider_uri=str(qlib_dir), region=REG_CN, kernels=2)
-    handler_type = _configured_handler(spec)
-    handler = handler_type(
-        instruments="all",
-        start_time=pd.Timestamp(calendar.min()).date(),
-        end_time=prediction_date,
-        fit_start_time=date.fromisoformat(segments["train_start"]),
-        fit_end_time=date.fromisoformat(segments["train_end"]),
-        label=(["$label"], ["LABEL0"]),
-    )
-    dataset = DatasetH(
-        handler=handler,
-        segments={"prediction": (prediction_date, prediction_date)},
-    )
-    features = dataset.prepare(
-        "prediction", col_set="feature", data_key=DataHandlerLP.DK_I
-    )
-    if features.empty:
-        raise ValueError(f"目标日期没有可用模型特征：{prediction_date}")
-    with (model_dir / "model.pkl").open("rb") as stream:
-        model = pickle.load(stream)
-    model_columns = _model_feature_names(model)
-    if model_columns:
-        missing = sorted(set(model_columns) - set(features.columns))
-        if missing:
-            raise ValueError(f"prediction features are missing model columns: {missing[:5]}")
-        features = features.loc[:, model_columns]
-    scored = pd.Series(
-        _model_predict(model, features), index=features.index, name="score"
-    ).dropna()
-    scored.index.names = ["datetime", "instrument"]
-    if eligible_instruments is not None:
-        allowed = {value.upper() for value in eligible_instruments}
-        instruments = scored.index.get_level_values("instrument").astype(str).str.upper()
-        scored = scored[instruments.isin(allowed)]
-    if scored.empty:
-        raise ValueError(f"目标日期没有可排名股票：{prediction_date}")
-    ranking = scored.reset_index().sort_values(
-        ["datetime", "score", "instrument"], ascending=[True, False, True]
-    ).reset_index(drop=True)
-    ranking["rank"] = range(1, len(ranking) + 1)
-    ranking["label"] = float("nan")
-    output_dir = model_dir / "predictions"
-    output_dir.mkdir(parents=True, exist_ok=True)
-    output = output_dir / f"ranking-{prediction_date.isoformat()}.parquet"
-    temporary = output.with_suffix(".parquet.tmp")
-    try:
-        ranking.to_parquet(temporary, index=False)
-        temporary.replace(output)
-    finally:
-        temporary.unlink(missing_ok=True)
-    return {
-        "modelId": spec.model_id,
-        "model": metrics["model"],
-        "featureSet": metrics["featureSet"],
-        "predictionDate": prediction_date.isoformat(),
-        "universeRows": len(scored),
-        "rankingRows": len(ranking),
         "path": str(output),
         "topCandidates": [
             {
@@ -782,8 +772,9 @@ def automatic_model_segments(
     calendar_path: Path,
     split: tuple[Decimal, Decimal, Decimal] | None = None,
     maximum_days: int | None = None,
+    label_horizon: int = 1,
 ) -> ModelSegments:
-    """按指定比例切分连续交易日；省略比例时使用 70%/15%/15%。"""
+    """按比例切分，并剔除标签结束日越过分段边界的样本。"""
     calendar = [
         date.fromisoformat(value)
         for value in calendar_path.read_text(encoding="utf-8").splitlines()
@@ -810,13 +801,16 @@ def automatic_model_segments(
         raise ValueError(
             "训练比例无法为每个区间分配交易日；请调整训练、验证和测试比例"
         )
+    label_offset = label_horizon + 1
+    if label_horizon <= 0 or min(train_days, valid_days, test_days) <= label_offset:
+        raise ValueError("剔除跨区间或未成熟标签后没有足够样本，请扩大日期范围或调整比例")
     return ModelSegments(
         train_start=calendar[0],
-        train_end=calendar[train_end],
+        train_end=calendar[train_end - label_offset],
         valid_start=calendar[train_end + 1],
-        valid_end=calendar[valid_end],
+        valid_end=calendar[valid_end - label_offset],
         test_start=calendar[valid_end + 1],
-        test_end=calendar[-1],
+        test_end=calendar[-1 - label_offset],
     )
 
-# AI_GENERATE_END ------------------------------------
+# AI_GENERATE_END ----------------------------------------

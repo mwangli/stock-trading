@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---------------------------------
+# AI_GENERATE_START ----------------------------------
 from __future__ import annotations
 
 import base64
@@ -17,9 +17,9 @@ from urllib.error import URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from stock_trading.broker.minute import parse_minute_series
 from stock_trading.broker.models import BrokerMinuteSeries, FiveLevelQuote
 from stock_trading.broker.parser import (
+    parse_minute_series,
     parse_account_rows,
     parse_decimal,
     is_header_or_empty,
@@ -634,4 +634,4 @@ def _parse_five_level_prices(
     if any(price is None or price <= 0 for price in bids + asks):
         raise BrokerProtocolError("券商未返回完整五档行情")
     return bids, asks
-# AI_GENERATE_END ---------------------------------
+# AI_GENERATE_END ----------------------------------

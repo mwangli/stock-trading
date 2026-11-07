@@ -1,4 +1,4 @@
-# AI_GENERATE_START--- --------------------------------
+# AI_GENERATE_START---- ---------------------------------
 from __future__ import annotations
 
 import json
@@ -11,8 +11,8 @@ from pathlib import Path
 from stock_trading.config import AppConfig
 from stock_trading.market.quality import audit_research_quality, require_data_quality
 from stock_trading.market.storage import ParquetMarketStore
-from stock_trading.market.sync import research_codes
-from stock_trading.market.trade_calendar import latest_completed_trade_date
+from stock_trading.market.sync import research_codes, resolve_completed_trade_date
+from stock_trading.market.providers import preferred_market_provider
 from stock_trading.research.artifacts import (
     model_artifacts_valid,
     replace_model_directory,
@@ -36,7 +36,9 @@ EVALUATION_FILE = "evaluation.json"
 
 
 def default_training_range(config: AppConfig) -> tuple[date, date]:
-    end_date = latest_completed_trade_date(shanghai_now())
+    end_date = resolve_completed_trade_date(
+        ParquetMarketStore(config.data_dir), preferred_market_provider(config), shanghai_now()
+    )
     return end_date - timedelta(days=config.market_history_days), end_date
 
 
@@ -71,7 +73,7 @@ def run_training_pipeline(
     )
     preparation_summary = _preparation_summary(preparation)
     target = model.artifact_dir
-    store = StateStore(config.state_db_path)
+    store = StateStore(config.state_db_path, calendar_dir=config.data_dir / "calendar")
     if not force and complete_model_artifacts_valid(config, spec, target):
         state = (
             None
@@ -95,6 +97,7 @@ def run_training_pipeline(
         calendar_path,
         split,
         spec.training_window_days,
+        spec.label_horizon,
     )
     staging = staging_model_directory(target)
     shutil.rmtree(staging, ignore_errors=True)
@@ -247,4 +250,4 @@ def _write_evaluation(model_dir: Path, evaluation: dict[str, object]) -> None:
     )
 
 
-# AI_GENERATE_END--- --------------------------------
+# AI_GENERATE_END---- ---------------------------------

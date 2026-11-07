@@ -1,4 +1,4 @@
-# AI_GENERATE_START- --------------------------
+# AI_GENERATE_START-- ----------------------------
 from __future__ import annotations
 
 import logging
@@ -13,9 +13,8 @@ from stock_trading.market.rules import recent_limit_down_count
 from stock_trading.market.storage import ParquetMarketStore
 from stock_trading.utils.instruments import normalize_instrument, to_broker_code, to_market_code
 from stock_trading.state.store import StateStore
-from stock_trading.trading.permissions import permission_scope
-from stock_trading.trading.strategy import affordable_quantity
-from stock_trading.utils.time_utils import count_holding_trade_days
+from stock_trading.trading.strategy import permission_scope, affordable_quantity
+from stock_trading.market.trade_calendar import count_holding_trade_days
 
 LOGGER = logging.getLogger(__name__)
 
@@ -56,12 +55,12 @@ class LiveTradingOrchestrator:
         self, business_date: date, side: str
     ) -> dict[str, object]:
         if side == "SELL":
-            return self._select_morning_sell_targets(business_date)
+            return self._select_afternoon_sell_targets(business_date)
         if side == "BUY":
             return self._select_afternoon_buy_target(business_date)
         raise ValueError("交易方向必须是 BUY 或 SELL")
 
-    def _select_morning_sell_targets(self, business_date: date) -> dict[str, object]:
+    def _select_afternoon_sell_targets(self, business_date: date) -> dict[str, object]:
         """卖出所有 T+1 已可卖持仓，实际数量和价格在委托前重算。"""
         buy_dates = self._unsettled_buy_dates()
         targets: list[dict[str, object]] = []
@@ -87,21 +86,21 @@ class LiveTradingOrchestrator:
                     "candidateRank": None,
                     "holdingDays": holding_days,
                     "exitReason": (
-                        "T1_MORNING_EXIT" if holding_days == 1 else "T1_RECOVERY_EXIT"
+                        "T1_AFTERNOON_EXIT" if holding_days == 1 else "T1_RECOVERY_EXIT"
                     ),
                     "modelVersionId": None,
                     "predictionDate": None,
                 }
             )
         LOGGER.info(
-            "上午 T+1 卖出目标选择完成：目标数=%d；忽略数=%d",
+            "下午 T+1 卖出目标选择完成：目标数=%d；忽略数=%d",
             len(targets),
             len(ignored),
         )
         return {
             "businessDate": business_date.isoformat(),
             "predictionDate": None,
-            "mode": "MORNING_SELL",
+            "mode": "AFTERNOON_SELL",
             "targets": targets,
             "ignored": ignored,
         }
@@ -268,21 +267,14 @@ class LiveTradingOrchestrator:
     def _prediction_candidates(
         self, business_date: date
     ) -> list[dict[str, object]]:
-        candidates = self._state_store.latest_prediction_candidates(
+        candidates = self._state_store.prediction_candidates_for_execution(
             business_date.isoformat(), self._model_id
         )
         if not candidates:
-            raise ValueError("目标交易日前没有可用横截面预测")
+            raise ValueError("目标交易日没有匹配前一交易日特征和当前时间合同的横截面预测")
         if len(candidates) <= self._config.trading_entry_rank:
             raise ValueError(
                 "最近预测不是完整横截面排名，请先重新执行 stock-rank"
-            )
-        prediction_date = date.fromisoformat(str(candidates[0]["prediction_date"]))
-        prediction_age = (business_date - prediction_date).days
-        if not 0 <= prediction_age <= self._config.trading_max_prediction_age_days:
-            raise ValueError(
-                f"预测日期不满足新鲜度要求: predictionDate={prediction_date}, "
-                f"businessDate={business_date}"
             )
         return candidates
 
@@ -329,4 +321,4 @@ class LiveTradingOrchestrator:
             "targets": [target] if target else [],
             "rejected": rejected,
         }
-# AI_GENERATE_END- --------------------------
+# AI_GENERATE_END-- ----------------------------

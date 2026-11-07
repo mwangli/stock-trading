@@ -1,4 +1,4 @@
-# AI_GENERATE_START- ---------------------------------
+# AI_GENERATE_START- --------------------------------------
 from __future__ import annotations
 
 import logging
@@ -14,6 +14,8 @@ from stock_trading.market.minute1_summary import (
     MINUTE1_FEATURE_FIELDS,
 )
 from stock_trading.market.storage import ParquetMarketStore
+from stock_trading.market.trade_calendar import trade_dates
+from stock_trading.market.minute5_summary import require_window_contract
 from stock_trading.utils.logging_utils import set_log_context, should_log_progress
 from stock_trading.research.labels import build_forward_labels
 from stock_trading.research.qlib_contract import expected_qlib_contract
@@ -28,6 +30,20 @@ QLIB_FIELDS = QLIB_BASE_FIELDS + (
     "morning_last30_return", "label",
 )
 MINUTE1_QLIB_FIELDS = QLIB_BASE_FIELDS + MINUTE1_FEATURE_FIELDS + ("label",)
+
+
+def _official_calendar(
+    start_date: date, end_date: date, calendar_dir: Path,
+) -> pd.DatetimeIndex:
+    """缺行情不能压缩交易日；缺年度权威日历时明确要求补齐。"""
+    if start_date > end_date:
+        return pd.DatetimeIndex([])
+    return pd.DatetimeIndex([
+        value
+        for year in range(start_date.year, end_date.year + 1)
+        for value in trade_dates(year, calendar_dir)
+        if start_date <= value <= end_date
+    ])
 
 
 class QlibBinaryStore:
@@ -114,9 +130,7 @@ class QlibBinaryStore:
             if should_log_progress(index, total_codes):
                 set_log_context(progress=f"{index}/{total_codes}", target=code)
                 LOGGER.info("Qlib 日线处理完成")
-        calendar = pd.DatetimeIndex(
-            sorted({value for frame in frames.values() for value in frame.index})
-        )
+        calendar = _official_calendar(start_date, end_date, self._market_store.root / "calendar")
         if len(calendar) < 63:
             raise ValueError("Qlib calendar requires at least 63 trading days for Alpha158")
 
@@ -288,6 +302,7 @@ class QlibBinaryStore:
         summaries = self._market_store.read_minute_summaries(code).set_index(
             "trade_date"
         )
+        require_window_contract(summaries)
         summaries = summaries[
             (summaries.index.date >= start_date)
             & (summaries.index.date <= end_date)
@@ -311,9 +326,7 @@ class QlibBinaryStore:
             ]
             summaries = summaries.loc[summaries.index.intersection(minute1.index)]
         daily = self._market_store.read_daily_history(code).set_index("trade_date")
-        status = daily[["tradestatus", "is_st"]].reindex(
-            summaries.index, method="ffill"
-        )
+        status = daily[["tradestatus", "is_st"]].reindex(summaries.index)
         summaries = summaries[
             status["tradestatus"].astype(str).eq("1")
             & ~status["is_st"].astype(str).eq("1")
@@ -325,7 +338,7 @@ class QlibBinaryStore:
         factors = self._market_store.read_factors(code).set_index("operate_date")
         cumulative = factors["cumulative_factor"].astype(float).reindex(
             summaries.index, method="ffill"
-        ).bfill()
+        )
         if cumulative.isna().any() or cumulative.le(0).any():
             raise ValueError(f"复权因子不能覆盖分钟聚合范围：{code}")
         factor = cumulative / float(factors["cumulative_factor"].iloc[0])
@@ -376,7 +389,7 @@ class QlibBinaryStore:
         daily = daily.sort_index().copy()
         cumulative = factors["cumulative_factor"].astype(float).reindex(
             daily.index, method="ffill"
-        ).bfill()
+        )
         if cumulative.isna().any() or cumulative.le(0).any():
             raise ValueError("复权因子不能覆盖日线特征范围")
         factor = cumulative / float(factors["cumulative_factor"].iloc[0])
@@ -415,16 +428,7 @@ class QlibBinaryStore:
             code: self._adjusted_daily(code, new_start, end_date)
             for code in codes
         }
-        new_calendar = pd.DatetimeIndex(
-            sorted(
-                {
-                    value
-                    for frame in new_frames.values()
-                    for value in frame.index
-                    if value.date() > existing_range[1]
-                }
-            )
-        )
+        new_calendar = _official_calendar(new_start, end_date, self._market_store.root / "calendar")
         new_instruments = {
             normalize_instrument(code) for code in codes
         } - existing_instruments
@@ -615,4 +619,4 @@ class QlibBinaryStore:
             raise
         shutil.rmtree(backup, ignore_errors=True)
 
-# AI_GENERATE_END- ---------------------------------
+# AI_GENERATE_END- --------------------------------------

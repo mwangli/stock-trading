@@ -1,4 +1,4 @@
-# AI_GENERATE_START-- ---------------------------------------------------------
+# AI_GENERATE_START--- ---------------------------------------------------------
 from __future__ import annotations
 
 import logging
@@ -100,8 +100,10 @@ class AppConfig:
     model_feature_batch_days: int = 60
 
     @classmethod
-    def from_env(cls) -> "AppConfig":
-        project_dir = load_project_environment()
+    def from_env(cls, *, project_dir: Path | None = None) -> "AppConfig":
+        """Read configuration, optionally reusing an already loaded project environment."""
+        if project_dir is None:
+            project_dir = load_project_environment()
         runtime_dir = project_dir / "data"
         data_dir = runtime_dir / "market"
         qlib_dir = runtime_dir / "qlib"
@@ -298,4 +300,4 @@ def _env_float(name: str, default: float) -> float:
         return float(value)
     except ValueError:
         raise ValueError(f"环境变量 {name} 必须是数字") from None
-# AI_GENERATE_END-- ---------------------------------------------------------
+# AI_GENERATE_END--- ---------------------------------------------------------

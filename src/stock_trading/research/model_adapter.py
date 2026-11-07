@@ -1,4 +1,4 @@
-# AI_GENERATE_START -
+# AI_GENERATE_START --
 from __future__ import annotations
 
 from datetime import date
@@ -55,6 +55,7 @@ class ConfiguredResearchModel:
         self.spec = spec
         self.qlib_dir = spec.qlib_dir(config.qlib_dir)
         self.artifact_dir = spec.artifact_dir(config.artifact_dir)
+        self._calendar_dir = config.data_dir / "calendar"
         self._qlib = QlibBinaryStore(
             ParquetMarketStore(config.data_dir), self.qlib_dir, spec
         )
@@ -91,6 +92,7 @@ class ConfiguredResearchModel:
             self.artifact_dir,
             prediction_date,
             eligible_instruments,
+            calendar_dir=self._calendar_dir,
         )
 
     def date_range(self) -> tuple[date, date] | None:
@@ -106,4 +108,4 @@ def create_research_model(
     return ConfiguredResearchModel(config, spec)
 
 
-# AI_GENERATE_END -
+# AI_GENERATE_END --
