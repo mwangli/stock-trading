@@ -3161,7 +3161,7 @@ wheels = [
 
 [[package]]
 name = "stock-trading"
-version = "0.1.57"
+version = "0.1.58"
 source = { editable = "." }
 dependencies = [
     { name = "baostock" },
