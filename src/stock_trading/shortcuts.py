@@ -20,6 +20,16 @@ from stock_trading.cli import (
     trading_command,
 )
 from stock_trading.utils.console import BOLD_BLUE, style
+from stock_trading.utils.completion import install_completion
+
+
+class InstallCompletionAction(argparse.Action):
+    def __init__(self, option_strings, dest, **kwargs):
+        super().__init__(option_strings, dest, nargs=0, **kwargs)
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        print(install_completion(parser))
+        parser.exit(0)
 
 
 class ChineseArgumentParser(argparse.ArgumentParser):
@@ -289,7 +299,12 @@ def build_parser() -> ChineseArgumentParser:
     shtab.add_argument_to(
         parser,
         "--print-completion",
-        help="输出 bash 或 powershell 自动补全脚本。",
+        help="输出指定 shell 的自动补全脚本。",
+    )
+    parser.add_argument(
+        "--install-completion",
+        action=InstallCompletionAction,
+        help="安装当前系统的自动补全，重新打开终端后生效。",
     )
     parser._optionals.title = "参数"
     subparsers = parser.add_subparsers(

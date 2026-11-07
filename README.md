@@ -24,20 +24,21 @@
 ## 命令总览
 
 <p align="center">
-  <img src="./assets/readme/stock-command-demo.gif" alt="stock-trading 命令动态演示" width="80%" />
+  <img src="./src/stock_trading/utils/stock-trading-demo.gif" alt="stock-trading 自动补全与帮助演示" width="80%" />
 </p>
-<p align="center"><sub>动态演示从 stock-help 命令总览切换至 stock-collect 帮助，直观展示命令用途、参数、示例与业务边界。</sub></p>
+<p align="center"><sub>真实命令输出：一级命令补全、参数补全、根帮助和交易命令帮助。</sub></p>
 
 | 阶段 | 命令 | 作用 |
 | --- | --- | --- |
-| 数据与模型 | `stock-collect` | 采集基础、行情与复权数据 |
-| 数据与模型 | `stock-prepare` | 增量、幂等准备 Qlib 数据 |
-| 数据与模型 | `stock-train` | 训练、评估并回测模型 |
-| 排名与交易 | `stock-rank` | 生成指定交易日的完整排名 |
-| 排名与交易 | `stock-trading` | 执行卖出、买入或先卖后买 |
-| 订单与复盘 | `stock-order` | 同步券商订单并结算交易闭环 |
-| 订单与复盘 | `stock-review` | 汇总已实现收益并判断模型状态 |
-| 维护 | `stock-clean` / `stock-sync` | 清理历史数据并同步运行资产 |
+| 数据 | `stock-trading collect` | 依次采集基础、复权、日线、5 分钟和 1 分钟行情 |
+| 模型 | `stock-trading prepare` | 增量、幂等准备 Qlib 数据 |
+| 模型 | `stock-trading train` | 训练、评估并回测模型 |
+| 排名 | `stock-trading rank` | 生成指定交易日的完整横截面排名 |
+| 交易 | `stock-trading trade --buy / --sell` | 在独立窗口执行买入或卖出 |
+| 订单 | `stock-trading order` | 同步券商事实并结算交易闭环 |
+| 复盘 | `stock-trading review` | 汇总已实现收益并判断模型状态 |
+| 维护 | `stock-trading clean / sync` | 清理历史数据或同步运行资产 |
+| 汇报 | `stock-trading report` | 汇总数据、模型和最近 10 条闭环交易 |
 
 ## 完整交易闭环
 
@@ -60,22 +61,32 @@
 uv python install 3.12
 uv venv --python 3.12 .venv
 uv pip install --python .venv\Scripts\python.exe -e .
-.venv\Scripts\stock-help.exe
+.venv\Scripts\activate
+stock-trading -h
 ```
 
-安装完成后，可通过每个命令的 `-h` 查看用途、示例和业务边界：
+安装完成后执行一次补全安装，然后重新打开终端：
 
 ```bash
-stock-prepare -h
-stock-trading -h
-stock-review -h
+stock-trading --install-completion
 ```
 
-Linux 部署使用 `.venv/bin/` 下的同名命令。项目可通过 Cron 串行调度数据更新、排名、交易、订单同步、复盘和清理任务，也可以按需手动执行。
+该命令在 Windows 安装 PowerShell 补全，在 Linux 安装 Bash 补全；重复执行不会重复写入配置。IDEA 内置终端同样使用其实际 shell 的配置。也可以通过 `--print-completion` 输出脚本，交给自定义 shell 配置管理。
+
+根命令和每个子命令都支持 `-h`：
+
+```bash
+stock-trading -h
+stock-trading prepare -h
+stock-trading trade -h
+stock-trading report -h
+```
+
+Linux 部署使用虚拟环境中的同名命令。项目可通过 Cron 串行调度数据更新、排名、交易、订单同步、复盘和清理任务，也可以按需手动执行。
 
 ## 技术概览
 
-`Python` · `Qlib` · `LightGBM` · `Parquet` · `SQLite` · `Typer`
+`Python` · `argparse` · `shtab` · `Qlib` · `LightGBM` · `Parquet` · `SQLite`
 
 运行数据、模型制品和交易状态均保存在本地目录中；实时资金、持仓、委托与成交结果以券商返回为准。
 
