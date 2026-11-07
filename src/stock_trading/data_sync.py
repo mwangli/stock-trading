@@ -1,9 +1,10 @@
-# AI_GENERATE_START --------------------
+# AI_GENERATE_START ------------------------
 from __future__ import annotations
 
 import logging
 import os
 import re
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -12,7 +13,7 @@ import tempfile
 from contextlib import closing, contextmanager
 from pathlib import Path
 from time import sleep
-from typing import Callable, Iterator
+from typing import Iterator
 from uuid import uuid4
 
 from stock_trading.config import AppConfig
@@ -21,51 +22,12 @@ from stock_trading.utils.logging_utils import should_log_progress
 LOGGER = logging.getLogger(__name__)
 REMOTE_DATA_ROOT = "stock-trading/data"
 SERVER_ENV_NAMES = ("SERVER_IP", "SERVER_USER", "SERVER_PASS")
-SYNC_SCOPES = {"market", "qlib", "model", "state"}
+SYNC_SCOPES = ("market", "qlib", "model", "state")
 DIRECTORY_SCOPES = {
     "market": ("market",),
     "qlib": ("qlib",),
     "model": ("artifacts",),
 }
-
-
-def compare_sync_data(
-    config: AppConfig,
-    progress: Callable[[str], None] | None = None,
-) -> list[dict[str, object]]:
-    """只读比较本地与服务器文件清单，不执行传输、删除或覆盖。"""
-    server, password = _server_credentials()
-    local_root = config.data_dir.parent
-    rows: list[dict[str, object]] = []
-    for scope in ("market", "qlib", "model", "state"):
-        if progress is not None:
-            progress(f"正在对比 {scope} 数据的本地与服务器文件清单...")
-        local = _local_manifest(local_root, scope)
-        remote = _remote_manifest(server, password, scope)
-        common = local.keys() & remote.keys()
-        same = sum(local[path] == remote[path] for path in common)
-        conflicts = sum(local[path] != remote[path] for path in common)
-        local_only = local.keys() - remote.keys()
-        remote_only = remote.keys() - local.keys()
-        rows.append(
-            {
-                "scope": scope,
-                "localFiles": len(local),
-                "localBytes": sum(local.values()),
-                "remoteFiles": len(remote),
-                "remoteBytes": sum(remote.values()),
-                "sameFiles": same,
-                "pullableFiles": len(remote_only),
-                "pushableFiles": len(local_only),
-                "conflictFiles": conflicts,
-            }
-        )
-        if progress is not None:
-            progress(
-                f"{scope} 数据对比完成：本地 {len(local)} 个文件，"
-                f"服务器 {len(remote)} 个文件。"
-            )
-    return rows
 
 
 def _local_manifest(root: Path, scope: str) -> dict[str, int]:
@@ -119,85 +81,170 @@ def _remote_manifest(
 
 def sync_data(
     config: AppConfig,
-    pull_scopes: tuple[str, ...],
-    push_scopes: tuple[str, ...],
+    pull: bool,
+    push: bool,
     force: bool = False,
 ) -> dict[str, object]:
-    """使用 SSH/SCP 在本地项目数据目录和生产数据目录之间同步。"""
+    """按固定顺序同步数据；单个范围失败不阻断后续范围。"""
+    if pull == push:
+        raise ValueError("必须且只能指定拉取或推送")
+    if force and not push:
+        raise ValueError("--force 仅用于推送")
     server, password = _server_credentials()
-
     local_data_root = config.data_dir.parent
-    completed: list[dict[str, str]] = []
-    for scope in pull_scopes:
-        if scope == "state":
-            completed.append(_pull_state(config, server, password))
-            continue
-        for directory in DIRECTORY_SCOPES[scope]:
-            LOGGER.info("%s 数据正在拉取：目录=%s", scope, directory)
-            local_data_root.mkdir(parents=True, exist_ok=True)
-            _run_command(
-                "scp",
-                *_ssh_options(),
-                "-r",
-                f"{server}:{REMOTE_DATA_ROOT}/{directory}",
-                str(local_data_root),
-                password=password,
-                show_progress=True,
+    direction = "pull" if pull else "push"
+    scopes = SYNC_SCOPES if pull else SYNC_SCOPES[:3] + (("state",) if force else ())
+    operations: list[dict[str, object]] = []
+    errors: dict[str, str] = {}
+    for scope in scopes:
+        try:
+            LOGGER.info("%s 数据同步检查开始：范围=%s", direction, scope)
+            local = _local_manifest(local_data_root, scope)
+            remote = _remote_manifest(server, password, scope)
+            if local == remote:
+                operations.append(
+                    {"direction": direction, "scope": scope, "status": "SKIPPED"}
+                )
+                LOGGER.info("%s 数据无变化，已跳过：范围=%s", direction, scope)
+                continue
+            if pull:
+                detail = _pull_scope(config, scope, server, password)
+            else:
+                detail = _push_scope(config, scope, server, password, force)
+            operations.append(
+                {"direction": direction, "scope": scope, "status": "SUCCESS"}
+                | detail
             )
-            LOGGER.info("%s 数据拉取完成：目录=%s", scope, directory)
-            completed.append(
-                {"direction": "pull", "scope": scope, "directory": directory}
-            )
-
-    for scope in push_scopes:
-        if scope == "state":
-            if not force:
-                raise ValueError("推送 state 必须显式指定 --force")
-            LOGGER.warning(
-                "警告：正在强制推送 state，服务器 SQLite 状态库将被本地一致快照覆盖"
-            )
-            completed.append(_push_state(config, server, password))
-            continue
-        for directory in DIRECTORY_SCOPES[scope]:
-            source = local_data_root / directory
-            if not source.is_dir():
-                raise ValueError(f"本地同步目录不存在：{source}")
-            LOGGER.info("%s 数据正在推送：目录=%s", scope, directory)
-            file_count = _push_directory_archive(
-                local_data_root, directory, server, password
-            )
-            LOGGER.info(
-                "%s 数据推送完成：目录=%s；文件数=%d",
-                scope,
-                directory,
-                file_count,
-            )
-            completed.append(
+        except Exception as error:
+            errors[scope] = str(error)
+            operations.append(
                 {
-                    "direction": "push",
+                    "direction": direction,
                     "scope": scope,
-                    "directory": directory,
-                    "files": str(file_count),
+                    "status": "FAILED",
+                    "error": str(error),
                 }
             )
+            LOGGER.error("%s 数据同步失败：范围=%s；原因=%s", direction, scope, error)
+    return {
+        "status": "PARTIAL" if errors else "SUCCESS",
+        "operations": operations,
+        "errors": errors,
+    }
 
-    return {"status": "SUCCESS", "operations": completed}
+
+def _pull_scope(
+    config: AppConfig,
+    scope: str,
+    server: str,
+    password: str,
+) -> dict[str, object]:
+    if scope == "state":
+        return _pull_state(config, server, password)
+    local_data_root = config.data_dir.parent
+    files = 0
+    for directory in DIRECTORY_SCOPES[scope]:
+        LOGGER.info("%s 数据正在拉取：目录=%s", scope, directory)
+        files += _pull_directory_atomic(local_data_root, directory, server, password)
+        LOGGER.info("%s 数据拉取完成：目录=%s", scope, directory)
+    return {"files": files}
+
+
+def _push_scope(
+    config: AppConfig,
+    scope: str,
+    server: str,
+    password: str,
+    force: bool,
+) -> dict[str, object]:
+    if scope == "state":
+        if not force:
+            raise ValueError("推送 state 必须显式指定 --force")
+        LOGGER.warning(
+            "警告：正在强制推送 state，服务器 SQLite 状态库将被本地一致快照覆盖"
+        )
+        return _push_state(config, server, password)
+    local_data_root = config.data_dir.parent
+    files = 0
+    for directory in DIRECTORY_SCOPES[scope]:
+        source = local_data_root / directory
+        if not source.is_dir():
+            raise ValueError(f"本地同步目录不存在：{source}")
+        LOGGER.info("%s 数据正在推送：目录=%s", scope, directory)
+        files += _push_directory_archive(local_data_root, directory, server, password)
+        LOGGER.info("%s 数据推送完成：目录=%s；文件数=%d", scope, directory, files)
+    return {"files": files}
+
+
+def _pull_directory_atomic(
+    local_data_root: Path,
+    directory: str,
+    server: str,
+    password: str,
+) -> int:
+    transfer_id = uuid4().hex
+    temporary_root = local_data_root / f".{directory}.sync-{transfer_id}"
+    downloaded = temporary_root / directory
+    target = local_data_root / directory
+    backup = local_data_root / f".{directory}.previous-{transfer_id}"
+    local_data_root.mkdir(parents=True, exist_ok=True)
+    temporary_root.mkdir()
+    try:
+        _run_command(
+            "scp",
+            *_ssh_options(),
+            "-r",
+            f"{server}:{REMOTE_DATA_ROOT}/{directory}",
+            str(temporary_root),
+            password=password,
+            show_progress=True,
+        )
+        if not downloaded.is_dir():
+            raise RuntimeError(f"服务器同步目录无效：{directory}")
+        file_count = sum(path.is_file() for path in downloaded.rglob("*"))
+        if target.exists():
+            target.replace(backup)
+        try:
+            downloaded.replace(target)
+        except Exception:
+            if backup.exists() and not target.exists():
+                backup.replace(target)
+            raise
+        shutil.rmtree(backup, ignore_errors=True)
+        return file_count
+    finally:
+        shutil.rmtree(temporary_root, ignore_errors=True)
 
 
 def _pull_state(config: AppConfig, server: str, password: str) -> dict[str, str]:
     target = config.state_db_path
     target.parent.mkdir(parents=True, exist_ok=True)
     _ensure_file_not_in_use(target)
+    temporary = target.with_name(f".{target.name}.sync-{uuid4().hex}")
+    backup = target.with_name(f".{target.name}.previous-{uuid4().hex}")
     LOGGER.info("state 数据正在拉取：数据库=trading.db")
-    _run_command(
-        "scp",
-        *_ssh_options(),
-        "-r",
-        f"{server}:{REMOTE_DATA_ROOT}/state/trading.db",
-        str(target),
-        password=password,
-        show_progress=True,
-    )
+    try:
+        _run_command(
+            "scp",
+            *_ssh_options(),
+            f"{server}:{REMOTE_DATA_ROOT}/state/trading.db",
+            str(temporary),
+            password=password,
+            show_progress=True,
+        )
+        if not temporary.is_file() or temporary.stat().st_size <= 0:
+            raise RuntimeError("服务器 state 数据库为空或不存在")
+        if target.exists():
+            target.replace(backup)
+        try:
+            temporary.replace(target)
+        except Exception:
+            if backup.exists() and not target.exists():
+                backup.replace(target)
+            raise
+        backup.unlink(missing_ok=True)
+    finally:
+        temporary.unlink(missing_ok=True)
     LOGGER.info("state 数据拉取完成：数据库=%s", target)
     return {
         "direction": "pull",
@@ -530,7 +577,7 @@ def _askpass_environment(password: str) -> Iterator[dict[str, str]]:
         environment = os.environ.copy()
         environment.update(
             {
-                "DISPLAY": "stock-sync",
+                "DISPLAY": "stock-trading",
                 "SSH_ASKPASS": str(helper),
                 "SSH_ASKPASS_REQUIRE": "force",
                 "SERVER_PASS": password,
@@ -564,4 +611,4 @@ def _run_command(
         raise RuntimeError(detail) from error
 
 
-# AI_GENERATE_END --------------------
+# AI_GENERATE_END ------------------------

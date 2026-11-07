@@ -12,8 +12,7 @@ dependencies = [
     "pandas>=2.2,<4",
     "pillow>=13,<14",
     "pyarrow>=18,<24",
-    "rich>=13,<15",
-    "typer==0.27.3",
+    "shtab>=1.7,<2",
     "gym==0.26.2",
     "lightgbm>=4.5,<5",
     "xgboost>=2.1,<4",
@@ -21,16 +20,7 @@ dependencies = [
 ]
 
 [project.scripts]
-stock-help = "stock_trading.shortcuts:show_help"
-stock-model = "stock_trading.shortcuts:model"
-stock-collect = "stock_trading.shortcuts:collect"
-stock-prepare = "stock_trading.shortcuts:prepare"
-stock-rank = "stock_trading.shortcuts:rank"
-stock-trading = "stock_trading.shortcuts:trading"
-stock-order = "stock_trading.shortcuts:order"
-stock-review = "stock_trading.shortcuts:review"
-stock-clean = "stock_trading.shortcuts:clean"
-stock-sync = "stock_trading.shortcuts:sync"
+stock-trading = "stock_trading.shortcuts:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

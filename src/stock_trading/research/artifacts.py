@@ -1,4 +1,4 @@
-# AI_GENERATE_START -------------------
+# AI_GENERATE_START ---------------------
 from __future__ import annotations
 
 import json
@@ -97,9 +97,12 @@ def model_artifacts_valid(
             evaluation is not None and not isinstance(evaluation, dict)
         ):
             return False
-        aggregate = evaluation.get("aggregate", {}) if evaluation else {}
-        completed_scenarios = aggregate.get("completedScenarios")
-        required_scenarios = aggregate.get("requiredScenarios")
+        backtest = evaluation.get("backtest") if evaluation else None
+        backtest_capital = (
+            float(backtest.get("capital", 0))
+            if isinstance(backtest, dict)
+            else 0
+        )
     except Exception:
         return False
     return (
@@ -116,9 +119,9 @@ def model_artifacts_valid(
             evaluation is None
             or (
                 evaluation.get("modelId") == metrics.get("modelId")
-                and isinstance(required_scenarios, int)
-                and required_scenarios > 0
-                and completed_scenarios == required_scenarios
+                and isinstance(backtest, dict)
+                and backtest_capital > 0
+                and backtest.get("grossProfit") is not None
             )
         )
     )
@@ -134,4 +137,4 @@ def validate_model_artifacts(directory: Path, spec: ModelSpec) -> None:
         raise ValueError(f"训练模型无法反序列化: {directory / 'model.pkl'}") from error
 
 
-# AI_GENERATE_END -------------------
+# AI_GENERATE_END ---------------------

@@ -1,4 +1,4 @@
-# AI_GENERATE_START------------ ----------------------------------------------------------------------------------------------------------------------------------------
+# AI_GENERATE_START---------------------- ----------------------------------------------------------------------------------------------------------------------------------------
 from __future__ import annotations
 
 import json
@@ -7,58 +7,25 @@ import re
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from time import perf_counter
-from typing import Annotated, Callable, TypeVar
-
-import typer
+from typing import Callable, TypeVar
 
 from stock_trading.config import AppConfig, load_project_environment
-from stock_trading.data_sync import SYNC_SCOPES, sync_data
+from stock_trading.utils.console import BOLD_RED, echo
 from stock_trading.utils.logging_utils import (
     configure_logging,
     log_context,
     set_log_context,
 )
-from stock_trading.utils.notifications import push_system_failure
-from stock_trading.research.model_adapter import create_research_model
 from stock_trading.research.model_config import ModelSpec, resolve_model_spec
-from stock_trading.research.training import (
-    run_training_pipeline,
-)
-from stock_trading.reports import (
-    clean_report,
-    collect_report,
-    order_report,
-    prepare_report,
-    render_report,
-    review_report,
-    sync_report,
-    trading_report,
-    model_report,
-)
+from stock_trading.reports import render_report, summary_report
 from stock_trading.utils.time_utils import shanghai_today
-from stock_trading.utils.workflows import (
-    COLLECTION_TYPES,
-    cleanup_workflow,
-    collect_workflow,
-    prepare_workflow,
-    rank_workflow,
-    review_workflow,
-    sync_account_workflow,
-    sync_order_workflow,
-    trading_workflow,
-)
 
 LOGGER = logging.getLogger(__name__)
 T = TypeVar("T")
-ReportOption = Annotated[
-    int | None,
-    typer.Option(
-        "--report",
-        min=1,
-        max=1000,
-        help="只读汇报当前已有数据，可指定明细条数，默认 10。",
-    ),
-]
+
+
+class CliParameterError(ValueError):
+    pass
 
 
 def _execute(
@@ -85,32 +52,34 @@ def _execute(
                 json.dumps(parameters, ensure_ascii=False, default=str),
             )
             result = operation(config)
-        except typer.BadParameter as error:
+        except CliParameterError as error:
             LOGGER.error(
                 "业务命令参数错误：耗时=%.2f 秒；原因=%s",
                 perf_counter() - started_at,
                 error,
             )
-            typer.echo(f"参数错误：{error}", err=True)
-            raise typer.Exit(code=2) from None
+            echo(f"参数错误：{error}", color=BOLD_RED, error=True)
+            raise SystemExit(2) from None
         except Exception as error:
             LOGGER.error(
                 "业务命令失败：耗时=%.2f 秒；原因=%s",
                 perf_counter() - started_at,
                 error,
             )
+            from stock_trading.utils.notifications import push_system_failure
+
             push_system_failure(config, command, error)
-            typer.echo(f"执行失败：{error}", err=True)
-            raise typer.Exit(code=1) from None
+            echo(f"执行失败：{error}", color=BOLD_RED, error=True)
+            raise SystemExit(1) from None
         except KeyboardInterrupt:
             LOGGER.warning(
                 "收到 Ctrl+C，业务命令已终止：耗时=%.2f 秒",
                 perf_counter() - started_at,
             )
-            typer.echo("命令已终止。", err=True)
+            echo("命令已终止。", color=BOLD_RED, error=True)
             raise SystemExit(130) from None
         set_log_context(step="1/1", progress="-/-", target=command)
-        typer.echo(
+        echo(
             result_summary(result)
             if result_summary is not None
             else f"{command} 执行完成。"
@@ -126,46 +95,18 @@ def _execute_report(
     try:
         load_project_environment()
         render_report(operation(AppConfig.from_env()))
-    except typer.BadParameter:
+    except CliParameterError:
         raise
     except Exception as error:
-        typer.echo(f"汇报失败：{error}", err=True)
-        raise typer.Exit(code=1) from None
+        echo(f"汇报失败：{error}", color=BOLD_RED, error=True)
+        raise SystemExit(1) from None
 
 
 def order_command(
-    account: Annotated[
-        bool,
-        typer.Option("--account", help="同步最新券商账户资金快照。"),
-    ] = False,
-    date_value: Annotated[
-        str | None,
-        typer.Option("--date", help="业务日期或日期范围，默认当天。"),
-    ] = None,
-    report: ReportOption = None,
+    date_value: str | None = None,
 ) -> None:
-    if report is not None:
-        if account:
-            raise typer.BadParameter("--report 不支持同时指定 --account")
-        start_date = end_date = None
-        if date_value is not None:
-            start_date, end_date = _parse_date_expression(
-                date_value, shanghai_today(), shanghai_today()
-            )
-        _execute_report(
-            lambda config: order_report(config, report, start_date, end_date)
-        )
-        return
-    if account:
-        if date_value is not None:
-            raise typer.BadParameter("--account 不支持同时指定 --date")
-        _execute(
-            "order-account",
-            {"account": True},
-            sync_account_workflow,
-            result_summary=_summarize_account,
-        )
-        return
+    from stock_trading.workflows import sync_order_workflow
+
     today = shanghai_today()
     start_date, end_date = _parse_date_expression(date_value, today, today)
     _execute(
@@ -177,33 +118,11 @@ def order_command(
 
 
 def collect_command(
-    type_value: Annotated[
-        str | None,
-        typer.Option(
-            "--type",
-            help=(
-                "采集类型，支持 basic,daily,factor,minute5,minute 逗号多选；"
-                "普通采集默认 daily。"
-            ),
-        ),
-    ] = None,
-    date_value: Annotated[
-        str | None,
-        typer.Option("--date", help="采集日期或日期范围，默认当天。"),
-    ] = None,
-    codes_value: Annotated[
-        str | None,
-        typer.Option("--codes", help="股票代码，多个代码使用逗号分隔，默认全市场。"),
-    ] = None,
-    report: ReportOption = None,
+    date_value: str | None = None,
+    codes_value: str | None = None,
 ) -> None:
-    if report is not None:
-        if date_value is not None or codes_value is not None:
-            raise typer.BadParameter("--report 不支持同时指定 --date 或 --codes")
-        selected = _parse_collection_types(type_value) if type_value else None
-        _execute_report(lambda config: collect_report(config, selected))
-        return
-    selected_types = _parse_collection_types(type_value or "daily")
+    from stock_trading.workflows import collect_workflow
+
     selected_codes = _parse_stock_codes(codes_value) if codes_value else None
 
     def run(config: AppConfig) -> dict[str, object]:
@@ -213,44 +132,31 @@ def collect_command(
             config,
             start,
             end,
-            selected_types,
             requested_codes=selected_codes,
         )
 
-    _execute(
+    result = _execute(
         "collect",
         {
-            "type": list(selected_types),
             "date": date_value,
             "codes": codes_value,
         },
         run,
         result_summary=_summarize_collection,
     )
+    if result.get("status") == "PARTIAL":
+        raise SystemExit(1)
 
 
 def prepare_command(
-    date_value: Annotated[
-        str | None,
-        typer.Option("--date", help="Qlib 日期或日期范围，默认延续现有范围至最近交易日。"),
-    ] = None,
-    force: Annotated[
-        bool,
-        typer.Option("--force", help="忽略现有 Qlib 并从原始 Parquet 全量重建。"),
-    ] = False,
-    model_value: Annotated[
-        str | None,
-        typer.Option("--model", help="模型完整 ID、版本前缀或算法前缀。"),
-    ] = None,
-    report: ReportOption = None,
+    date_value: str | None = None,
+    force: bool = False,
+    model_value: str | None = None,
 ) -> None:
-    if report is not None:
-        if date_value is not None or force:
-            raise typer.BadParameter("--report 不支持同时指定 --date 或 --force")
-        spec = _resolve_model(model_value) if model_value else None
-        _execute_report(lambda config: prepare_report(config, spec))
-        return
     def run(config: AppConfig) -> dict[str, object]:
+        from stock_trading.research.model_adapter import create_research_model
+        from stock_trading.workflows import prepare_workflow
+
         spec = _resolve_model(model_value)
         latest = shanghai_today()
         model = create_research_model(config, spec)
@@ -278,26 +184,12 @@ def prepare_command(
 
 
 def model_command(
-    split: Annotated[
-        str | None,
-        typer.Option(help="训练、验证、测试比例，例如 6:3:1；默认 70:15:15。"),
-    ] = None,
-    force: Annotated[
-        bool,
-        typer.Option("--force", help="忽略已有可用模型并重新训练。"),
-    ] = False,
-    model_value: Annotated[
-        str | None,
-        typer.Option("--model", help="模型完整 ID、版本前缀或算法前缀。"),
-    ] = None,
-    report: ReportOption = None,
+    split: str | None = None,
+    force: bool = False,
+    model_value: str | None = None,
 ) -> None:
-    if report is not None:
-        if split is not None or force:
-            raise typer.BadParameter("--report 不支持同时指定 --split 或 --force")
-        spec = _resolve_model(model_value) if model_value else None
-        _execute_report(lambda config: model_report(config, spec))
-        return
+    from stock_trading.research.training import run_training_pipeline
+
     load_project_environment()
     configure_logging(console=False)
     logger = logging.getLogger("stock_trading")
@@ -305,7 +197,7 @@ def model_command(
     logger.setLevel(logging.WARNING)
     try:
         _execute(
-            "model",
+            "train",
             {"split": split, "force": force, "model": model_value},
             lambda config: run_training_pipeline(
                 config,
@@ -320,15 +212,11 @@ def model_command(
 
 
 def rank_command(
-    prediction_date: Annotated[
-        str | None,
-        typer.Option("--date", help="排名业务日期，默认当天。"),
-    ] = None,
-    model_value: Annotated[
-        str | None,
-        typer.Option("--model", help="模型完整 ID、版本前缀或算法前缀。"),
-    ] = None,
+    prediction_date: str | None = None,
+    model_value: str | None = None,
 ) -> None:
+    from stock_trading.workflows import rank_workflow
+
     business_date = _business_date(prediction_date)
     _execute(
         "rank",
@@ -341,17 +229,13 @@ def rank_command(
 
 
 def trading_command(
-    trade_type: Annotated[
-        str,
-        typer.Option("--type"),
-    ],
-    model_value: Annotated[
-        str | None,
-        typer.Option("--model", help="模型完整 ID、版本前缀或算法前缀。"),
-    ] = None,
+    trade_type: str,
+    model_value: str | None = None,
 ) -> None:
+    from stock_trading.workflows import trading_workflow
+
     if trade_type not in {"B", "S"}:
-        raise typer.BadParameter("--type 只能是 B 或 S")
+        raise CliParameterError("交易方向只能是 B 或 S")
     side = "BUY" if trade_type == "B" else "SELL"
     business_date = shanghai_today()
     _execute(
@@ -368,28 +252,12 @@ def trading_command(
     )
 
 
-def trading_report_command(direction: str | None, limit: int) -> None:
-    """汇报最近已成交买卖事实，不调用券商。"""
-    _execute_report(lambda config: trading_report(config, limit, direction))
-
-
 def review_command(
-    business_date: Annotated[
-        str | None,
-        typer.Option("--date", help="复盘业务日期，默认当天。"),
-    ] = None,
-    model_value: Annotated[
-        str | None,
-        typer.Option("--model", help="模型完整 ID、版本前缀或算法前缀。"),
-    ] = None,
-    report: ReportOption = None,
+    business_date: str | None = None,
+    model_value: str | None = None,
 ) -> None:
-    if report is not None:
-        if business_date is not None:
-            raise typer.BadParameter("--report 不支持同时指定 --date")
-        spec = _resolve_model(model_value) if model_value else None
-        _execute_report(lambda config: review_report(config, spec))
-        return
+    from stock_trading.workflows import review_workflow
+
     target_date = _business_date(business_date)
     _execute(
         "review",
@@ -402,17 +270,10 @@ def review_command(
 
 
 def clean_command(
-    reference_date: Annotated[
-        str | None,
-        typer.Option("--date", help="清理基准日期，默认当天。"),
-    ] = None,
-    report: ReportOption = None,
+    reference_date: str | None = None,
 ) -> None:
-    if report is not None:
-        if reference_date is not None:
-            raise typer.BadParameter("--report 不支持同时指定 --date")
-        _execute_report(lambda config: clean_report(config, report))
-        return
+    from stock_trading.workflows import cleanup_workflow
+
     target_date = _business_date(reference_date)
     _execute(
         "clean",
@@ -423,63 +284,43 @@ def clean_command(
 
 
 def sync_command(
-    pull: Annotated[
-        str | None,
-        typer.Option(
-            "--pull", help="从服务器拉取 market、qlib、model、state 或 all。"
-        ),
-    ] = None,
-    push: Annotated[
-        str | None,
-        typer.Option(
-            "--push",
-            help="向服务器推送 market、qlib、model、state 或 all。",
-        ),
-    ] = None,
-    force: Annotated[
-        bool,
-        typer.Option(
-            "--force",
-            help="允许强制推送 state，并覆盖服务器 SQLite 状态库。",
-        ),
-    ] = False,
-    report: ReportOption = None,
+    pull: bool = False,
+    push: bool = False,
+    force: bool = False,
 ) -> None:
-    if report is not None:
-        if pull is not None or push is not None or force:
-            raise typer.BadParameter(
-                "--report 不支持同时指定 --pull、--push 或 --force"
-            )
-        _execute_report(sync_report)
-        return
-    pull_scopes = _parse_sync_scopes(pull, "pull")
-    push_scopes = _parse_sync_scopes(push, "push")
-    if not pull_scopes and not push_scopes:
-        raise typer.BadParameter("必须指定 --pull 或 --push")
-    overlap = set(pull_scopes) & set(push_scopes)
-    if overlap:
-        raise typer.BadParameter(
-            f"同一数据类型不能同时拉取和推送：{','.join(sorted(overlap))}"
-        )
-    if "state" in push_scopes and not force:
-        raise typer.BadParameter("推送 state 必须显式指定 --force")
-    if force and "state" not in push_scopes:
-        raise typer.BadParameter("--force 仅用于 --push state")
-    _execute(
+    from stock_trading.data_sync import sync_data
+
+    if pull == push:
+        raise CliParameterError("必须且只能指定 --pull 或 --push")
+    if force and not push:
+        raise CliParameterError("--force 仅用于 --push")
+    result = _execute(
         "sync",
         {
             "pull": pull,
             "push": push,
             "force": force,
         },
-        lambda config: sync_data(
-            config,
-            pull_scopes,
-            push_scopes,
-            force=force,
-        ),
+        lambda config: sync_data(config, pull=pull, push=push, force=force),
         result_summary=_summarize_sync,
         console_logs=True,
+    )
+    if result.get("status") == "PARTIAL":
+        raise SystemExit(1)
+
+
+def report_command(
+    model_value: str | None = None,
+    date_value: str | None = None,
+) -> None:
+    spec = _resolve_model(model_value) if model_value else None
+    start_date = end_date = None
+    if date_value is not None:
+        start_date, end_date = _parse_date_expression(
+            date_value, shanghai_today(), shanghai_today()
+        )
+    _execute_report(
+        lambda config: summary_report(config, spec, start_date, end_date)
     )
 
 
@@ -495,18 +336,18 @@ def _resolve_model(value: str | None) -> ModelSpec:
     try:
         return resolve_model_spec(value, warning=LOGGER.warning)
     except ValueError as error:
-        raise typer.BadParameter(str(error)) from None
+        raise CliParameterError(str(error)) from None
 
 
 def _parse_date(value: str) -> date:
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
-        raise typer.BadParameter(
+        raise CliParameterError(
             f"日期格式错误：{value}；请使用 YYYY-MM-DD，例如 2026-10-31"
         )
     try:
         return date.fromisoformat(value)
     except ValueError:
-        raise typer.BadParameter(f"日期无效：{value}；请检查年月日是否存在") from None
+        raise CliParameterError(f"日期无效：{value}；请检查年月日是否存在") from None
 
 
 def _parse_date_expression(
@@ -520,34 +361,19 @@ def _parse_date_expression(
     parts = normalized.split(":")
     example = "正确示例：--date 2025-10-10 或 --date 2025-10-10:2025-10-30"
     if len(parts) not in {1, 2} or any(not part for part in parts):
-        raise typer.BadParameter(f"日期参数格式错误：{value}；{example}")
+        raise CliParameterError(f"日期参数格式错误：{value}；{example}")
     try:
         start_date = _parse_date(parts[0])
         end_date = _parse_date(parts[1]) if len(parts) == 2 else start_date
-    except typer.BadParameter as error:
-        raise typer.BadParameter(f"{error}；{example}") from None
+    except CliParameterError as error:
+        raise CliParameterError(f"{error}；{example}") from None
     if end_date < start_date:
-        raise typer.BadParameter(
+        raise CliParameterError(
             f"日期范围错误：结束日期 {end_date} 不能早于开始日期 {start_date}；{example}"
         )
     return start_date, end_date
 
 
-
-
-def _parse_collection_types(value: str) -> tuple[str, ...]:
-    values = tuple(
-        dict.fromkeys(item.strip().lower() for item in value.split(","))
-    )
-    if not values or any(not item for item in values):
-        raise typer.BadParameter("--type 不能为空")
-    unknown = sorted(set(values) - set(COLLECTION_TYPES))
-    if unknown:
-        raise typer.BadParameter(
-            f"--type 包含未知类型：{','.join(unknown)}；"
-            f"可选值为 {','.join(COLLECTION_TYPES)}"
-        )
-    return values
 
 
 def _parse_stock_code(value: str) -> str:
@@ -558,7 +384,7 @@ def _parse_stock_code(value: str) -> str:
         elif normalized.startswith(("0", "3")):
             normalized = f"sz.{normalized}"
     if not re.fullmatch(r"(?:sh|sz)\.\d{6}", normalized):
-        raise typer.BadParameter(
+        raise CliParameterError(
             f"股票代码格式错误：{value}；示例：600000、sh.600000 或 sz.000001"
         )
     return normalized
@@ -567,63 +393,34 @@ def _parse_stock_code(value: str) -> str:
 def _parse_stock_codes(value: str) -> list[str]:
     raw_codes = [item.strip() for item in value.split(",") if item.strip()]
     if not raw_codes:
-        raise typer.BadParameter("股票代码列表不能为空")
+        raise CliParameterError("股票代码列表不能为空")
     return list(dict.fromkeys(_parse_stock_code(code) for code in raw_codes))
 
 
 def _parse_model_split(value: str) -> tuple[Decimal, Decimal, Decimal]:
     parts = value.split(":")
     if len(parts) != 3:
-        raise typer.BadParameter("训练比例格式错误；请使用 训练:验证:测试，例如 6:3:1")
+        raise CliParameterError("训练比例格式错误；请使用 训练:验证:测试，例如 6:3:1")
     try:
         ratios = tuple(Decimal(part) for part in parts)
     except InvalidOperation:
-        raise typer.BadParameter("训练比例必须是数字；例如 6:3:1") from None
+        raise CliParameterError("训练比例必须是数字；例如 6:3:1") from None
     if any(not ratio.is_finite() or ratio <= 0 for ratio in ratios):
-        raise typer.BadParameter("训练、验证和测试比例必须全部大于 0")
+        raise CliParameterError("训练、验证和测试比例必须全部大于 0")
     return ratios[0], ratios[1], ratios[2]
 
 
-def _parse_sync_scopes(value: str | None, direction: str) -> tuple[str, ...]:
-    if value is None:
-        return ()
-    scopes = tuple(dict.fromkeys(item.strip().lower() for item in value.split(",")))
-    if not scopes or any(not scope for scope in scopes):
-        raise typer.BadParameter(f"--{direction} 数据类型不能为空")
-    unknown = sorted(set(scopes) - SYNC_SCOPES - {"all"})
-    if unknown:
-        raise typer.BadParameter(
-            f"--{direction} 包含未知数据类型：{','.join(unknown)}"
-        )
-    if "all" in scopes:
-        if len(scopes) != 1:
-            raise typer.BadParameter(f"--{direction} all 不能与其他类型同时使用")
-        return ("market", "qlib", "model", "state") if direction == "pull" else (
-            "market",
-            "qlib",
-            "model",
-        )
-    return scopes
-
-
 def _summarize_order(result: dict[str, object]) -> str:
+    account_snapshot = dict(result["accountSnapshot"])
     settlement = dict(result["settlement"])
     return (
-        f"券商订单同步完成：日期 {result['startDate']} 至 {result['endDate']}，"
+        f"券商账户及订单同步完成：账户采集时间 "
+        f"{account_snapshot['captured_at']}，日期 "
+        f"{result['startDate']} 至 {result['endDate']}，"
         f"有效订单 {result['validOrders']} 条，新增 {result['insertedOrders']} 条，"
         f"更新 {result['updatedOrders']} 条，新增闭环 "
         f"{settlement.get('realizedTrades', 0)} 条，未匹配卖出 "
         f"{settlement.get('unmatchedSellQuantity', 0)} 股。"
-    )
-
-
-def _summarize_account(result: dict[str, object]) -> str:
-    return (
-        f"券商账户同步完成：采集时间 {result['captured_at']}，可用资金 "
-        f"{_format_amount(result['available_cash'])} 元，总资产 "
-        f"{_format_amount(result['total_assets'])} 元，持仓市值 "
-        f"{_format_amount(result['total_position'])} 元，冻结金额 "
-        f"{_format_amount(result['frozen_amount'])} 元。"
     )
 
 
@@ -638,12 +435,19 @@ def _summarize_collection(result: dict[str, object]) -> str:
     details = []
     for name, value in dict(result["collection"]).items():
         item = dict(value)
-        details.append(
-            f"{type_names.get(name, name)}采集成功，质量"
-            f"{_format_quality(item.get('dataQuality'))}"
-        )
+        label = type_names.get(name, name)
+        if item.get("status") == "FAILED":
+            details.append(f"{label}失败：{item.get('error', '-')}")
+        elif item.get("skipped"):
+            details.append(f"{label}已有完整数据，已跳过")
+        else:
+            details.append(
+                f"{label}采集成功，质量"
+                f"{_format_quality(item.get('dataQuality'))}"
+            )
+    status = "部分完成" if result.get("status") == "PARTIAL" else "完成"
     return (
-        f"数据采集完成：日期 {result['startDate']} 至 {result['endDate']}；"
+        f"数据采集{status}：日期 {result['startDate']} 至 {result['endDate']}；"
         + "；".join(details)
         + "。"
     )
@@ -663,17 +467,16 @@ def _summarize_preparation(result: dict[str, object]) -> str:
 def _summarize_training(result: dict[str, object]) -> str:
     training = dict(result["training"])
     evaluation = dict(result.get("evaluation") or {})
-    aggregate = dict(evaluation.get("aggregate") or {})
+    backtest = dict(evaluation.get("backtest") or {})
     action = "复用现有制品" if training.get("skipped") else "完成训练与回测"
     summary = (
         f"模型训练完成：模型 {result['modelId']}，{action}，制品 "
         f"{training.get('artifactPath', '-')}"
     )
-    if aggregate:
+    if backtest:
         summary += (
-            f"，资金场景 {aggregate.get('completedScenarios', 0)}/"
-            f"{aggregate.get('requiredScenarios', 0)}，平均毛收益率 "
-            f"{_format_percent(aggregate.get('averageGrossReturn'))}"
+            f"，回测资金 {_format_amount(backtest.get('capital'))} 元，"
+            f"毛收益 {_format_amount(backtest.get('grossProfit'))} 元"
         )
     return summary + "。"
 
@@ -740,13 +543,14 @@ def _summarize_cleanup(result: dict[str, object]) -> str:
 def _summarize_sync(result: dict[str, object]) -> str:
     operations = list(result.get("operations", []))
     direction_names = {"pull": "拉取", "push": "推送"}
-    scopes = ", ".join(
+    scopes = "，".join(
         f"{direction_names.get(str(item.get('direction')), item.get('direction'))}"
-        f" {item.get('scope')}"
+        f" {item.get('scope')}={item.get('status', 'SUCCESS')}"
         for item in operations
         if isinstance(item, dict)
     ) or "无"
-    return f"数据同步完成：操作 {len(operations)} 项，范围 {scopes}。"
+    status = "部分完成" if result.get("status") == "PARTIAL" else "完成"
+    return f"数据同步{status}：操作 {len(operations)} 项；{scopes}。"
 
 
 def _format_quality(value: object) -> str:
@@ -779,4 +583,4 @@ def _format_bytes(value: object) -> str:
     return "-"
 
 
-# AI_GENERATE_END------------ ----------------------------------------------------------------------------------------------------------------------------------------
+# AI_GENERATE_END---------------------- ----------------------------------------------------------------------------------------------------------------------------------------

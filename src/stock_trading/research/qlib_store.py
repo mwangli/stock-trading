@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------------------------------
+# AI_GENERATE_START ---------------------------------
 from __future__ import annotations
 
 import json
@@ -17,11 +17,13 @@ from stock_trading.market.minute1_summary import (
 from stock_trading.market.storage import ParquetMarketStore
 from stock_trading.utils.logging_utils import set_log_context, should_log_progress
 from stock_trading.research.labels import build_forward_labels
+from stock_trading.research.qlib_contract import (
+    PREPARE_SUMMARY_FILE,
+    expected_qlib_contract,
+)
 from stock_trading.research.model_config import ModelSpec
 
 LOGGER = logging.getLogger(__name__)
-QLIB_CONTRACT_VERSION = "7"
-PREPARE_SUMMARY_FILE = ".prepare-summary.json"
 QLIB_BASE_FIELDS = (
     "open", "high", "low", "close", "volume", "amount", "vwap", "factor",
 )
@@ -51,11 +53,7 @@ class QlibBinaryStore:
             if self._feature_frequency == "minute1"
             else QLIB_FIELDS
         )
-        model_key = spec.model_id if spec else "legacy"
-        self._expected_contract = (
-            f"{QLIB_CONTRACT_VERSION}:{model_key}:"
-            f"{self._feature_frequency}:T+{self._label_horizon}"
-        )
+        self._expected_contract = expected_qlib_contract(spec)
 
     def prepare(
         self,
@@ -689,4 +687,4 @@ class QlibBinaryStore:
             raise
         shutil.rmtree(backup, ignore_errors=True)
 
-# AI_GENERATE_END --------------------------------
+# AI_GENERATE_END ---------------------------------

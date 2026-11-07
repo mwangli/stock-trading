@@ -1,4 +1,4 @@
-# AI_GENERATE_START----------- ---------------------------------
+# AI_GENERATE_START------------------- ---------------------------------
 from __future__ import annotations
 
 import json
@@ -60,19 +60,10 @@ def collect_workflow(
     config: AppConfig,
     start_date: date,
     end_date: date,
-    collection_types: tuple[str, ...],
     requested_codes: list[str] | None = None,
 ) -> dict[str, object]:
-    """按相互独立的数据类型顺序采集，并分别登记任务状态。"""
-    unknown = sorted(set(collection_types) - set(COLLECTION_TYPES))
-    if unknown:
-        raise ValueError(f"不支持的采集类型：{','.join(unknown)}")
-    selected_types = tuple(
-        value for value in COLLECTION_TYPES if value in collection_types
-    )
-    if not selected_types:
-        raise ValueError("至少指定一个采集类型")
-    if requested_codes and "basic" in selected_types:
+    """按固定顺序采集全部数据类型，单项失败不阻断后续阶段。"""
+    if requested_codes:
         LOGGER.warning("basic 始终写入全市场快照，--codes 对 basic 不生效")
 
     state = StateStore(config.state_db_path)
@@ -80,7 +71,7 @@ def collect_workflow(
     collection: dict[str, object] = {}
     errors: dict[str, str] = {}
     today = shanghai_today()
-    for collection_type in selected_types:
+    for collection_type in COLLECTION_TYPES:
         task_date = today if collection_type == "basic" else end_date
         business_key = state.start_task(
             f"COLLECT_{collection_type.upper()}", task_date
@@ -112,18 +103,13 @@ def collect_workflow(
             LOGGER.info("采集阶段完成：类型=%s", collection_type)
 
     summary = {
-        "types": list(selected_types),
+        "status": "PARTIAL" if errors else "SUCCESS",
+        "types": list(COLLECTION_TYPES),
         "startDate": start_date.isoformat(),
         "endDate": end_date.isoformat(),
         "collection": collection,
+        "errors": errors,
     }
-    if errors:
-        details = "；".join(
-            f"{name}={message}" for name, message in errors.items()
-        )
-        raise ValueError(
-            f"采集未完整成功，其他类型已独立执行并保留成功数据：{details}"
-        )
     return summary
 
 
@@ -166,6 +152,7 @@ def _collect_basic(
     if not quality["valid"]:
         raise ValueError("股票基础信息快照检查失败")
     return {
+        "skipped": bool(result.get("skipped")),
         "provider": provider.name,
         "scope": "full-market",
         "result": result,
@@ -181,12 +168,17 @@ def _collect_daily(
     start_date: date,
     end_date: date,
 ) -> dict[str, object]:
-    provider = preferred_market_provider(config)
-    dates = trading_dates_between(store, provider, start_date, end_date)
-    if not dates:
-        raise ValueError("指定日期范围内没有交易日")
-    result = sync_daily(store, provider, stocks, codes, dates)
     audit = audit_research_quality(store, stocks, codes, start_date, end_date)
+    pending_codes = [plan.code for plan in audit.pending if plan.needs_daily]
+    provider = preferred_market_provider(config)
+    if pending_codes:
+        dates = trading_dates_between(store, provider, start_date, end_date)
+        if not dates:
+            raise ValueError("指定日期范围内没有交易日")
+        result = sync_daily(store, provider, stocks, pending_codes, dates)
+        audit = audit_research_quality(store, stocks, codes, start_date, end_date)
+    else:
+        result = {"skipped": True, "reason": "daily 数据已完整"}
     quality = _component_quality(
         "collect-daily",
         codes,
@@ -195,6 +187,7 @@ def _collect_daily(
         config.data_quality_min_ratio,
     )
     return {
+        "skipped": not pending_codes,
         "provider": provider.name,
         "researchCodes": len(codes),
         "result": result,
@@ -210,12 +203,17 @@ def _collect_factor(
     start_date: date,
     end_date: date,
 ) -> dict[str, object]:
-    provider = preferred_market_provider(config)
-    dates = trading_dates_between(store, provider, start_date, end_date)
-    if not dates:
-        raise ValueError("指定日期范围内没有交易日")
-    result = sync_factors(store, provider, codes, dates)
     audit = audit_research_quality(store, stocks, codes, start_date, end_date)
+    pending_codes = [plan.code for plan in audit.pending if plan.needs_factor]
+    provider = preferred_market_provider(config)
+    if pending_codes:
+        dates = trading_dates_between(store, provider, start_date, end_date)
+        if not dates:
+            raise ValueError("指定日期范围内没有交易日")
+        result = sync_factors(store, provider, pending_codes, dates)
+        audit = audit_research_quality(store, stocks, codes, start_date, end_date)
+    else:
+        result = {"skipped": True, "reason": "factor 数据已完整"}
     quality = _component_quality(
         "collect-factor",
         codes,
@@ -224,6 +222,7 @@ def _collect_factor(
         config.data_quality_min_ratio,
     )
     return {
+        "skipped": not pending_codes,
         "provider": provider.name,
         "researchCodes": len(codes),
         "result": result,
@@ -238,9 +237,20 @@ def _collect_minute5(
     start_date: date,
     end_date: date,
 ) -> dict[str, object]:
-    provider = market_provider(config, "baostock")
-    result = sync_minute5(store, provider, codes, start_date, end_date)
     require_full_end = _requires_complete_end_window(end_date)
+    pending_codes = [
+        code
+        for code in codes
+        if not store.minute_summaries_valid(
+            code, start_date, end_date, require_full_end
+        )
+    ]
+    provider = market_provider(config, "baostock")
+    result = (
+        sync_minute5(store, provider, pending_codes, start_date, end_date)
+        if pending_codes
+        else {"skipped": True, "reason": "minute5 数据已完整"}
+    )
     usable = sum(
         store.minute_summaries_valid(
             code, start_date, end_date, require_full_end
@@ -254,6 +264,7 @@ def _collect_minute5(
         config.data_quality_min_ratio,
     )
     return {
+        "skipped": not pending_codes,
         "provider": provider.name,
         "researchCodes": len(codes),
         "result": result,
@@ -289,18 +300,18 @@ def _local_stock_basics(store: ParquetMarketStore) -> pd.DataFrame:
         stocks = store.read_stock_basics()
     except (OSError, ValueError, KeyError) as error:
         raise ValueError(
-            "未找到本地股票基础信息；请先执行 stock-collect --type basic"
+            "未找到本地股票基础信息；请先执行 stock-trading collect"
         ) from error
     if stocks.empty or "snapshot_date" not in stocks:
         raise ValueError(
-            "本地股票基础信息无效；请先执行 stock-collect --type basic"
+            "本地股票基础信息无效；请先执行 stock-trading collect"
         )
     snapshot_dates = pd.to_datetime(
         stocks["snapshot_date"], errors="coerce"
     ).dropna()
     if snapshot_dates.empty:
         raise ValueError(
-            "本地股票基础信息缺少快照日期；请先执行 stock-collect --type basic"
+            "本地股票基础信息缺少快照日期；请先执行 stock-trading collect"
         )
     snapshot_date = snapshot_dates.max().date()
     today = shanghai_today()
@@ -373,7 +384,7 @@ def prepare_workflow(
         stocks = store.read_stock_basics()
     except (OSError, ValueError, KeyError) as error:
         raise ValueError(
-            "未找到股票基础信息；请先执行 stock-collect --type basic"
+            "未找到股票基础信息；请先执行 stock-trading collect"
         ) from error
     codes = research_codes(stocks, start_date, end_date)
     if not codes:
@@ -499,15 +510,6 @@ def _cleanup_storage_bytes(config: AppConfig) -> int:
     return total
 
 
-def sync_account_workflow(
-    config: AppConfig,
-) -> dict[str, object]:
-    """主动同步并覆盖保存最新券商账户资金快照。"""
-    return StateStore(config.state_db_path).save_account_snapshot(
-        _build_broker(config).get_account()
-    )
-
-
 def sync_order_workflow(
     config: AppConfig,
     start_date: date,
@@ -517,11 +519,25 @@ def sync_order_workflow(
     """同步券商已成交事实、费用和权限，并完成可闭环的 FIFO 收益。"""
     LOGGER.info("开始同步券商历史订单：日期=%s 至 %s", start_date, end_date)
     store = StateStore(config.state_db_path)
+    active_broker = broker or _build_broker(config)
     business_key = store.start_task("ORDER", end_date)
     try:
-        result = BrokerOrderSyncService(
-            config, store, broker or _build_broker(config)
-        ).sync(start_date, end_date)
+        account_snapshot = store.save_account_snapshot(
+            active_broker.get_account()
+        )
+        LOGGER.info(
+            "订单同步前账户快照已更新：采集时间=%s；可用资金=%s；"
+            "总资产=%s；持仓市值=%s；冻结金额=%s",
+            account_snapshot["captured_at"],
+            account_snapshot["available_cash"],
+            account_snapshot["total_assets"],
+            account_snapshot["total_position"],
+            account_snapshot["frozen_amount"],
+        )
+        result = BrokerOrderSyncService(config, store, active_broker).sync(
+            start_date, end_date
+        )
+        result["accountSnapshot"] = account_snapshot
         result["permissions"] = refresh_permissions(
             store, store.broker_orders(), end_date
         )
@@ -566,7 +582,7 @@ def rank_workflow(
     if available_instruments is None:
         raise ValueError(
             f"Qlib 未覆盖目标日期：{prediction_date.isoformat()}；"
-            "请先执行 stock-prepare"
+            "请先执行 stock-trading prepare"
         )
     ready_instruments = expected_instruments & available_instruments
     quality = require_data_quality(
@@ -578,7 +594,7 @@ def rank_workflow(
     model_dir = model_directory(config.artifact_dir, spec)
     if not model_artifacts_valid(model_dir, spec):
         raise ValueError(
-            f"模型制品不存在或不完整：{spec.model_id}；请先执行 stock-model"
+            f"模型制品不存在或不完整：{spec.model_id}；请先执行 stock-trading train"
         )
     prediction_path = prediction_artifact_path(model_dir, prediction_date)
     existing = _existing_prediction_summary(
@@ -772,4 +788,4 @@ def _build_broker(config: AppConfig) -> ZXBrokerClient:
     return ZXBrokerClient(config, captcha_solver=BaiduCaptchaSolver(config).solve)
 
 
-# AI_GENERATE_END----------- ---------------------------------
+# AI_GENERATE_END------------------- ---------------------------------

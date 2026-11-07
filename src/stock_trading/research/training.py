@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----------------------------
+# AI_GENERATE_START-- --------------------------------
 from __future__ import annotations
 
 import json
@@ -21,7 +21,6 @@ from stock_trading.research.artifacts import (
 )
 from stock_trading.research.backtest import (
     backtest_artifact_valid,
-    read_backtest_summary,
     run_portfolio_backtest,
 )
 from stock_trading.research.model import automatic_model_segments
@@ -49,7 +48,7 @@ def default_training_codes(
         stocks = store.read_stock_basics()
     except (OSError, ValueError, KeyError) as error:
         raise ValueError(
-            "未找到股票基础信息；请先执行 stock-collect --type basic"
+            "未找到股票基础信息；请先执行 stock-trading collect"
         ) from error
     codes = research_codes(stocks, start_date, end_date)
     if not codes:
@@ -102,10 +101,8 @@ def run_training_pipeline(
     try:
         training = model.train(staging, segments)
         validate_model_artifacts(staging, spec)
-        backtest_run = run_backtest_scenarios(
-            config, model.qlib_dir, staging
-        )
-        evaluation = evaluate_candidate(config, spec, staging, backtest_run)
+        backtest = run_backtest(config, model.qlib_dir, staging)
+        evaluation = evaluate_candidate(config, spec, staging, backtest)
         _write_evaluation(staging, evaluation)
         if not complete_model_artifacts_valid(config, spec, staging):
             raise ValueError("模型训练、回测或评估制品不完整")
@@ -157,7 +154,7 @@ def assert_training_data_ready(
         or available is None
     ):
         raise ValueError(
-            f"模型 {spec.model_id} 的 Qlib 数据未覆盖训练范围；请先执行 stock-prepare"
+            f"模型 {spec.model_id} 的 Qlib 数据未覆盖训练范围；请先执行 stock-trading prepare"
         )
     ready = expected & available
     qlib_quality = require_data_quality(
@@ -187,86 +184,45 @@ def _preparation_summary(preparation: dict[str, object]) -> dict[str, object]:
     }
 
 
-def run_backtest_scenarios(
+def run_backtest(
     config: AppConfig,
     qlib_dir: Path,
     model_dir: Path,
-) -> dict[str, dict[str, object]]:
-    results: dict[str, object] = {}
-    errors: dict[str, object] = {}
-    directories = backtest_directories(config, model_dir)
-    for index, cash in enumerate(config.backtest_capital_scenarios, start=1):
-        set_log_context(
-            progress=f"{index}/{len(config.backtest_capital_scenarios)}",
-            target=f"资金={cash}",
-        )
-        target = directories[str(cash)]
-        try:
-            results[str(cash)] = run_portfolio_backtest(
-                config, model_dir, target, cash, qlib_dir=qlib_dir
-            )
-        except Exception as error:
-            errors[str(cash)] = str(error)
-            break
-    return {
-        "results": results,
-        "errors": errors,
-        "directories": {key: str(value) for key, value in directories.items()},
-    }
+) -> dict[str, object]:
+    set_log_context(progress="1/1", target=f"资金={config.backtest_capital}")
+    return run_portfolio_backtest(
+        config,
+        model_dir,
+        backtest_directory(model_dir),
+        config.backtest_capital,
+        qlib_dir=qlib_dir,
+    )
 
 
 def evaluate_candidate(
     config: AppConfig,
     spec: ModelSpec,
     model_dir: Path,
-    backtest_run: dict[str, dict[str, object]],
+    backtest: dict[str, object],
 ) -> dict[str, object]:
     metrics = json.loads((model_dir / "metrics.json").read_text(encoding="utf-8"))
-    results = backtest_run["results"]
-    scenario_results: dict[str, object] = {}
-    gross_returns: list[float] = []
-    net_returns: list[float] = []
-    directories = backtest_directories(config, model_dir)
-    for cash in config.backtest_capital_scenarios:
-        key = str(cash)
-        summary = results.get(key)
-        if summary is None or not backtest_artifact_valid(directories[key]):
-            scenario_results[key] = {"artifactValid": False}
-            continue
-        gross_return = float(summary["grossReturnBeforeFees"])
-        net_return = float(summary["netReturn"])
-        gross_returns.append(gross_return)
-        net_returns.append(net_return)
-        scenario_results[key] = {
-            "artifactValid": True,
-            "grossProfit": summary["grossProfitBeforeFees"],
-            "grossReturn": gross_return,
-            "netProfit": summary["netProfit"],
-            "netReturn": net_return,
-            "maxDrawdown": abs(float(summary["maxDrawdown"])),
-            "netMaxDrawdown": abs(float(summary["netMaxDrawdown"])),
-            "closedTrades": summary["closedTrades"],
-            "averageHoldingDays": summary["averageHoldingDays"],
-            "retainedDays": summary["retainedDays"],
-        }
-    required = len(config.backtest_capital_scenarios)
-    completed = len(gross_returns)
+    if not backtest_artifact_valid(
+        backtest_directory(model_dir),
+        initial_cash=config.backtest_capital,
+    ):
+        raise ValueError("模型回测制品不完整")
     return {
         "createdAt": utc_now().isoformat(),
         "modelId": spec.model_id,
         "modelMetrics": metrics["metrics"],
-        "aggregate": {
-            "averageGrossReturn": (
-                sum(gross_returns) / required if completed == required else None
-            ),
-            "averageNetReturn": (
-                sum(net_returns) / required if completed == required else None
-            ),
-            "completedScenarios": completed,
-            "requiredScenarios": required,
+        "backtest": {
+            "capital": config.backtest_capital,
+            "grossProfit": backtest["grossProfitBeforeFees"],
+            "grossReturn": backtest["grossReturnBeforeFees"],
+            "maxDrawdown": abs(float(backtest["maxDrawdown"])),
+            "closedTrades": backtest["closedTrades"],
+            "averageHoldingDays": backtest["averageHoldingDays"],
         },
-        "backtests": scenario_results,
-        "errors": backtest_run["errors"],
     }
 
 
@@ -275,32 +231,14 @@ def complete_model_artifacts_valid(
 ) -> bool:
     if not model_artifacts_valid(model_dir, spec, require_evaluation=True):
         return False
-    return all(
-        backtest_artifact_valid(path)
-        for path in backtest_directories(config, model_dir).values()
+    return backtest_artifact_valid(
+        backtest_directory(model_dir),
+        initial_cash=config.backtest_capital,
     )
 
 
-def read_backtest_summaries(
-    config: AppConfig, model_dir: Path
-) -> dict[str, object]:
-    return {
-        key: (
-            read_backtest_summary(path)
-            if backtest_artifact_valid(path)
-            else {"artifactValid": False}
-        )
-        for key, path in backtest_directories(config, model_dir).items()
-    }
-
-
-def backtest_directories(
-    config: AppConfig, model_dir: Path
-) -> dict[str, Path]:
-    return {
-        str(cash): model_dir / "backtests" / f"cash-{cash}"
-        for cash in config.backtest_capital_scenarios
-    }
+def backtest_directory(model_dir: Path) -> Path:
+    return model_dir / "backtest"
 
 
 def _write_evaluation(model_dir: Path, evaluation: dict[str, object]) -> None:
@@ -309,4 +247,4 @@ def _write_evaluation(model_dir: Path, evaluation: dict[str, object]) -> None:
     )
 
 
-# AI_GENERATE_END -----------------------------
+# AI_GENERATE_END-- --------------------------------

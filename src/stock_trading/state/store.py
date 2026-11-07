@@ -1,4 +1,4 @@
-# AI_GENERATE_START--- ----------------------------------------------------------------------------
+# AI_GENERATE_START---- ----------------------------------------------------------------------------
 from __future__ import annotations
 
 import hashlib
@@ -9,8 +9,6 @@ from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Iterable
-
-import pandas as pd
 
 from stock_trading.broker.models import BrokerAccount, BrokerOrder
 from stock_trading.utils.logging_utils import set_log_context
@@ -423,6 +421,8 @@ class StateStore(SQLiteStateDatabase):
         model_status: str | None = None,
     ) -> dict[str, Any]:
         """事务登记模型及其历史预测，回测明细继续由制品文件负责。"""
+        import pandas as pd
+
         self.initialize()
         set_log_context(step="1/3", progress="-/-", target="模型制品")
         LOGGER.info("读取模型指标和完整测试集排名")
@@ -913,6 +913,8 @@ class StateStore(SQLiteStateDatabase):
 
     def model_artifacts_registered(self, model_dir: Path) -> bool:
         """检查模型和完整历史预测是否已经登记到 SQLite。"""
+        import pandas as pd
+
         self.initialize()
         model_path = model_dir / "model.pkl"
         if not model_path.is_file():
@@ -970,6 +972,8 @@ class StateStore(SQLiteStateDatabase):
         self, model_dir: Path, prediction_path: Path
     ) -> dict[str, Any]:
         """用途：导入单日预测制品并绑定模型；输入：模型目录与预测文件；输出：导入摘要。"""
+        import pandas as pd
+
         self.initialize()
         set_log_context(step="1/3", progress="-/-", target=str(prediction_path))
         LOGGER.info("读取预测制品")
@@ -1750,6 +1754,8 @@ class StateStore(SQLiteStateDatabase):
         connection: sqlite3.Connection, model_id: int, rankings: pd.DataFrame
     ) -> int:
         """用途：按模型、日期和证券写入预测排名；输入：连接、模型主键和预测表；输出：处理条数。"""
+        import pandas as pd
+
         rows = []
         ordered = rankings.sort_values(
             ["datetime", "score", "instrument"], ascending=[True, False, True]
@@ -1808,4 +1814,4 @@ def _broker_order_matches_intent(order: BrokerOrder, intent: sqlite3.Row) -> boo
         and order.order_quantity == int(intent["quantity"])
         and order.order_price == Decimal(str(intent["price"]))
     )
-# AI_GENERATE_END--- ----------------------------------------------------------------------------
+# AI_GENERATE_END---- ----------------------------------------------------------------------------

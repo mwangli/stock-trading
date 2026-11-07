@@ -1,11 +1,13 @@
-# AI_GENERATE_START --
+# AI_GENERATE_START ---
 from __future__ import annotations
 
 import base64
 import json
+import logging
 import re
 import time
 from io import BytesIO
+from urllib.error import URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
@@ -16,6 +18,7 @@ from stock_trading.config import AppConfig
 BAIDU_TOKEN_URL = "https://aip.baidubce.com/oauth/2.0/token"
 BAIDU_OCR_URL = "https://aip.baidubce.com/rest/2.0/ocr/v1/accurate_basic"
 EXPRESSION_PATTERN = re.compile(r"(\d{1,2})([+\-*/])(\d{1,2})")
+LOGGER = logging.getLogger(__name__)
 
 
 class BaiduCaptchaSolver:
@@ -81,17 +84,34 @@ class BaiduCaptchaSolver:
         return self._access_token
 
     def _post_form(self, url: str, values: dict[str, str]) -> dict[str, object]:
-        request = Request(
-            url,
-            data=urlencode(values).encode("utf-8"),
-            method="POST",
-        )
-        request.add_header("Content-Type", "application/x-www-form-urlencoded")
-        with urlopen(request, timeout=self._config.broker_ocr_timeout_seconds) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-        if not isinstance(payload, dict):
-            raise RuntimeError("OCR 响应不是 JSON 对象")
-        return payload
+        endpoint = "token" if url == BAIDU_TOKEN_URL else "ocr"
+        encoded_values = urlencode(values).encode("utf-8")
+        for attempt in range(1, 4):
+            request = Request(url, data=encoded_values, method="POST")
+            request.add_header("Content-Type", "application/x-www-form-urlencoded")
+            try:
+                with urlopen(
+                    request,
+                    timeout=self._config.broker_ocr_timeout_seconds,
+                ) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+            except (URLError, TimeoutError, json.JSONDecodeError) as error:
+                if attempt < 3:
+                    LOGGER.warning(
+                        "百度 OCR 请求失败，等待后重试：接口=%s；尝试=%d/3；原因=%s",
+                        endpoint,
+                        attempt,
+                        error,
+                    )
+                    time.sleep(attempt * 2)
+                    continue
+                raise URLError(
+                    f"百度 OCR {endpoint} 请求失败：{error}"
+                ) from error
+            if not isinstance(payload, dict):
+                raise RuntimeError("OCR 响应不是 JSON 对象")
+            return payload
+        raise RuntimeError("百度 OCR 请求重试意外结束")
 
     def _throttle(self) -> None:
         wait_seconds = (
@@ -147,4 +167,4 @@ class BaiduCaptchaSolver:
         if right == 0 or left % right != 0:
             raise RuntimeError("OCR 返回了非法除法表达式")
         return left // right
-# AI_GENERATE_END --
+# AI_GENERATE_END ---

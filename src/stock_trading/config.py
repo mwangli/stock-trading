@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------------------------------------------------------
+# AI_GENERATE_START- ---------------------------------------------------------
 from __future__ import annotations
 
 import logging
@@ -25,7 +25,8 @@ MAX_ATTEMPTS = 12
 PASSIVE_FRACTION = 0.50
 NORMAL_FRACTION = 0.85
 DEFAULT_BROKER_BASE_URL = "https://weixin.citicsinfo.com/reqxml"
-BACKTEST_CAPITAL_SCENARIOS = (1_000, 2_000, 3_000, 5_000, 10_000)
+BACKTEST_CAPITAL = 2_000
+REPORT_LIMIT = 10
 MODEL_MIN_POSITIVE_MONTH_RATIO = 0.60
 LOGGER = logging.getLogger(__name__)
 ENV_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -94,13 +95,14 @@ class AppConfig:
     trading_max_attempts: int
     trading_passive_fraction: float
     trading_normal_fraction: float
-    backtest_capital_scenarios: tuple[int, ...]
+    backtest_capital: int
     model_evaluation_observations: int
     model_max_drawdown: float
     model_min_total_gross_return: float
     model_min_positive_month_ratio: float
     data_quality_min_ratio: float
     model_feature_batch_days: int = 60
+    report_limit: int = REPORT_LIMIT
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -215,7 +217,9 @@ class AppConfig:
             trading_max_attempts=MAX_ATTEMPTS,
             trading_passive_fraction=PASSIVE_FRACTION,
             trading_normal_fraction=NORMAL_FRACTION,
-            backtest_capital_scenarios=BACKTEST_CAPITAL_SCENARIOS,
+            backtest_capital=max(
+                1, _env_int("BACKTEST_CAPITAL", BACKTEST_CAPITAL)
+            ),
             model_evaluation_observations=max(
                 3,
                 _env_int("MODEL_EVALUATION_OBSERVATIONS", 6),
@@ -321,4 +325,4 @@ def _market_provider(name: str, default: str, allowed: set[str]) -> str:
         choices = "、".join(sorted(allowed))
         raise ValueError(f"环境变量 {name} 只能是 {choices}")
     return value
-# AI_GENERATE_END --------------------------------------------------------
+# AI_GENERATE_END- ---------------------------------------------------------

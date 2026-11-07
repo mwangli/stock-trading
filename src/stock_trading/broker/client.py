@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------------------------------
+# AI_GENERATE_START ---------------------------------
 from __future__ import annotations
 
 import base64
@@ -13,6 +13,7 @@ from collections.abc import Callable
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
+from urllib.error import URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
@@ -139,6 +140,20 @@ class ZXBrokerClient:
                     self._login_blocked_until = 0.0
                     LOGGER.info("券商登录成功：Token已缓存%d分钟", self._config.broker_token_expire_minutes)
                     return token
+                except (URLError, TimeoutError, ConnectionError) as error:
+                    last_error = f"{type(error).__name__}: {error}"
+                    set_log_context(
+                        progress=f"{attempt}/{self._config.broker_captcha_max_retries}",
+                        target="券商登录",
+                    )
+                    LOGGER.warning(
+                        "券商登录依赖服务网络异常，未进入冷却期：原因=%s",
+                        error,
+                    )
+                    raise BrokerSafetyError(
+                        "券商登录依赖服务网络异常，未进入冷却期，请稍后重试；"
+                        f"最后错误={last_error}"
+                    ) from error
                 except Exception as error:
                     last_error = f"{type(error).__name__}: {error}"
                     set_log_context(
@@ -619,4 +634,4 @@ def _parse_five_level_prices(
     if any(price is None or price <= 0 for price in bids + asks):
         raise BrokerProtocolError("券商未返回完整五档行情")
     return bids, asks
-# AI_GENERATE_END --------------------------------
+# AI_GENERATE_END ---------------------------------

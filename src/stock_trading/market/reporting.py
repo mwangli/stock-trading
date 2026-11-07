@@ -1,4 +1,4 @@
-# AI_GENERATE_START -
+# AI_GENERATE_START ---
 from __future__ import annotations
 
 import json
@@ -7,12 +7,9 @@ from pathlib import Path
 from typing import Callable
 from uuid import uuid4
 
-import pandas as pd
-import pyarrow.parquet as pq
-
 SUMMARY_SCHEMA_VERSION = 1
 SUMMARY_DIRECTORY = ".report"
-COLLECTION_TYPES = ("basic", "daily", "factor", "minute5", "minute")
+COLLECTION_TYPES = ("basic", "factor", "daily", "minute5", "minute")
 
 
 def read_market_summary(root: Path, data_type: str) -> dict[str, object] | None:
@@ -61,6 +58,9 @@ def _scan_market_summary(
     data_type: str,
     expected: set[str],
 ) -> dict[str, object]:
+    import pandas as pd
+    import pyarrow.parquet as pq
+
     definitions: dict[
         str,
         tuple[
@@ -192,5 +192,7 @@ def _partition_code(path: Path) -> str | None:
 
 
 def _read_parquet_columns(path: Path, columns: list[str]) -> pd.DataFrame:
+    import pyarrow.parquet as pq
+
     return pq.ParquetFile(path).read(columns=columns).to_pandas()
-# AI_GENERATE_END -
+# AI_GENERATE_END ---

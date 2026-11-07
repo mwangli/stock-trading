@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------------------------
+# AI_GENERATE_START ---------------------------
 from __future__ import annotations
 
 import json
@@ -627,7 +627,7 @@ def backtest_artifact_valid(
 
 
 def read_backtest_summary(directory: Path) -> dict[str, object]:
-    """读取一个资金场景的回测摘要。"""
+    """读取模型回测摘要。"""
     return json.loads((directory / "summary.json").read_text(encoding="utf-8"))
 
-# AI_GENERATE_END --------------------------
+# AI_GENERATE_END ---------------------------
