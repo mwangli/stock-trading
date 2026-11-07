@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START------------------- -->
+<!-- AI_GENERATE_START-------------------- -->
 # 智能股票交易系统
 
 面向个人量化交易场景的只读 Web 控制台，将账户收益、市场行情、交易记录、模型预测、运行状态与 Agent 智能分析集中在一个简洁的工作台中。
@@ -20,7 +20,7 @@
 Agent 基于交易数据库、任务状态、模型结果和项目文档进行只读分析，回答会区分事实、推断与不确定项，并标注数据来源。
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/mwangli/stock-trading/stock-web/documents/images/readme/pc-agent-conversation.png" alt="PC 端 Agent 智能对话" width="80%" />
+  <img src="documents/images/readme/pc-agent-conversation.png" alt="PC 端 Agent 智能对话" width="80%" />
 </p>
 
 ### 文档工作台
@@ -28,7 +28,7 @@ Agent 基于交易数据库、任务状态、模型结果和项目文档进行�
 内置文档工作台集中呈现系统架构、业务设计、代码说明、部署运维和架构决策，并提供目录导航、章节索引与源码关联入口。
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/mwangli/stock-trading/stock-web/documents/images/readme/pc-documentation.png" alt="PC 端文档工作台" width="80%" />
+  <img src="documents/images/readme/pc-documentation.png" alt="PC 端文档工作台" width="80%" />
 </p>
 
 ### 运行状态与日志
@@ -36,7 +36,7 @@ Agent 基于交易数据库、任务状态、模型结果和项目文档进行�
 深色主题适合长时间查看任务状态和实时日志，辅助定位数据、模型与调度链路中的异常。
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/mwangli/stock-trading/stock-web/documents/images/readme/pc-console-dark.png" alt="PC 端深色运行日志" width="80%" />
+  <img src="documents/images/readme/pc-console-dark.png" alt="PC 端深色运行日志" width="80%" />
 </p>
 
 ## 移动端体验
@@ -103,4 +103,4 @@ mvn -pl stock-server spring-boot:run
 ## License
 
 本项目许可证见 [LICENSE.txt](LICENSE.txt)。
-<!-- AI_GENERATE_END------------------- -->
+<!-- AI_GENERATE_END-------------------- -->
