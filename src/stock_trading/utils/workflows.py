@@ -1,4 +1,4 @@
-# AI_GENERATE_START------- ---------------------------------
+# AI_GENERATE_START----------- ---------------------------------
 from __future__ import annotations
 
 import json
@@ -17,7 +17,11 @@ from stock_trading.market.quality import (
     audit_research_quality,
     require_data_quality,
 )
-from stock_trading.market.providers import market_provider
+from stock_trading.market.providers import (
+    market_provider,
+    preferred_market_provider,
+)
+from stock_trading.market.reporting import COLLECTION_TYPES, refresh_market_summary
 from stock_trading.market.sync import (
     live_codes,
     research_codes,
@@ -50,7 +54,6 @@ from stock_trading.utils.time_utils import shanghai_now, shanghai_today
 
 LOGGER = logging.getLogger(__name__)
 MINUTE1_MIN_TRAINING_DAYS = 252
-COLLECTION_TYPES = ("basic", "daily", "factor", "minute5", "minute")
 
 
 def collect_workflow(
@@ -91,6 +94,8 @@ def collect_workflow(
                 end_date,
                 requested_codes,
             )
+            LOGGER.info("正在生成采集汇报摘要：类型=%s", collection_type)
+            refresh_market_summary(config.data_dir, collection_type)
         except Exception as error:
             state.finish_task(business_key, False, error)
             errors[collection_type] = str(error)
@@ -149,7 +154,7 @@ def _collect_basic(
     config: AppConfig, store: ParquetMarketStore
 ) -> dict[str, object]:
     snapshot_date = shanghai_today()
-    provider = market_provider(config, "tushare")
+    provider = preferred_market_provider(config)
     if store.stock_basics_valid(snapshot_date):
         result: dict[str, object] = {
             "skipped": True,
@@ -159,7 +164,7 @@ def _collect_basic(
         result = sync_stock_basics(store, provider, snapshot_date)
     quality = _basic_quality(store, snapshot_date)
     if not quality["valid"]:
-        raise ValueError("TuShare 股票基础信息快照检查失败")
+        raise ValueError("股票基础信息快照检查失败")
     return {
         "provider": provider.name,
         "scope": "full-market",
@@ -176,7 +181,7 @@ def _collect_daily(
     start_date: date,
     end_date: date,
 ) -> dict[str, object]:
-    provider = market_provider(config, "tushare")
+    provider = preferred_market_provider(config)
     dates = trading_dates_between(store, provider, start_date, end_date)
     if not dates:
         raise ValueError("指定日期范围内没有交易日")
@@ -205,7 +210,7 @@ def _collect_factor(
     start_date: date,
     end_date: date,
 ) -> dict[str, object]:
-    provider = market_provider(config, "tushare")
+    provider = preferred_market_provider(config)
     dates = trading_dates_between(store, provider, start_date, end_date)
     if not dates:
         raise ValueError("指定日期范围内没有交易日")
@@ -451,13 +456,47 @@ def _requires_complete_end_window(end_date: date) -> bool:
 def cleanup_workflow(config: AppConfig, reference_date: date) -> dict[str, object]:
     """按统一基准日期清理可淘汰状态，不删除长期业务事实。"""
     LOGGER.info("开始清理持久化数据：基准日期=%s", reference_date)
-    market = ParquetMarketStore(config.data_dir).cleanup_minutes(reference_date)
-    state = StateStore(config.state_db_path).cleanup(reference_date)
-    return {
-        "referenceDate": reference_date.isoformat(),
-        "market": market,
-        "state": state,
-    }
+    store = StateStore(config.state_db_path)
+    business_key = store.start_task("CLEAN", reference_date)
+    before_bytes = _cleanup_storage_bytes(config)
+    try:
+        market = ParquetMarketStore(config.data_dir).cleanup_minutes(reference_date)
+        state = store.cleanup(reference_date)
+        after_bytes = _cleanup_storage_bytes(config)
+        result = {
+            "referenceDate": reference_date.isoformat(),
+            "market": market,
+            "state": state,
+            "storage": {
+                "beforeBytes": before_bytes,
+                "afterBytes": after_bytes,
+                "releasedBytes": max(0, before_bytes - after_bytes),
+            },
+        }
+        store.finish_task(business_key, True, result=result)
+        return result
+    except BaseException as error:
+        store.finish_task(business_key, False, error)
+        raise
+
+
+def _cleanup_storage_bytes(config: AppConfig) -> int:
+    paths = (
+        config.data_dir / "minute5",
+        config.data_dir / "minute5_summary",
+    )
+    total = sum(
+        path.stat().st_size
+        for root in paths
+        if root.exists()
+        for path in root.rglob("*")
+        if path.is_file()
+    )
+    for suffix in ("", "-wal", "-shm", "-journal"):
+        path = Path(f"{config.state_db_path}{suffix}")
+        if path.is_file():
+            total += path.stat().st_size
+    return total
 
 
 def sync_account_workflow(
@@ -539,7 +578,7 @@ def rank_workflow(
     model_dir = model_directory(config.artifact_dir, spec)
     if not model_artifacts_valid(model_dir, spec):
         raise ValueError(
-            f"模型制品不存在或不完整：{spec.model_id}；请先执行 stock-train"
+            f"模型制品不存在或不完整：{spec.model_id}；请先执行 stock-model"
         )
     prediction_path = prediction_artifact_path(model_dir, prediction_date)
     existing = _existing_prediction_summary(
@@ -733,4 +772,4 @@ def _build_broker(config: AppConfig) -> ZXBrokerClient:
     return ZXBrokerClient(config, captcha_solver=BaiduCaptchaSolver(config).solve)
 
 
-# AI_GENERATE_END------- ---------------------------------
+# AI_GENERATE_END----------- ---------------------------------

@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------------------------------------
+# AI_GENERATE_START ---------------------------------------
 from __future__ import annotations
 
 import logging
@@ -134,8 +134,8 @@ def should_log_progress(current: int, total: int, steps: int = 20) -> bool:
     return current == 1 or current == total or current % interval == 0
 
 
-def configure_logging() -> None:
-    """配置统一结构化控制台日志和 UTF-8 文件日志。"""
+def configure_logging(*, console: bool = True) -> None:
+    """配置 UTF-8 文件日志，并按需启用结构化控制台日志。"""
     logger = logging.getLogger("stock_trading")
     if logger.handlers:
         return
@@ -143,7 +143,7 @@ def configure_logging() -> None:
     level = getattr(logging, level_name, logging.INFO)
     interactive = bool(getattr(sys.stderr, "isatty", lambda: False)())
     use_color = interactive and "NO_COLOR" not in os.environ
-    if os.getenv("STOCK_TRADING_CONSOLE_LOG", "1") != "0":
+    if console and os.getenv("STOCK_TRADING_CONSOLE_LOG", "1") != "0":
         handler = logging.StreamHandler(sys.stderr)
         handler.addFilter(_ContextFilter())
         handler.setFormatter(_ColorFormatter(use_color=use_color))
@@ -166,4 +166,4 @@ def configure_logging() -> None:
         logger.addHandler(file_handler)
     logger.setLevel(level)
     logger.propagate = False
-# AI_GENERATE_END --------------------------------------
+# AI_GENERATE_END ---------------------------------------

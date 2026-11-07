@@ -1,19 +1,22 @@
-# AI_GENERATE_START -----------
+# AI_GENERATE_START --------------------
 from __future__ import annotations
 
 import logging
 import os
 import re
+import sqlite3
 import subprocess
 import sys
 import tarfile
 import tempfile
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from pathlib import Path
-from typing import Iterator
+from time import sleep
+from typing import Callable, Iterator
 from uuid import uuid4
 
 from stock_trading.config import AppConfig
+from stock_trading.utils.logging_utils import should_log_progress
 
 LOGGER = logging.getLogger(__name__)
 REMOTE_DATA_ROOT = "stock-trading/data"
@@ -24,31 +27,106 @@ DIRECTORY_SCOPES = {
     "qlib": ("qlib",),
     "model": ("artifacts",),
 }
-MARKET_ARCHIVE_DIRECTORIES = ("basic", "calendar", "daily", "factor")
-MODEL_REQUIRED_FILES = (
-    "model.pkl",
-    "metrics.json",
-    "top5.parquet",
-    "test_predictions.parquet",
-    "evaluation.json",
-)
+
+
+def compare_sync_data(
+    config: AppConfig,
+    progress: Callable[[str], None] | None = None,
+) -> list[dict[str, object]]:
+    """只读比较本地与服务器文件清单，不执行传输、删除或覆盖。"""
+    server, password = _server_credentials()
+    local_root = config.data_dir.parent
+    rows: list[dict[str, object]] = []
+    for scope in ("market", "qlib", "model", "state"):
+        if progress is not None:
+            progress(f"正在对比 {scope} 数据的本地与服务器文件清单...")
+        local = _local_manifest(local_root, scope)
+        remote = _remote_manifest(server, password, scope)
+        common = local.keys() & remote.keys()
+        same = sum(local[path] == remote[path] for path in common)
+        conflicts = sum(local[path] != remote[path] for path in common)
+        local_only = local.keys() - remote.keys()
+        remote_only = remote.keys() - local.keys()
+        rows.append(
+            {
+                "scope": scope,
+                "localFiles": len(local),
+                "localBytes": sum(local.values()),
+                "remoteFiles": len(remote),
+                "remoteBytes": sum(remote.values()),
+                "sameFiles": same,
+                "pullableFiles": len(remote_only),
+                "pushableFiles": len(local_only),
+                "conflictFiles": conflicts,
+            }
+        )
+        if progress is not None:
+            progress(
+                f"{scope} 数据对比完成：本地 {len(local)} 个文件，"
+                f"服务器 {len(remote)} 个文件。"
+            )
+    return rows
+
+
+def _local_manifest(root: Path, scope: str) -> dict[str, int]:
+    if scope == "state":
+        path = root / "state" / "trading.db"
+        return {"trading.db": path.stat().st_size} if path.is_file() else {}
+    result: dict[str, int] = {}
+    for directory in DIRECTORY_SCOPES[scope]:
+        base = root / directory
+        if not base.is_dir():
+            continue
+        result.update(
+            {
+                f"{directory}/{path.relative_to(base).as_posix()}": path.stat().st_size
+                for path in base.rglob("*")
+                if path.is_file()
+            }
+        )
+    return result
+
+
+def _remote_manifest(
+    server: str, password: str, scope: str
+) -> dict[str, int]:
+    if scope == "state":
+        directories = ("state",)
+        file_filter = "-name 'trading.db'"
+    else:
+        directories = DIRECTORY_SCOPES[scope]
+        file_filter = ""
+    result: dict[str, int] = {}
+    for directory in directories:
+        remote = f"{REMOTE_DATA_ROOT}/{directory}"
+        completed = _run_command(
+            "ssh",
+            *_ssh_options(),
+            server,
+            (
+                f"if [ -d '{remote}' ]; then "
+                f"find '{remote}' -type f {file_filter} -printf '%P\\t%s\\n'; "
+                "fi"
+            ),
+            password=password,
+        )
+        for line in completed.stdout.splitlines():
+            relative, size = line.rsplit("\t", maxsplit=1)
+            key = relative if scope == "state" else f"{directory}/{relative}"
+            result[key] = int(size)
+    return result
 
 
 def sync_data(
     config: AppConfig,
     pull_scopes: tuple[str, ...],
     push_scopes: tuple[str, ...],
-    dry_run: bool = False,
+    force: bool = False,
 ) -> dict[str, object]:
     """使用 SSH/SCP 在本地项目数据目录和生产数据目录之间同步。"""
     server, password = _server_credentials()
 
     local_data_root = config.data_dir.parent
-    plan = _build_plan(local_data_root, pull_scopes, push_scopes)
-    if dry_run:
-        LOGGER.info("数据同步计划生成完成：操作数=%d", len(plan))
-        return {"status": "DRY_RUN", "operations": plan}
-
     completed: list[dict[str, str]] = []
     for scope in pull_scopes:
         if scope == "state":
@@ -72,6 +150,14 @@ def sync_data(
             )
 
     for scope in push_scopes:
+        if scope == "state":
+            if not force:
+                raise ValueError("推送 state 必须显式指定 --force")
+            LOGGER.warning(
+                "警告：正在强制推送 state，服务器 SQLite 状态库将被本地一致快照覆盖"
+            )
+            completed.append(_push_state(config, server, password))
+            continue
         for directory in DIRECTORY_SCOPES[scope]:
             source = local_data_root / directory
             if not source.is_dir():
@@ -120,6 +206,135 @@ def _pull_state(config: AppConfig, server: str, password: str) -> dict[str, str]
     }
 
 
+def _push_state(
+    config: AppConfig,
+    server: str,
+    password: str,
+) -> dict[str, str]:
+    source = config.state_db_path
+    if not source.is_file():
+        raise ValueError(f"本地状态库不存在：{source}")
+    transfer_id = uuid4().hex
+    remote_temporary = f"/tmp/stock-sync-state-{transfer_id}.db"
+    target = f"{REMOTE_DATA_ROOT}/state/trading.db"
+    backup = f"{REMOTE_DATA_ROOT}/state/.trading.db.previous-{transfer_id}"
+    descriptor, snapshot_name = tempfile.mkstemp(
+        prefix="stock-sync-state-",
+        suffix=".db",
+    )
+    os.close(descriptor)
+    snapshot = Path(snapshot_name)
+    try:
+        _create_sqlite_snapshot(source, snapshot)
+        snapshot_size = snapshot.stat().st_size
+        LOGGER.info(
+            "state 一致快照生成完成：数据库=trading.db；大小=%d",
+            snapshot_size,
+        )
+        _run_command(
+            "scp",
+            *_ssh_options(),
+            str(snapshot),
+            f"{server}:{remote_temporary}",
+            password=password,
+            show_progress=True,
+        )
+        LOGGER.info("state 快照上传完成：服务器正在校验并切换数据库")
+        try:
+            remote = _run_command(
+                "ssh",
+                *_ssh_options(),
+                server,
+                (
+                    "set -e; "
+                    f"mkdir -p '{REMOTE_DATA_ROOT}/state'; "
+                    f"test -s '{remote_temporary}'; "
+                    f"test \"$(stat -c %s '{remote_temporary}')\" -eq '{snapshot_size}'; "
+                    f"rm -f '{backup}'; "
+                    f"if [ -f '{target}' ]; then mv '{target}' '{backup}'; fi; "
+                    f"if mv '{remote_temporary}' '{target}'; then "
+                    f"chmod 600 '{target}'; rm -f '{backup}'; "
+                    "else status=$?; "
+                    f"if [ -f '{backup}' ]; then mv '{backup}' '{target}'; fi; "
+                    "exit $status; fi; "
+                    f"stat -c %s '{target}'"
+                ),
+                password=password,
+            )
+        except Exception:
+            _run_command(
+                "ssh",
+                *_ssh_options(),
+                server,
+                f"rm -f '{remote_temporary}'",
+                check=False,
+                password=password,
+            )
+            raise
+    finally:
+        _remove_temporary_file(snapshot)
+    remote_size = int(remote.stdout.strip())
+    if remote_size != snapshot_size:
+        raise RuntimeError(
+            "远端 state 数据库大小不一致："
+            f"本地快照={snapshot_size}；远端={remote_size}"
+        )
+    LOGGER.info(
+        "服务器 state 数据库校验与切换完成：大小=%d",
+        remote_size,
+    )
+    return {
+        "direction": "push",
+        "scope": "state",
+        "database": "trading.db",
+        "bytes": str(remote_size),
+    }
+
+
+def _remove_temporary_file(path: Path) -> None:
+    for attempt in range(3):
+        try:
+            path.unlink(missing_ok=True)
+            return
+        except OSError:
+            if attempt == 2:
+                LOGGER.warning("本地临时快照清理失败：%s", path)
+                return
+            sleep(0.2)
+
+
+def _create_sqlite_snapshot(source: Path, target: Path) -> None:
+    LOGGER.info("state 一致快照开始：数据库=trading.db")
+    last_progress = -1
+
+    def report_progress(status: int, remaining: int, total: int) -> None:
+        nonlocal last_progress
+        if total <= 0:
+            return
+        progress = int((total - remaining) * 100 / total)
+        bucket = progress // 10
+        if bucket > last_progress:
+            last_progress = bucket
+            LOGGER.info("state 一致快照进度：%d%%", min(progress, 100))
+
+    source_uri = source.resolve().as_uri() + "?mode=ro"
+    with closing(
+        sqlite3.connect(source_uri, uri=True, timeout=30)
+    ) as source_db:
+        with closing(sqlite3.connect(target)) as target_db:
+            source_db.backup(
+                target_db,
+                pages=2048,
+                progress=report_progress,
+                sleep=0.05,
+            )
+            check = target_db.execute("PRAGMA quick_check").fetchone()
+    if check is None or check[0] != "ok":
+        raise RuntimeError(
+            f"本地 state 一致快照校验失败：{check[0] if check else '无结果'}"
+        )
+
+
 def _push_directory_archive(
     local_data_root: Path,
     directory: str,
@@ -129,6 +344,7 @@ def _push_directory_archive(
     transfer_id = uuid4().hex
     remote_archive = f"/tmp/stock-sync-{transfer_id}.tar.gz"
     staging = f"{REMOTE_DATA_ROOT}/.{directory}.sync-{transfer_id}"
+    backup = f"{REMOTE_DATA_ROOT}/.{directory}.previous-{transfer_id}"
     target = f"{REMOTE_DATA_ROOT}/{directory}"
     with tempfile.TemporaryDirectory(prefix="stock-sync-archive-") as temporary:
         archive = Path(temporary) / f"{directory}.tar.gz"
@@ -149,25 +365,42 @@ def _push_directory_archive(
             password=password,
             show_progress=True,
         )
-        remote = _run_command(
-            "ssh",
-            *_ssh_options(),
-            server,
-            (
-                "set -e; "
-                f"mkdir -p '{REMOTE_DATA_ROOT}'; "
-                f"rm -rf '{staging}'; mkdir -p '{staging}'; "
-                f"tar -xzf '{remote_archive}' -C '{staging}'; "
-                f"test -d '{staging}/{directory}'; "
-                f"count=$(find '{staging}/{directory}' -type f | wc -l); "
-                f"test \"$count\" -eq '{file_count}'; "
-                f"rm -rf '{target}'; "
-                f"mv '{staging}/{directory}' '{target}'; "
-                f"rm -rf '{staging}' '{remote_archive}'; "
-                "printf '%s' \"$count\""
-            ),
-            password=password,
-        )
+        LOGGER.info("同步归档上传完成：目录=%s；服务器正在解压并校验", directory)
+        try:
+            remote = _run_command(
+                "ssh",
+                *_ssh_options(),
+                server,
+                (
+                    "set -e; "
+                    f"mkdir -p '{REMOTE_DATA_ROOT}'; "
+                    f"rm -rf '{staging}'; mkdir -p '{staging}'; "
+                    f"tar -xzf '{remote_archive}' -C '{staging}'; "
+                    f"test -d '{staging}/{directory}'; "
+                    f"count=$(find '{staging}/{directory}' -type f | wc -l); "
+                    f"test \"$count\" -eq '{file_count}'; "
+                    f"rm -rf '{backup}'; "
+                    f"if [ -d '{target}' ]; then mv '{target}' '{backup}'; fi; "
+                    f"if mv '{staging}/{directory}' '{target}'; then "
+                    f"rm -rf '{backup}' '{staging}' '{remote_archive}'; "
+                    "else status=$?; "
+                    f"if [ -d '{backup}' ]; then mv '{backup}' '{target}'; fi; "
+                    "exit $status; fi; "
+                    "printf '%s' \"$count\""
+                ),
+                password=password,
+            )
+        except Exception:
+            _run_command(
+                "ssh",
+                *_ssh_options(),
+                server,
+                f"rm -rf '{staging}' '{remote_archive}'",
+                check=False,
+                password=password,
+            )
+            raise
+        LOGGER.info("服务器目录校验与切换完成：目录=%s", directory)
     remote_count = int(remote.stdout.strip())
     if remote_count != file_count:
         raise RuntimeError(
@@ -181,50 +414,40 @@ def _create_push_archive(source: Path, archive: Path) -> int:
     files = _push_files(source)
     if not files:
         raise ValueError(f"本地同步目录没有文件：{source}")
+    total = len(files)
+    LOGGER.info("同步归档开始：目录=%s；文件数=%d", source.name, total)
     with tarfile.open(archive, "w:gz", compresslevel=1) as stream:
-        for path in files:
+        for index, path in enumerate(files, start=1):
             stream.add(path, arcname=(Path(source.name) / path.relative_to(source)))
-    return len(files)
+            if should_log_progress(index, total):
+                LOGGER.info(
+                    "同步归档进度：目录=%s；文件=%d/%d；进度=%.1f%%",
+                    source.name,
+                    index,
+                    total,
+                    index / total * 100,
+                )
+    return total
 
 
 def _push_files(source: Path) -> list[Path]:
-    if source.name == "artifacts":
-        versions = source / "alpha158-lightgbm" / "versions"
-        candidates = sorted(
-            (
-                path
-                for path in versions.iterdir()
-                if path.is_dir() and not path.name.startswith(".")
-            ),
-            reverse=True,
-        )
-        current = next(
-            (
-                path
-                for path in candidates
-                if all((path / name).is_file() for name in MODEL_REQUIRED_FILES)
-            ),
-            None,
-        )
-        if current is None:
-            raise ValueError(f"没有可同步的完整模型版本：{versions}")
-        return sorted(path for path in current.rglob("*") if path.is_file())
-    if source.name != "market":
-        return sorted(path for path in source.rglob("*") if path.is_file())
     files: list[Path] = []
-    for name in MARKET_ARCHIVE_DIRECTORIES:
-        root = source / name
-        if not root.is_dir():
-            raise ValueError(f"本地 market 数据目录缺失：{root}")
-        if name == "daily":
-            files.extend(
-                path
-                for partition in root.glob("code=*")
-                for path in partition.rglob("*")
-                if path.is_file()
-            )
+    LOGGER.info("同步文件扫描开始：目录=%s", source.name)
+    for path in source.rglob("*"):
+        if not path.is_file():
             continue
-        files.extend(path for path in root.rglob("*") if path.is_file())
+        files.append(path)
+        if len(files) % 20_000 == 0:
+            LOGGER.info(
+                "同步文件扫描进度：目录=%s；已发现文件=%d",
+                source.name,
+                len(files),
+            )
+    LOGGER.info(
+        "同步文件扫描完成：目录=%s；文件数=%d",
+        source.name,
+        len(files),
+    )
     return sorted(files)
 
 
@@ -259,34 +482,6 @@ def _ensure_file_not_in_use(path: Path) -> None:
             )
         raise ctypes.WinError(error_code)
     close_handle(handle)
-
-
-def _build_plan(
-    local_data_root: Path,
-    pull_scopes: tuple[str, ...],
-    push_scopes: tuple[str, ...],
-) -> list[dict[str, str]]:
-    operations: list[dict[str, str]] = []
-    for direction, scopes in (("pull", pull_scopes), ("push", push_scopes)):
-        for scope in scopes:
-            if scope == "state":
-                operations.append(
-                    {
-                        "direction": direction,
-                        "scope": scope,
-                        "path": str(local_data_root / "state" / "trading.db"),
-                    }
-                )
-                continue
-            for directory in DIRECTORY_SCOPES[scope]:
-                operations.append(
-                    {
-                        "direction": direction,
-                        "scope": scope,
-                        "path": str(local_data_root / directory),
-                    }
-                )
-    return operations
 
 
 def _server_credentials() -> tuple[str, str]:
@@ -369,4 +564,4 @@ def _run_command(
         raise RuntimeError(detail) from error
 
 
-# AI_GENERATE_END -----------
+# AI_GENERATE_END --------------------

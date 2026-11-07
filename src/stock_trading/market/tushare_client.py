@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----------
+# AI_GENERATE_START -------------
 from __future__ import annotations
 
 import json
@@ -18,11 +18,14 @@ from stock_trading.market.models import (
 
 API_URL = "https://api.tushare.pro"
 LOGGER = logging.getLogger(__name__)
-RATE_LIMIT_WAIT_SECONDS = 61
 
 
 class TushareError(RuntimeError):
     """TuShare HTTP 或业务接口调用失败。"""
+
+
+class TushareRateLimitError(TushareError):
+    """TuShare 接口调用频率达到当前账号上限。"""
 
 
 class TushareClient:
@@ -137,14 +140,10 @@ class TushareClient:
                     for values in data.get("items") or []
                 ]
             message = str(payload.get("msg") or "")
-            if payload.get("code") == 40203 and "分钟" in message and attempt < 3:
-                LOGGER.warning(
-                    "TuShare 接口频率受限，等待后重试：接口=%s；尝试=%d/3",
-                    api_name,
-                    attempt,
+            if payload.get("code") == 40203:
+                raise TushareRateLimitError(
+                    f"TuShare {api_name} 频率受限：{message}"
                 )
-                time.sleep(RATE_LIMIT_WAIT_SECONDS)
-                continue
             raise TushareError(
                 f"TuShare {api_name} 返回错误：{payload.get('code')} "
                 f"{message}"
@@ -155,4 +154,4 @@ class TushareClient:
 def _normalized_code(value: object) -> str:
     symbol, exchange = str(value or "").split(".", maxsplit=1)
     return f"{exchange.lower()}.{symbol}"
-# AI_GENERATE_END -----------
+# AI_GENERATE_END -------------

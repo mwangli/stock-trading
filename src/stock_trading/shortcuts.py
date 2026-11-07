@@ -1,7 +1,8 @@
-# AI_GENERATE_START--- --------------------------------
+# AI_GENERATE_START-------- --------------------------------
 from __future__ import annotations
 
 from collections.abc import Callable
+import sys
 from typing import Annotated
 
 import typer
@@ -15,7 +16,9 @@ from stock_trading.cli import (
     review_command,
     sync_command,
     trading_command,
-    train_command,
+    trading_report_command,
+    model_command,
+    ReportOption,
 )
 from stock_trading.utils.help_renderer import build_help_command, show_command_groups
 
@@ -27,7 +30,7 @@ COMMAND_GROUPS = (
         (
             ("stock-collect", "按类型采集基础、日线、复权和分钟行情。"),
             ("stock-prepare", "从现有原始数据增量、幂等准备 Qlib。"),
-            ("stock-train", "使用现有 Qlib 数据训练、评估并回测模型。"),
+            ("stock-model", "使用现有 Qlib 数据训练、评估并回测模型。"),
         ),
     ),
     (
@@ -63,6 +66,7 @@ def _run(
     examples: tuple[str, ...],
     boundaries: tuple[str, ...],
 ) -> None:
+    _apply_report_default()
     command_app = typer.Typer(
         add_completion=False,
         rich_markup_mode="rich",
@@ -74,6 +78,20 @@ def _run(
         context_settings=HELP_CONTEXT,
     )(command)
     command_app(prog_name=program)
+
+
+def _apply_report_default() -> None:
+    """允许只写 --report，等价于 --report 10。"""
+    arguments = sys.argv[1:]
+    if "--report" not in arguments:
+        return
+    index = arguments.index("--report")
+    if (
+        index == len(arguments) - 1
+        or not arguments[index + 1].lstrip("-").isdigit()
+    ):
+        arguments.insert(index + 1, "10")
+        sys.argv[1:] = arguments
 
 
 def _show_commands() -> None:
@@ -91,10 +109,10 @@ def show_help() -> None:
     )
 
 
-def train() -> None:
+def model() -> None:
     _run(
-        "stock-train",
-        train_command,
+        "stock-model",
+        model_command,
         "使用现有 Qlib 数据训练、评估并回测模型。",
         (
             "已有同一模型 ID 的完整制品时直接复用并跳过训练。",
@@ -102,8 +120,9 @@ def train() -> None:
             "只有显式指定 --force 时才重新训练。",
         ),
         (
-            "stock-train --model v2.1",
-            "stock-train --model LightGBM --force --split 6:3:1",
+            "stock-model --model v2.1",
+            "stock-model --model LightGBM --force --split 6:3:1",
+            "stock-model --report",
         ),
         (
             "默认训练、验证和测试比例为 70:15:15。",
@@ -118,16 +137,19 @@ def collect() -> None:
         collect_command,
         "按类型采集基础、日线、复权和分钟行情。",
         (
+            "不指定 --type 时默认采集 daily 日线数据。",
             "--type 支持 basic、daily、factor、minute5、minute 逗号多选。",
             "--codes 默认全市场；--date 默认当天，也支持日期范围。",
             "basic、daily、factor 使用 TuShare，minute5 使用 BaoStock，minute 使用券商接口。",
         ),
         (
+            "stock-collect",
             "stock-collect --type basic",
             "stock-collect --type daily,factor --date 2026-11-03",
             "stock-collect --type minute5 --date 2026-11-03",
             "stock-collect --type minute --date 2026-11-03 --codes 600000,000001",
             "stock-collect --type daily,factor --date 2023-11-02:2026-11-02",
+            "stock-collect --report",
         ),
         (
             "命令不准备 Qlib、不执行模型训练或排名。",
@@ -151,6 +173,7 @@ def prepare() -> None:
             "stock-prepare --model v1.2",
             "stock-prepare --date 2023-11-02:2026-11-02",
             "stock-prepare --force",
+            "stock-prepare --report --model v2.1",
         ),
         (
             "日线、复权因子或5分钟聚合不完整时终止。",
@@ -192,7 +215,15 @@ def _trading_command(
         str | None,
         typer.Option("--model", help="模型完整 ID、版本前缀或算法前缀。"),
     ] = None,
+    report: ReportOption = None,
 ) -> None:
+    if report is not None:
+        if buy and sell:
+            raise typer.BadParameter("--report 最多指定一个 --buy 或 --sell")
+        if model_value is not None:
+            raise typer.BadParameter("--report 不支持同时指定 --model")
+        trading_report_command("BUY" if buy else "SELL" if sell else None, report)
+        return
     if buy == sell:
         raise typer.BadParameter("必须且只能指定 --sell 或 --buy")
     trading_command("B" if buy else "S", model_value)
@@ -211,6 +242,8 @@ def trading() -> None:
         (
             "stock-trading --sell --model v1.2",
             "stock-trading --buy --model v2.1",
+            "stock-trading --report 20",
+            "stock-trading --report --buy",
         ),
         (
             "必须且只能指定一个方向，两个窗口由调度分别调用。",
@@ -235,6 +268,7 @@ def order() -> None:
             "stock-order",
             "stock-order --date 2026-11-02",
             "stock-order --date 2026-10-01:2026-11-02",
+            "stock-order --report 20",
         ),
         (
             "--account 只保存最新一条账户资金快照，不保留历史序列。",
@@ -254,7 +288,11 @@ def review() -> None:
             "按卖出月份汇总已经完成的真实交易闭环。",
             "根据月度毛收益、盈利月份比例和毛回撤形成模型判断。",
         ),
-        ("stock-review --model v2.1", "stock-review --model v1 --date 2026-11-02"),
+        (
+            "stock-review --model v2.1",
+            "stock-review --model v1 --date 2026-11-02",
+            "stock-review --report",
+        ),
         (
             "应在同一业务日 stock-order 成功后执行。",
             "账户权益、浮动盈亏及入金出金不属于策略收益。",
@@ -272,7 +310,7 @@ def clean() -> None:
             "清理分钟原始数据、历史任务、快照、预测、绩效和已终结委托等。",
             "完成后执行 SQLite WAL 截断、VACUUM 和优化。",
         ),
-        ("stock-clean", "stock-clean --date 2026-11-02"),
+        ("stock-clean", "stock-clean --date 2026-11-02", "stock-clean --report 5"),
         (
             "活动委托、当前持仓和模型版本等关键状态不会按普通历史记录清理。",
             "建议由每周维护任务调用，而不是每次初始化执行。",
@@ -288,18 +326,21 @@ def sync() -> None:
         (
             "market、qlib 和 model 支持拉取或推送。",
             "market 对应 stock-collect 数据，qlib 对应 stock-prepare 数据。",
-            "state 只允许从服务器拉取，并直接以服务器 SQLite 覆盖本地状态库。",
+            "state 默认只允许拉取；显式指定 --force 时可用本地一致快照覆盖服务器状态库。",
             "服务器数据目录固定为 $HOME/stock-trading/data，本地为项目根目录 data。",
         ),
         (
             "stock-sync --pull all",
             "stock-sync --push market,qlib,model",
             "stock-sync --pull state",
+            "stock-sync --push state --force",
+            "stock-sync --report",
         ),
         (
             "同一数据类型不能在一次命令中同时拉取和推送。",
+            "state 推送会先输出覆盖警告，再以 SQLite 一致快照原子替换服务器数据库。",
             "环境文件、券商 Token 和调度锁不会同步。",
             "服务器连接只读取 SERVER_IP、SERVER_USER 和 SERVER_PASS。",
         ),
     )
-# AI_GENERATE_END--- --------------------------------
+# AI_GENERATE_END-------- --------------------------------

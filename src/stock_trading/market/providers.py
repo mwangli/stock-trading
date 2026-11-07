@@ -1,4 +1,4 @@
-# AI_GENERATE_START------ --------
+# AI_GENERATE_START--------- --------
 from __future__ import annotations
 
 import logging
@@ -18,7 +18,10 @@ from stock_trading.market.baostock_client import BaoStockClient, BaoStockError
 from stock_trading.market.models import CumulativeAdjustmentFactor, DailyBar, MinuteBar
 from stock_trading.market.provider import MarketDataProvider
 from stock_trading.market.storage import ParquetMarketStore
-from stock_trading.market.tushare_client import TushareClient
+from stock_trading.market.tushare_client import (
+    TushareClient,
+    TushareRateLimitError,
+)
 from stock_trading.utils.instruments import to_broker_code
 from stock_trading.utils.logging_utils import log_context, set_log_context
 from stock_trading.utils.time_utils import shanghai_today
@@ -35,6 +38,13 @@ def market_provider(config: AppConfig, name: str) -> MarketDataProvider:
     if name == "zxbroker":
         return ZXBrokerMarketProvider(config)
     raise ValueError(f"不支持的行情数据源：{name}")
+
+
+def preferred_market_provider(config: AppConfig) -> MarketDataProvider:
+    """优先使用已配置 Token 的 TuShare，否则使用 BaoStock。"""
+    token = config.tushare_token
+    name = "tushare" if token and token.strip() else "baostock"
+    return market_provider(config, name)
 
 
 class TushareMarketProvider:
@@ -68,6 +78,7 @@ class TushareMarketProvider:
         }
         rows = 0
         daily_basic_rows = 0
+        skipped_daily_basic_dates: list[str] = []
         completed: set[str] = set()
         buffered: dict[str, list[DailyBar]] = defaultdict(list)
         for index, trade_date in enumerate(dates, start=1):
@@ -82,13 +93,26 @@ class TushareMarketProvider:
                 )
                 daily_basics = []
                 if cached_daily_basic_rows == 0:
-                    daily_basics = [
-                        value
-                        for value in self._client.fetch_daily_basics(trade_date)
-                        if value.code in daily_codes
-                    ]
-                    if not daily_basics:
-                        raise ValueError(f"TuShare 每日基础指标为空：{trade_date}")
+                    try:
+                        daily_basics = [
+                            value
+                            for value in self._client.fetch_daily_basics(
+                                trade_date
+                            )
+                            if value.code in daily_codes
+                        ]
+                    except TushareRateLimitError as error:
+                        skipped_daily_basic_dates.append(trade_date.isoformat())
+                        LOGGER.warning(
+                            "TuShare 每日基础指标频率受限，已跳过：日期=%s；原因=%s",
+                            trade_date,
+                            error,
+                        )
+                    else:
+                        if not daily_basics:
+                            raise ValueError(
+                                f"TuShare 每日基础指标为空：{trade_date}"
+                            )
                 store.write_daily_snapshot(trade_date, selected_values)
                 if daily_basics:
                     store.write_daily_basics(trade_date, daily_basics)
@@ -106,6 +130,8 @@ class TushareMarketProvider:
             "tradeDates": len(dates),
             "rows": rows,
             "dailyBasicRows": daily_basic_rows,
+            "skippedDailyBasicDates": len(skipped_daily_basic_dates),
+            "dailyBasicSkipSamples": skipped_daily_basic_dates[:20],
             "codes": len(completed),
         }
 
@@ -519,4 +545,4 @@ def _to_minute_bars(
         )
         for point in regular
     ]
-# AI_GENERATE_END------ --------
+# AI_GENERATE_END--------- --------

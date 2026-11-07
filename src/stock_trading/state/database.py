@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---
+# AI_GENERATE_START ----
 from __future__ import annotations
 
 import sqlite3
@@ -82,4 +82,19 @@ class SQLiteStateDatabase:
             raise
         finally:
             connection.close()
-# AI_GENERATE_END ---
+
+    @contextmanager
+    def _read_connect(self) -> Iterator[sqlite3.Connection]:
+        """以 SQLite 只读模式打开已有状态库，不创建文件或执行迁移。"""
+        if not self._path.is_file():
+            raise FileNotFoundError(self._path)
+        uri = f"{self._path.resolve().as_uri()}?mode=ro"
+        connection = sqlite3.connect(uri, uri=True, timeout=30)
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA query_only = ON")
+        connection.execute("PRAGMA busy_timeout = 30000")
+        try:
+            yield connection
+        finally:
+            connection.close()
+# AI_GENERATE_END ----

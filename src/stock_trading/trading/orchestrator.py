@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------------------------
+# AI_GENERATE_START -------------------------
 from __future__ import annotations
 
 import logging
@@ -15,6 +15,7 @@ from stock_trading.utils.instruments import normalize_instrument, to_broker_code
 from stock_trading.state.store import StateStore
 from stock_trading.trading.permissions import permission_scope
 from stock_trading.trading.strategy import affordable_quantity
+from stock_trading.utils.time_utils import count_holding_trade_days
 
 LOGGER = logging.getLogger(__name__)
 
@@ -118,12 +119,11 @@ class LiveTradingOrchestrator:
         return buy_dates
 
     def _holding_trade_days(self, buy_date: date, business_date: date) -> int:
-        calendar_path = self._qlib_dir / "calendars" / "day.txt"
-        trading_dates = (
-            date.fromisoformat(value)
-            for value in calendar_path.read_text(encoding="utf-8").splitlines()
+        return count_holding_trade_days(
+            buy_date,
+            business_date,
+            self._qlib_dir / "calendars" / "day.txt",
         )
-        return sum(buy_date < value <= business_date for value in trading_dates)
 
     def _select_afternoon_buy_target(self, business_date: date) -> dict[str, object]:
         """从完整横截面排名选择最高分可买目标，不保存五档价格和委托数量。"""
@@ -327,4 +327,4 @@ class LiveTradingOrchestrator:
             "targets": [target] if target else [],
             "rejected": rejected,
         }
-# AI_GENERATE_END ------------------------
+# AI_GENERATE_END -------------------------

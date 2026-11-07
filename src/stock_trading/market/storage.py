@@ -1,4 +1,4 @@
-# AI_GENERATE_START------- -----------------------------------------------------------
+# AI_GENERATE_START-------- -----------------------------------------------------------
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -649,17 +649,31 @@ class ParquetMarketStore:
     def cleanup_minutes(self, reference_date: date) -> dict[str, int]:
         root = self._root / "minute5"
         directories = sorted(root.glob("code=*")) if root.is_dir() else []
-        raw_rows = 0
-        summary_rows = 0
+        before_raw_rows = 0
+        after_raw_rows = 0
+        before_summary_rows = 0
+        after_summary_rows = 0
         for directory in directories:
             code = directory.name.removeprefix("code=")
             minutes = self.read_minutes(code)
             if minutes.empty:
                 continue
             result = self._store_minute_frames(code, minutes, reference_date)
-            raw_rows += int(result["rawRows"])
-            summary_rows += int(result["summaryRows"])
-        return {"codes": len(directories), "rawRows": raw_rows, "summaryRows": summary_rows}
+            before_raw_rows += int(result["beforeRawRows"])
+            after_raw_rows += int(result["rawRows"])
+            before_summary_rows += int(result["beforeSummaryRows"])
+            after_summary_rows += int(result["summaryRows"])
+        return {
+            "codes": len(directories),
+            "beforeRawRows": before_raw_rows,
+            "rawRows": after_raw_rows,
+            "deletedRawRows": max(0, before_raw_rows - after_raw_rows),
+            "beforeSummaryRows": before_summary_rows,
+            "summaryRows": after_summary_rows,
+            "deletedSummaryRows": max(
+                0, before_summary_rows - after_summary_rows
+            ),
+        }
 
     @staticmethod
     def _eligible_daily_rows(frame: pd.DataFrame) -> pd.DataFrame:
@@ -714,6 +728,8 @@ class ParquetMarketStore:
         )
         generated = summarize_trading_windows(frame)
         existing = self.read_minute_summaries(code)
+        before_raw_rows = len(frame)
+        before_summary_rows = len(existing)
         summaries = [value for value in (existing, generated) if not value.empty]
         summary = pd.concat(summaries, ignore_index=True) if summaries else generated
         for field in ("morning_complete", "sell_complete", "buy_complete"):
@@ -742,6 +758,8 @@ class ParquetMarketStore:
             "summaryPath": str(summary_path),
             "rawRows": len(raw),
             "summaryRows": len(summary),
+            "beforeRawRows": before_raw_rows,
+            "beforeSummaryRows": before_summary_rows,
         }
 
     def _minute_summary_path(self, code: str) -> Path:
@@ -827,4 +845,4 @@ def _normalize_minute1_frame(frame: pd.DataFrame, code: str) -> pd.DataFrame:
     )
 
 
-# AI_GENERATE_END------- -----------------------------------------------------------
+# AI_GENERATE_END-------- -----------------------------------------------------------
