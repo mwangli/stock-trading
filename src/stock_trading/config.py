@@ -1,4 +1,4 @@
-# AI_GENERATE_START- ---------------------------------------------------------
+# AI_GENERATE_START-- ---------------------------------------------------------
 from __future__ import annotations
 
 import logging
@@ -26,7 +26,6 @@ PASSIVE_FRACTION = 0.50
 NORMAL_FRACTION = 0.85
 DEFAULT_BROKER_BASE_URL = "https://weixin.citicsinfo.com/reqxml"
 BACKTEST_CAPITAL = 2_000
-REPORT_LIMIT = 10
 MODEL_MIN_POSITIVE_MONTH_RATIO = 0.60
 LOGGER = logging.getLogger(__name__)
 ENV_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -52,9 +51,6 @@ class AppConfig:
     state_db_path: Path
     tushare_token: str | None
     baostock_proxy: str | None
-    daily_market_provider: str
-    minute5_market_provider: str
-    minute_market_provider: str
     market_history_days: int
     bark_device_key: str
     broker_base_url: str
@@ -102,7 +98,6 @@ class AppConfig:
     model_min_positive_month_ratio: float
     data_quality_min_ratio: float
     model_feature_batch_days: int = 60
-    report_limit: int = REPORT_LIMIT
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -114,17 +109,6 @@ class AppConfig:
         state_db_path = runtime_dir / "state" / "trading.db"
         tushare_token = _optional_env("TUSHARE_TOKEN")
         baostock_proxy = _optional_env("BAOSTOCK_PROXY")
-        daily_market_provider = _market_provider(
-            "DAILY_MARKET_PROVIDER", "tushare", {"tushare", "baostock"}
-        )
-        minute5_market_provider = _market_provider(
-            "MINUTE5_MARKET_PROVIDER", "baostock", {"tushare", "baostock"}
-        )
-        minute_market_provider = _market_provider(
-            "MINUTE_MARKET_PROVIDER",
-            "zxbroker",
-            {"tushare", "baostock", "zxbroker"},
-        )
         broker_token = _optional_env("ZXBROKER_TOKEN")
         return cls(
             data_dir=data_dir,
@@ -133,9 +117,6 @@ class AppConfig:
             state_db_path=state_db_path,
             tushare_token=tushare_token,
             baostock_proxy=baostock_proxy,
-            daily_market_provider=daily_market_provider,
-            minute5_market_provider=minute5_market_provider,
-            minute_market_provider=minute_market_provider,
             market_history_days=min(
                 365 * 5,
                 max(365, _env_int("STOCK_TRADING_HISTORY_DAYS", 365 * 3)),
@@ -317,12 +298,4 @@ def _env_float(name: str, default: float) -> float:
         return float(value)
     except ValueError:
         raise ValueError(f"环境变量 {name} 必须是数字") from None
-
-
-def _market_provider(name: str, default: str, allowed: set[str]) -> str:
-    value = os.getenv(name, default).strip().lower()
-    if value not in allowed:
-        choices = "、".join(sorted(allowed))
-        raise ValueError(f"环境变量 {name} 只能是 {choices}")
-    return value
-# AI_GENERATE_END- ---------------------------------------------------------
+# AI_GENERATE_END-- ---------------------------------------------------------

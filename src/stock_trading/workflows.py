@@ -1,4 +1,4 @@
-# AI_GENERATE_START------------------- ---------------------------------
+# AI_GENERATE_START--------------------- ---------------------------------
 from __future__ import annotations
 
 import json
@@ -21,7 +21,6 @@ from stock_trading.market.providers import (
     market_provider,
     preferred_market_provider,
 )
-from stock_trading.market.reporting import COLLECTION_TYPES, refresh_market_summary
 from stock_trading.market.sync import (
     live_codes,
     research_codes,
@@ -54,6 +53,7 @@ from stock_trading.utils.time_utils import shanghai_now, shanghai_today
 
 LOGGER = logging.getLogger(__name__)
 MINUTE1_MIN_TRAINING_DAYS = 252
+COLLECTION_TYPES = ("basic", "factor", "daily", "minute5", "minute")
 
 
 def collect_workflow(
@@ -85,8 +85,6 @@ def collect_workflow(
                 end_date,
                 requested_codes,
             )
-            LOGGER.info("正在生成采集汇报摘要：类型=%s", collection_type)
-            refresh_market_summary(config.data_dir, collection_type)
         except Exception as error:
             state.finish_task(business_key, False, error)
             errors[collection_type] = str(error)
@@ -300,18 +298,18 @@ def _local_stock_basics(store: ParquetMarketStore) -> pd.DataFrame:
         stocks = store.read_stock_basics()
     except (OSError, ValueError, KeyError) as error:
         raise ValueError(
-            "未找到本地股票基础信息；请先执行 stock-trading collect"
+            "未找到本地股票基础信息；请先执行 stock-collect"
         ) from error
     if stocks.empty or "snapshot_date" not in stocks:
         raise ValueError(
-            "本地股票基础信息无效；请先执行 stock-trading collect"
+            "本地股票基础信息无效；请先执行 stock-collect"
         )
     snapshot_dates = pd.to_datetime(
         stocks["snapshot_date"], errors="coerce"
     ).dropna()
     if snapshot_dates.empty:
         raise ValueError(
-            "本地股票基础信息缺少快照日期；请先执行 stock-trading collect"
+            "本地股票基础信息缺少快照日期；请先执行 stock-collect"
         )
     snapshot_date = snapshot_dates.max().date()
     today = shanghai_today()
@@ -384,7 +382,7 @@ def prepare_workflow(
         stocks = store.read_stock_basics()
     except (OSError, ValueError, KeyError) as error:
         raise ValueError(
-            "未找到股票基础信息；请先执行 stock-trading collect"
+            "未找到股票基础信息；请先执行 stock-collect"
         ) from error
     codes = research_codes(stocks, start_date, end_date)
     if not codes:
@@ -484,7 +482,7 @@ def cleanup_workflow(config: AppConfig, reference_date: date) -> dict[str, objec
                 "releasedBytes": max(0, before_bytes - after_bytes),
             },
         }
-        store.finish_task(business_key, True, result=result)
+        store.finish_task(business_key, True)
         return result
     except BaseException as error:
         store.finish_task(business_key, False, error)
@@ -582,7 +580,7 @@ def rank_workflow(
     if available_instruments is None:
         raise ValueError(
             f"Qlib 未覆盖目标日期：{prediction_date.isoformat()}；"
-            "请先执行 stock-trading prepare"
+            "请先执行 stock-prepare"
         )
     ready_instruments = expected_instruments & available_instruments
     quality = require_data_quality(
@@ -594,7 +592,7 @@ def rank_workflow(
     model_dir = model_directory(config.artifact_dir, spec)
     if not model_artifacts_valid(model_dir, spec):
         raise ValueError(
-            f"模型制品不存在或不完整：{spec.model_id}；请先执行 stock-trading train"
+            f"模型制品不存在或不完整：{spec.model_id}；请先执行 stock-train"
         )
     prediction_path = prediction_artifact_path(model_dir, prediction_date)
     existing = _existing_prediction_summary(
@@ -620,7 +618,7 @@ def rank_workflow(
                 "predictionDate": prediction_date.isoformat(),
                 "predictions": prediction["rankingRows"],
                 "reused": True,
-            } | state_store.summary()
+            }
         else:
             state = state_store.import_prediction_artifact(
                 model_dir, prediction_path
@@ -788,4 +786,4 @@ def _build_broker(config: AppConfig) -> ZXBrokerClient:
     return ZXBrokerClient(config, captcha_solver=BaiduCaptchaSolver(config).solve)
 
 
-# AI_GENERATE_END------------------- ---------------------------------
+# AI_GENERATE_END--------------------- ---------------------------------

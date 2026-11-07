@@ -13,19 +13,19 @@ LOGROTATE=__PROJECT_DIR__/config/stock-trading.logrotate
 LOGROTATE_STATE=__PROJECT_DIR__/data/state/logrotate.status
 
 # Morning observation, Qlib and same-day ranking
-35 11 * * 1-5 "$SCHEDULER" run "stock-trading collect" "stock-trading prepare" "stock-trading rank"
+35 11 * * 1-5 "$SCHEDULER" run "stock-collect" "stock-prepare" "stock-rank"
 
 # Sell first, then buy in separate afternoon windows
-0 13 * * 1-5 "$SCHEDULER" run "stock-trading trade --sell"
-0 14 * * 1-5 "$SCHEDULER" run "stock-trading trade --buy"
+0 13 * * 1-5 "$SCHEDULER" run "stock-settle --sell"
+0 14 * * 1-5 "$SCHEDULER" run "stock-settle --buy"
 
 # Complete intraday windows, daily facts and matured labels
-10 16 * * 1-5 "$SCHEDULER" run "stock-trading collect" "stock-trading prepare"
+10 16 * * 1-5 "$SCHEDULER" run "stock-collect" "stock-prepare"
 
 # Historical orders and model review
-20 20 * * 1-5 "$SCHEDULER" run "stock-trading order" "stock-trading review"
+20 20 * * 1-5 "$SCHEDULER" run "stock-order" "stock-review"
 
 # Weekly cleanup and daily log rotation
-0 3 * * 0 "$SCHEDULER" run "stock-trading clean"
+0 3 * * 0 "$SCHEDULER" run "stock-clean"
 30 3 * * * logrotate -s "$LOGROTATE_STATE" "$LOGROTATE"
 # STOCK_TRADING_CRON_END

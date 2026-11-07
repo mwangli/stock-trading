@@ -1,4 +1,4 @@
-# AI_GENERATE_START --------------------------
+# AI_GENERATE_START- --------------------------
 from __future__ import annotations
 
 import logging
@@ -275,7 +275,7 @@ class LiveTradingOrchestrator:
             raise ValueError("目标交易日前没有可用横截面预测")
         if len(candidates) <= self._config.trading_entry_rank:
             raise ValueError(
-                "最近预测不是完整横截面排名，请先重新执行 stock-trading rank"
+                "最近预测不是完整横截面排名，请先重新执行 stock-rank"
             )
         prediction_date = date.fromisoformat(str(candidates[0]["prediction_date"]))
         prediction_age = (business_date - prediction_date).days
@@ -329,4 +329,4 @@ class LiveTradingOrchestrator:
             "targets": [target] if target else [],
             "rejected": rejected,
         }
-# AI_GENERATE_END --------------------------
+# AI_GENERATE_END- --------------------------

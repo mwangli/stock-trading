@@ -1,4 +1,4 @@
-# AI_GENERATE_START---- ----------------------------------------------------------------------------
+# AI_GENERATE_START----- ----------------------------------------------------------------------------
 from __future__ import annotations
 
 import hashlib
@@ -74,15 +74,12 @@ CREATE INDEX IF NOT EXISTS idx_training_request_config
 ON training_request(model_id, status, requested_at);
 """
 SCHEMA_MIGRATIONS = {
-    1: "ALTER TABLE prediction RENAME TO prediction_rank;" + _MODEL_ID_MIGRATION
-    + "ALTER TABLE task_run ADD COLUMN result_json TEXT;",
-    2: "ALTER TABLE prediction RENAME TO prediction_rank;" + _MODEL_ID_MIGRATION
-    + "ALTER TABLE task_run ADD COLUMN result_json TEXT;",
-    3: "ALTER TABLE prediction RENAME TO prediction_rank;" + _MODEL_ID_MIGRATION
-    + "ALTER TABLE task_run ADD COLUMN result_json TEXT;",
-    4: _MODEL_ID_MIGRATION + "ALTER TABLE task_run ADD COLUMN result_json TEXT;",
-    5: "ALTER TABLE task_run ADD COLUMN result_json TEXT;",
-    6: "ALTER TABLE task_run ADD COLUMN result_json TEXT;",
+    1: "ALTER TABLE prediction RENAME TO prediction_rank;" + _MODEL_ID_MIGRATION,
+    2: "ALTER TABLE prediction RENAME TO prediction_rank;" + _MODEL_ID_MIGRATION,
+    3: "ALTER TABLE prediction RENAME TO prediction_rank;" + _MODEL_ID_MIGRATION,
+    4: _MODEL_ID_MIGRATION,
+    5: "",
+    6: "",
 }
 
 SCHEMA = """
@@ -95,8 +92,7 @@ CREATE TABLE IF NOT EXISTS task_run (
     status TEXT NOT NULL, -- 任务状态，例如 RUNNING、SUCCESS、SKIPPED、FAILED。
     started_at TEXT, -- 任务开始时间，UTC ISO-8601 字符串。
     finished_at TEXT, -- 任务结束时间，未结束时为空。
-    error_message TEXT, -- 失败原因；成功或未结束时为空。
-    result_json TEXT -- 任务结构化结果；旧记录或无结果任务为空。
+    error_message TEXT -- 失败原因；成功或未结束时为空。
 );
 
 -- 模型版本：登记模型制品、特征集、评估指标和当前生命周期状态。
@@ -458,7 +454,7 @@ class StateStore(SQLiteStateDatabase):
             "modelId": metrics["modelId"],
             "modelVersionId": model_id,
             "predictions": prediction_rows,
-        } | self.summary()
+        }
 
     def upsert_broker_orders(self, orders: tuple[BrokerOrder, ...]) -> dict[str, int]:
         """增量保存券商成交事实，不删除本次接口未返回的历史事实。"""
@@ -608,172 +604,6 @@ class StateStore(SQLiteStateDatabase):
                 """
             ).fetchall()
         return [dict(row) for row in rows]
-
-    def filled_order_report(
-        self, direction: str | None, limit: int
-    ) -> list[dict[str, Any]]:
-        """读取最近已成交订单，可按买卖方向筛选。"""
-        condition = " AND bo.direction = ?" if direction else ""
-        parameters: tuple[object, ...] = (
-            (direction, limit) if direction else (limit,)
-        )
-        try:
-            with self._read_connect() as connection:
-                rows = connection.execute(
-                    f"""
-                    SELECT bo.*, mv.model_id
-                    FROM broker_order bo
-                    LEFT JOIN model_version mv ON mv.id = bo.model_version_id
-                    WHERE bo.status = 'FILLED'{condition}
-                    ORDER BY bo.order_time DESC, bo.broker_order_id DESC
-                    LIMIT ?
-                    """,
-                    parameters,
-                ).fetchall()
-        except (FileNotFoundError, sqlite3.OperationalError):
-            return []
-        return [dict(row) for row in rows]
-
-    def realized_trade_report(
-        self,
-        limit: int,
-        start_date: date | None = None,
-        end_date: date | None = None,
-    ) -> list[dict[str, Any]]:
-        """读取最近已闭环交易，可按卖出日期范围筛选。"""
-        conditions: list[str] = []
-        parameters: list[object] = []
-        if start_date is not None:
-            conditions.append("rt.sell_date >= ?")
-            parameters.append(start_date.isoformat())
-        if end_date is not None:
-            conditions.append("rt.sell_date <= ?")
-            parameters.append(end_date.isoformat())
-        where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-        parameters.append(limit)
-        try:
-            with self._read_connect() as connection:
-                rows = connection.execute(
-                    f"""
-                    SELECT rt.*, mv.model_id,
-                           COALESCE(sell_order.stock_name, buy_order.stock_name)
-                               AS stock_name
-                    FROM realized_trade rt
-                    LEFT JOIN model_version mv ON mv.id = rt.model_version_id
-                    LEFT JOIN broker_order buy_order
-                      ON buy_order.trade_date = rt.buy_date
-                     AND buy_order.broker_order_id = rt.buy_order_id
-                    LEFT JOIN broker_order sell_order
-                      ON sell_order.trade_date = rt.sell_date
-                     AND sell_order.broker_order_id = rt.sell_order_id
-                    {where}
-                    ORDER BY rt.sell_time DESC, rt.trade_key DESC
-                    LIMIT ?
-                    """,
-                    parameters,
-                ).fetchall()
-        except (FileNotFoundError, sqlite3.OperationalError):
-            return []
-        return [dict(row) for row in rows]
-
-    def unsettled_buy_report(
-        self,
-        limit: int,
-        start_date: date | None = None,
-        end_date: date | None = None,
-    ) -> list[dict[str, Any]]:
-        """读取未完全卖出的买单及其剩余数量。"""
-        conditions = ["bo.direction = 'BUY'", "COALESCE(mt.quantity, 0) < bo.filled_quantity"]
-        parameters: list[object] = []
-        if start_date is not None:
-            conditions.append("bo.trade_date >= ?")
-            parameters.append(start_date.isoformat())
-        if end_date is not None:
-            conditions.append("bo.trade_date <= ?")
-            parameters.append(end_date.isoformat())
-        parameters.append(limit)
-        try:
-            with self._read_connect() as connection:
-                rows = connection.execute(
-                    f"""
-                    WITH mt AS (
-                        SELECT buy_date AS trade_date, buy_order_id AS broker_order_id,
-                               SUM(quantity) AS quantity
-                        FROM realized_trade
-                        GROUP BY buy_date, buy_order_id
-                    )
-                    SELECT bo.*, mv.model_id,
-                           COALESCE(mt.quantity, 0) AS matched_quantity,
-                           bo.filled_quantity - COALESCE(mt.quantity, 0) AS remaining_quantity
-                    FROM broker_order bo
-                    LEFT JOIN mt USING(trade_date, broker_order_id)
-                    LEFT JOIN model_version mv ON mv.id = bo.model_version_id
-                    WHERE {' AND '.join(conditions)}
-                    ORDER BY bo.order_time DESC, bo.broker_order_id DESC
-                    LIMIT ?
-                    """,
-                    parameters,
-                ).fetchall()
-        except (FileNotFoundError, sqlite3.OperationalError):
-            return []
-        return [dict(row) for row in rows]
-
-    def latest_model_evaluation_report(
-        self, model_id: str | None = None
-    ) -> list[dict[str, Any]]:
-        """读取各模型最新评估及对应重训请求状态。"""
-        parameters: tuple[object, ...] = () if model_id is None else (model_id,)
-        where = "" if model_id is None else "WHERE me.model_id = ?"
-        try:
-            with self._read_connect() as connection:
-                rows = connection.execute(
-                    f"""
-                    WITH ranked AS (
-                        SELECT me.*,
-                               ROW_NUMBER() OVER (
-                                   PARTITION BY me.model_id
-                                   ORDER BY me.business_date DESC, me.created_at DESC
-                               ) AS rn
-                        FROM model_evaluation me
-                        {where}
-                    )
-                    SELECT ranked.*, tr.status AS training_status,
-                           tr.requested_at, tr.completed_at
-                    FROM ranked
-                    LEFT JOIN training_request tr
-                      ON tr.evaluation_key = ranked.business_key
-                    WHERE ranked.rn = 1
-                    ORDER BY ranked.model_id
-                    """,
-                    parameters,
-                ).fetchall()
-        except (FileNotFoundError, sqlite3.OperationalError):
-            return []
-        return [dict(row) for row in rows]
-
-    def cleanup_report(self, limit: int) -> tuple[bool, list[dict[str, Any]]]:
-        """读取清理任务历史；布尔值表示数据库是否已具备结果字段。"""
-        try:
-            with self._read_connect() as connection:
-                columns = {
-                    str(row["name"])
-                    for row in connection.execute("PRAGMA table_info(task_run)")
-                }
-                if "result_json" not in columns:
-                    return False, []
-                rows = connection.execute(
-                    """
-                    SELECT business_date, status, started_at, finished_at,
-                           error_message, result_json
-                    FROM task_run
-                    WHERE task_type = 'CLEAN'
-                    ORDER BY id DESC LIMIT ?
-                    """,
-                    (limit,),
-                ).fetchall()
-        except (FileNotFoundError, sqlite3.OperationalError):
-            return True, []
-        return True, [dict(row) for row in rows]
 
     def apply_realized_trades(
         self,
@@ -1010,7 +840,7 @@ class StateStore(SQLiteStateDatabase):
             "status": "SUCCESS",
             "predictionDate": business_date,
             "predictions": prediction_rows,
-        } | self.summary()
+        }
 
     def latest_prediction_candidates(
         self,
@@ -1486,48 +1316,6 @@ class StateStore(SQLiteStateDatabase):
             ).rowcount
         return completed
 
-    def summary(self) -> dict[str, Any]:
-        """用途：汇总各表记录数和最新任务、模型；输入：无；输出：状态库摘要。"""
-        self.initialize()
-        with self._connect() as connection:
-            tables = {
-                "task_run": "task_run",
-                "model_version": "model_version",
-                "prediction": "prediction_rank",
-                "model_evaluation": "model_evaluation",
-                "trainingRequests": "training_request",
-                "brokerOrders": "broker_order",
-                "realizedTrades": "realized_trade",
-                "orderAttempts": "order_attempt",
-                "broker_permission": "broker_permission",
-                "accountSnapshot": "account_snapshot",
-                "notifications": "notify_msg",
-            }
-            counts = {
-                name: connection.execute(
-                    f"SELECT COUNT(*) FROM {table}"
-                ).fetchone()[0]
-                for name, table in tables.items()
-            }
-            latest_run = connection.execute(
-                """
-                SELECT business_key, status, business_date, error_message
-                FROM task_run ORDER BY id DESC LIMIT 1
-                """
-            ).fetchone()
-            latest_model = connection.execute(
-                """
-                SELECT model_id, model_name, feature_set, status, artifact_hash
-                FROM model_version ORDER BY id DESC LIMIT 1
-                """
-            ).fetchone()
-        return {
-            "database": str(self._path),
-            "counts": counts,
-            "latestRun": dict(latest_run) if latest_run else None,
-            "latestModel": dict(latest_model) if latest_model else None,
-        }
-
     def start_task(self, task_type: str, business_date: date) -> str:
         """登记一个每日步骤开始，状态只用于依赖和审计。"""
         self.initialize()
@@ -1540,14 +1328,12 @@ class StateStore(SQLiteStateDatabase):
         business_key: str,
         success: bool,
         error: BaseException | None = None,
-        result: object | None = None,
     ) -> None:
         """完成每日步骤并保存成功或失败状态。"""
         self._finish_run(
             business_key,
             "SUCCESS" if success else "FAILED",
             None if error is None else str(error),
-            result,
         )
 
     def task_status(
@@ -1664,7 +1450,7 @@ class StateStore(SQLiteStateDatabase):
                 ) VALUES(?, ?, ?, 'RUNNING', ?)
                 ON CONFLICT(business_key) DO UPDATE SET
                     status = 'RUNNING', started_at = excluded.started_at,
-                    finished_at = NULL, error_message = NULL, result_json = NULL
+                    finished_at = NULL, error_message = NULL
                 """,
                 (business_key, task_type, business_date, _now()),
             )
@@ -1674,21 +1460,18 @@ class StateStore(SQLiteStateDatabase):
         business_key: str,
         status: str,
         error: str | None,
-        result: object | None = None,
     ) -> None:
         """用途：结束任务并记录状态和错误；输入：业务键、结束状态和错误；输出：无。"""
         with self._connect() as connection:
             connection.execute(
                 """
-                UPDATE task_run SET status = ?, finished_at = ?, error_message = ?,
-                                    result_json = ?
+                UPDATE task_run SET status = ?, finished_at = ?, error_message = ?
                 WHERE business_key = ?
                 """,
                 (
                     status,
                     _now(),
                     error,
-                    None if result is None else json.dumps(result, ensure_ascii=False),
                     business_key,
                 ),
             )
@@ -1814,4 +1597,4 @@ def _broker_order_matches_intent(order: BrokerOrder, intent: sqlite3.Row) -> boo
         and order.order_quantity == int(intent["quantity"])
         and order.order_price == Decimal(str(intent["price"]))
     )
-# AI_GENERATE_END---- ----------------------------------------------------------------------------
+# AI_GENERATE_END----- ----------------------------------------------------------------------------

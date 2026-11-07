@@ -1,47 +1,32 @@
-# AI_GENERATE_START------------------------ --------------------------------
+# AI_GENERATE_START --
 from __future__ import annotations
 
 import argparse
 from collections.abc import Callable
 
-import shtab
-
 from stock_trading.cli import (
     CliParameterError,
     clean_command,
     collect_command,
-    model_command,
     order_command,
     prepare_command,
     rank_command,
-    report_command,
     review_command,
     sync_command,
-    trading_command,
+    settle_command,
+    train_command,
 )
-from stock_trading.utils.console import (
-    BOLD_BLUE,
-    BOLD_CYAN,
-    BOLD_YELLOW,
-    style,
-)
-from stock_trading.utils.completion import ensure_completion
+from stock_trading.utils.console import BOLD_BLUE, BOLD_CYAN, BOLD_YELLOW, style
 
 
 class ColoredHelpFormatter(argparse.RawDescriptionHelpFormatter):
     def start_section(self, heading: str | None) -> None:
-        super().start_section(
-            style(heading, BOLD_BLUE) if heading else heading
-        )
+        super().start_section(style(heading, BOLD_BLUE) if heading else heading)
 
     def _format_action(self, action: argparse.Action) -> str:
         rendered = super()._format_action(action)
         invocation = super()._format_action_invocation(action)
-        return rendered.replace(
-            invocation,
-            style(invocation, BOLD_CYAN),
-            1,
-        )
+        return rendered.replace(invocation, style(invocation, BOLD_CYAN), 1)
 
 
 class ChineseArgumentParser(argparse.ArgumentParser):
@@ -61,7 +46,6 @@ class ChineseArgumentParser(argparse.ArgumentParser):
             "one of the arguments --pull --push is required": "必须指定 --pull 或 --push",
             "argument --sell: not allowed with argument --buy": "--buy 与 --sell 不能同时使用",
             "argument --push: not allowed with argument --pull": "--pull 与 --push 不能同时使用",
-            "the following arguments are required: COMMAND": "必须指定命令",
         }
         if message.startswith("unrecognized arguments:"):
             message = "不支持的参数：" + message.removeprefix(
@@ -79,37 +63,15 @@ def _section(title: str, lines: tuple[str, ...], prefix: str = "") -> str:
     )
 
 
-def _root_command_help(
-    subparsers: argparse._SubParsersAction,
-) -> str:
-    groups = (
-        ("数据与模型", ("collect", "prepare", "train")),
-        ("排名与交易", ("rank", "settle", "order", "review")),
-        ("运维与帮助", ("sync", "clean", "report")),
-    )
-    width = max(len(name) for _, names in groups for name in names)
-    sections = []
-    for title, names in groups:
-        lines = tuple(
-            f"{style(name.ljust(width), BOLD_CYAN)}  "
-            f"{subparsers.choices[name].description}"
-            for name in names
-        )
-        sections.append(_section(title, lines))
-    return f"{style('命令:', BOLD_BLUE)}\n\n" + "\n\n".join(sections)
-
-
-def _command_parser(
-    subparsers: argparse._SubParsersAction,
-    name: str,
+def _parser(
+    prog: str,
     description: str,
     business: tuple[str, ...],
     examples: tuple[str, ...],
     boundaries: tuple[str, ...],
 ) -> ChineseArgumentParser:
-    parser = subparsers.add_parser(
-        name,
-        help=description,
+    parser = ChineseArgumentParser(
+        prog=prog,
         description=description,
         epilog="\n\n".join(
             (
@@ -119,107 +81,107 @@ def _command_parser(
             )
         ),
         formatter_class=ColoredHelpFormatter,
-        add_help=False,
     )
-    parser.add_argument("-h", "--help", action="help", help="显示帮助信息并退出。")
     parser._optionals.title = "参数"
     return parser
 
 
-def _set_action(
-    parser: argparse.ArgumentParser,
+def _run(
+    parser: ChineseArgumentParser,
     action: Callable[[argparse.Namespace], None],
 ) -> None:
-    parser.set_defaults(_action=action, _command_parser=parser)
+    arguments = parser.parse_args()
+    try:
+        action(arguments)
+    except CliParameterError as error:
+        parser.error(str(error))
 
 
-def _add_collect(subparsers: argparse._SubParsersAction) -> None:
-    parser = _command_parser(
-        subparsers,
-        "collect",
+def collect_main() -> None:
+    parser = _parser(
+        "stock-collect",
         "依次采集基础、复权、日线、5分钟和1分钟行情。",
         (
             "固定按 basic、factor、daily、minute5、minute 顺序执行。",
             "已有完整数据自动跳过，单项失败不阻断后续采集。",
         ),
         (
-            "stock-trading collect",
-            "stock-trading collect --date 2026-11-07",
-            "stock-trading collect --codes 600000,000001",
+            "stock-collect",
+            "stock-collect --date 2026-11-07",
+            "stock-collect --codes 600000,000001",
         ),
         ("不准备 Qlib、不训练模型、不生成排名。",),
     )
     parser.add_argument("--date", help="采集日期或日期范围，默认当天。")
     parser.add_argument("--codes", help="股票代码，逗号分隔，默认全市场。")
-    _set_action(parser, lambda a: collect_command(a.date, a.codes))
+    _run(parser, lambda args: collect_command(args.date, args.codes))
 
 
-def _add_prepare(subparsers: argparse._SubParsersAction) -> None:
-    parser = _command_parser(
-        subparsers,
-        "prepare",
+def prepare_main() -> None:
+    parser = _parser(
+        "stock-prepare",
         "从现有原始数据增量、幂等准备 Qlib。",
         ("只读取本地 Parquet。", "使用 --force 才全量重建。"),
         (
-            "stock-trading prepare",
-            "stock-trading prepare --model v1.2",
-            "stock-trading prepare --force",
+            "stock-prepare",
+            "stock-prepare --model v1.2",
+            "stock-prepare --force",
         ),
         ("数据不完整时终止。", "不下载数据、不训练模型。"),
     )
     parser.add_argument("--date", help="Qlib 日期或日期范围。")
     parser.add_argument("--force", action="store_true", help="全量重建 Qlib。")
     parser.add_argument("--model", help="模型完整 ID、版本前缀或算法前缀。")
-    _set_action(parser, lambda a: prepare_command(a.date, a.force, a.model))
+    _run(
+        parser,
+        lambda args: prepare_command(args.date, args.force, args.model),
+    )
 
 
-def _add_train(subparsers: argparse._SubParsersAction) -> None:
-    parser = _command_parser(
-        subparsers,
-        "train",
+def train_main() -> None:
+    parser = _parser(
+        "stock-train",
         "使用现有 Qlib 数据训练、评估并回测模型。",
         ("已有完整制品时直接复用。", "使用 --force 才重新训练。"),
         (
-            "stock-trading train --model v2.1",
-            "stock-trading train --force --split 6:3:1",
+            "stock-train --model v2.1",
+            "stock-train --force --split 6:3:1",
         ),
         ("默认切分比例为 70:15:15。", "失败或中断不会覆盖当前模型。"),
     )
     parser.add_argument("--split", help="训练、验证、测试比例，例如 6:3:1。")
     parser.add_argument("--force", action="store_true", help="强制重新训练。")
     parser.add_argument("--model", help="模型完整 ID、版本前缀或算法前缀。")
-    _set_action(parser, lambda a: model_command(a.split, a.force, a.model))
+    _run(parser, lambda args: train_command(args.split, args.force, args.model))
 
 
-def _add_rank(subparsers: argparse._SubParsersAction) -> None:
-    parser = _command_parser(
-        subparsers,
-        "rank",
+def rank_main() -> None:
+    parser = _parser(
+        "stock-rank",
         "生成指定交易日的完整横截面排名。",
         ("读取已经准备好的 Qlib 和模型制品。",),
         (
-            "stock-trading rank --model v2.1",
-            "stock-trading rank --model v1 --date 2026-11-07",
+            "stock-rank --model v2.1",
+            "stock-rank --model v1 --date 2026-11-07",
         ),
         ("只生成排名，不提交交易委托。",),
     )
     parser.add_argument("--date", help="排名业务日期，默认当天。")
     parser.add_argument("--model", help="模型完整 ID、版本前缀或算法前缀。")
-    _set_action(parser, lambda a: rank_command(a.date, a.model))
+    _run(parser, lambda args: rank_command(args.date, args.model))
 
 
-def _add_settle(subparsers: argparse._SubParsersAction) -> None:
-    parser = _command_parser(
-        subparsers,
-        "settle",
+def settle_main() -> None:
+    parser = _parser(
+        "stock-settle",
         "在独立下午窗口执行买入或卖出。",
         (
             "13:00-14:00 卖出，14:00-15:00 买入。",
             "从排名候选依次检查并尝试交易。",
         ),
         (
-            "stock-trading settle --sell --model v1.2",
-            "stock-trading settle --buy --model v2.1",
+            "stock-settle --sell --model v1.2",
+            "stock-settle --buy --model v2.1",
         ),
         ("必须且只能指定一个方向。", "最终合法性和成交状态由券商判断。"),
     )
@@ -227,59 +189,55 @@ def _add_settle(subparsers: argparse._SubParsersAction) -> None:
     direction.add_argument("--buy", action="store_true", help="只执行买入。")
     direction.add_argument("--sell", action="store_true", help="只执行卖出。")
     parser.add_argument("--model", help="模型完整 ID、版本前缀或算法前缀。")
-    _set_action(
+    _run(
         parser,
-        lambda a: trading_command("B" if a.buy else "S", a.model),
+        lambda args: settle_command("B" if args.buy else "S", args.model),
     )
 
 
-def _add_order(subparsers: argparse._SubParsersAction) -> None:
-    parser = _command_parser(
-        subparsers,
-        "order",
+def order_main() -> None:
+    parser = _parser(
+        "stock-order",
         "同步券商账户快照和历史成交订单。",
         ("同步账户快照、历史成交并匹配交易闭环。",),
-        ("stock-trading order", "stock-trading order --date 2026-11-07"),
+        ("stock-order", "stock-order --date 2026-11-07"),
         ("不主动提交新的买卖委托。", "未卖出的买入继续保留。"),
     )
     parser.add_argument("--date", help="业务日期或日期范围，默认当天。")
-    _set_action(parser, lambda a: order_command(a.date))
+    _run(parser, lambda args: order_command(args.date))
 
 
-def _add_review(subparsers: argparse._SubParsersAction) -> None:
-    parser = _command_parser(
-        subparsers,
-        "review",
+def review_main() -> None:
+    parser = _parser(
+        "stock-review",
         "汇总已实现收益并判断模型是否需要重训。",
         ("只计算已完成买卖闭环的真实收益。",),
         (
-            "stock-trading review --model v2.1",
-            "stock-trading review --date 2026-11-07",
+            "stock-review --model v2.1",
+            "stock-review --date 2026-11-07",
         ),
         ("未闭环交易、浮动盈亏和入金出金不参与评估。",),
     )
     parser.add_argument("--date", help="复盘业务日期，默认当天。")
     parser.add_argument("--model", help="模型完整 ID、版本前缀或算法前缀。")
-    _set_action(parser, lambda a: review_command(a.date, a.model))
+    _run(parser, lambda args: review_command(args.date, args.model))
 
 
-def _add_clean(subparsers: argparse._SubParsersAction) -> None:
-    parser = _command_parser(
-        subparsers,
-        "clean",
+def clean_main() -> None:
+    parser = _parser(
+        "stock-clean",
         "清理超过保留期的数据和已终结业务状态。",
         ("清理过期分钟数据、历史任务和已终结状态。",),
-        ("stock-trading clean", "stock-trading clean --date 2026-11-07"),
+        ("stock-clean", "stock-clean --date 2026-11-07"),
         ("活动委托、当前持仓和模型版本不会按普通历史记录清理。",),
     )
     parser.add_argument("--date", help="清理基准日期，默认当天。")
-    _set_action(parser, lambda a: clean_command(a.date))
+    _run(parser, lambda args: clean_command(args.date))
 
 
-def _add_sync(subparsers: argparse._SubParsersAction) -> None:
-    parser = _command_parser(
-        subparsers,
-        "sync",
+def sync_main() -> None:
+    parser = _parser(
+        "stock-sync",
         "在本地与服务器之间依次同步全部运行数据。",
         (
             "拉取包含 market、qlib、model、state。",
@@ -287,9 +245,9 @@ def _add_sync(subparsers: argparse._SubParsersAction) -> None:
             "单项失败不阻断后续范围，未变化数据自动跳过。",
         ),
         (
-            "stock-trading sync --pull",
-            "stock-trading sync --push",
-            "stock-trading sync --push --force",
+            "stock-sync --pull",
+            "stock-sync --push",
+            "stock-sync --push --force",
         ),
         ("必须且只能指定一个方向。", "环境文件、Token 和调度锁不会同步。"),
     )
@@ -301,81 +259,10 @@ def _add_sync(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="推送时同时覆盖服务器 state。",
     )
-    _set_action(parser, lambda a: sync_command(a.pull, a.push, a.force))
-
-
-def _add_report(subparsers: argparse._SubParsersAction) -> None:
-    parser = _command_parser(
-        subparsers,
-        "report",
-        "汇总数据、模型和最近10条已闭环交易。",
-        (
-            "只读取本地摘要、模型制品和 SQLite。",
-            "固定输出数据状态、模型状态和闭环交易三个部分。",
-        ),
-        (
-            "stock-trading report",
-            "stock-trading report --model v2.1",
-            "stock-trading report --date 2026-11-01:2026-11-07",
-        ),
-        ("不采集、不训练、不交易、不清理、不执行文件同步。",),
-    )
-    parser.add_argument("--model", help="只筛选指定模型。")
-    parser.add_argument("--date", help="闭环交易日期或日期范围。")
-    _set_action(parser, lambda a: report_command(a.model, a.date))
-
-
-def build_parser() -> ChineseArgumentParser:
-    parser = ChineseArgumentParser(
-        prog="stock-trading",
-        usage="stock-trading COMMAND ...",
-        description="A股 T+1 数据、模型、交易与维护命令。",
-        formatter_class=ColoredHelpFormatter,
-        add_help=False,
-    )
-    parser.add_argument(
-        "-h",
-        "--help",
-        action="help",
-        help=argparse.SUPPRESS,
-    )
-    shtab.add_argument_to(
+    _run(
         parser,
-        "--print-completion",
-        help=argparse.SUPPRESS,
+        lambda args: sync_command(args.pull, args.push, args.force),
     )
-    subparsers = parser.add_subparsers(
-        dest="command",
-        metavar="COMMAND",
-        required=True,
-        parser_class=ChineseArgumentParser,
-        help=argparse.SUPPRESS,
-    )
-    for add_command in (
-        _add_collect,
-        _add_prepare,
-        _add_train,
-        _add_rank,
-        _add_settle,
-        _add_order,
-        _add_review,
-        _add_sync,
-        _add_clean,
-        _add_report,
-    ):
-        add_command(subparsers)
-    parser.epilog = _root_command_help(subparsers)
-    return parser
 
 
-def main() -> None:
-    parser = build_parser()
-    arguments = parser.parse_args()
-    ensure_completion(parser)
-    try:
-        arguments._action(arguments)
-    except CliParameterError as error:
-        arguments._command_parser.error(str(error))
-
-
-# AI_GENERATE_END------------------------ --------------------------------
+# AI_GENERATE_END --

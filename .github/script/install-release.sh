@@ -18,7 +18,7 @@ logs_dir="$project_dir/logs"
 config_dir="$project_dir/config"
 bootstrap_script="$release_dir/script/bootstrap-server.sh"
 scheduler_script="$release_dir/script/scheduler.sh"
-commands="stock-trading"
+commands="stock-collect stock-prepare stock-train stock-rank stock-settle stock-order stock-review stock-clean stock-sync"
 system_path="$HOME/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 for required_file in \
@@ -86,15 +86,6 @@ test "$configured_project_dir" = "$project_dir"
 for command_name in $commands; do
   test -x "$venv_dir/bin/$command_name"
 done
-
-completion_file="$HOME/.local/share/bash-completion/completions/stock-trading"
-completion_source='[ -r "$HOME/.local/share/bash-completion/completions/stock-trading" ] && source "$HOME/.local/share/bash-completion/completions/stock-trading"'
-mkdir -p "$(dirname "$completion_file")"
-completion_temp="$completion_file.tmp"
-"$venv_dir/bin/stock-trading" --print-completion bash > "$completion_temp"
-mv -f "$completion_temp" "$completion_file"
-touch "$HOME/.bashrc"
-grep -Fqx "$completion_source" "$HOME/.bashrc" || printf '\n%s\n' "$completion_source" >> "$HOME/.bashrc"
 
 touch "$logs_dir/run.log" "$data_dir/state/scheduler.lock"
 bash "$scheduler_script" install "$project_dir" "$release_dir" "$system_path"

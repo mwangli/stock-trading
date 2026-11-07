@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START---------------------------------------------------------------------------------------------------------------- -->
+<!-- AI_GENERATE_START----------------------------------------------------------------------------------------------------------------- -->
 <div align="center">
 
 # stock-trading
@@ -11,7 +11,7 @@
 
 </div>
 
-> **独立运行**：`stock-trading` 不依赖 Web 服务即可部署和完成交易闭环。`stock-web` 只是可选的可视化增强模块，不参与本项目的数据、模型与交易执行。
+> **独立运行**：本项目不依赖 Web 服务即可部署和完成交易闭环。`stock-web` 只是可选的可视化增强模块，不参与本项目的数据、模型与交易执行。
 
 ## 核心能力
 
@@ -23,23 +23,17 @@
 
 ## 命令总览
 
-<p align="center">
-  <img src="./src/stock_trading/utils/stock-trading-demo.gif" alt="stock-trading 自动补全与帮助演示" width="80%" />
-</p>
-<p align="center"><sub>真实命令输出：一级命令循环补全、参数循环补全和分组帮助。</sub></p>
-
 | 分组 | 命令 | 作用 |
 | --- | --- | --- |
-| 数据与模型 | `stock-trading collect` | 依次采集基础、复权、日线、5 分钟和 1 分钟行情 |
-| 数据与模型 | `stock-trading prepare` | 增量、幂等准备 Qlib 数据 |
-| 数据与模型 | `stock-trading train` | 训练、评估并回测模型 |
-| 排名与交易 | `stock-trading rank` | 生成指定交易日的完整横截面排名 |
-| 排名与交易 | `stock-trading settle --buy / --sell` | 在独立窗口执行买入或卖出 |
-| 排名与交易 | `stock-trading order` | 同步券商事实并结算交易闭环 |
-| 排名与交易 | `stock-trading review` | 汇总已实现收益并判断模型状态 |
-| 运维与帮助 | `stock-trading sync` | 在本地与服务器之间同步运行数据 |
-| 运维与帮助 | `stock-trading clean` | 清理超过保留期的数据和业务状态 |
-| 运维与帮助 | `stock-trading report` | 汇总数据、模型和最近 10 条闭环交易 |
+| 数据与模型 | `stock-collect` | 依次采集基础、复权、日线、5 分钟和 1 分钟行情 |
+| 数据与模型 | `stock-prepare` | 增量、幂等准备 Qlib 数据 |
+| 数据与模型 | `stock-train` | 训练、评估并回测模型 |
+| 排名与交易 | `stock-rank` | 生成指定交易日的完整横截面排名 |
+| 排名与交易 | `stock-settle --buy / --sell` | 在独立窗口执行买入或卖出 |
+| 排名与交易 | `stock-order` | 同步券商事实并结算交易闭环 |
+| 排名与交易 | `stock-review` | 汇总已实现收益并判断模型状态 |
+| 运维与帮助 | `stock-sync --pull / --push` | 在本地与服务器之间同步运行数据 |
+| 运维与帮助 | `stock-clean` | 清理超过保留期的数据和业务状态 |
 
 ## 完整交易闭环
 
@@ -63,25 +57,23 @@ uv python install 3.12
 uv venv --python 3.12 .venv
 uv pip install --python .venv\Scripts\python.exe -e .
 .venv\Scripts\activate
-stock-trading -h
+stock-collect -h
 ```
 
-自动补全由安装流程和 `stock-trading` 自动维护，无需执行单独安装命令。Linux 发行版安装时写入 Bash 补全；Windows 首次执行业务命令时写入 PowerShell 补全。首次完成后重新打开终端即可使用。
-
-根命令和每个子命令都支持 `-h`：
+每个命令都独立支持 `-h`：
 
 ```bash
-stock-trading -h
-stock-trading prepare -h
-stock-trading settle -h
-stock-trading report -h
+stock-collect -h
+stock-prepare -h
+stock-settle -h
+stock-sync -h
 ```
 
 Linux 部署使用虚拟环境中的同名命令。项目可通过 Cron 串行调度数据更新、排名、交易、订单同步、复盘和清理任务，也可以按需手动执行。
 
 ## 技术概览
 
-`Python` · `argparse` · `shtab` · `Qlib` · `LightGBM` · `Parquet` · `SQLite`
+`Python` · `argparse` · `Qlib` · `LightGBM` · `Parquet` · `SQLite`
 
 运行数据、模型制品和交易状态均保存在本地目录中；实时资金、持仓、委托与成交结果以券商返回为准。
 
@@ -92,4 +84,4 @@ Linux 部署使用虚拟环境中的同名命令。项目可通过 Cron 串行�
 - 模型输出不等于成交结果，任何真实交易仍需满足券商权限、资金、价格与市场规则。
 - 本项目用于技术研究与自动化验证，不构成投资建议。
 
-<!-- AI_GENERATE_END----------------------------------------------------------------------------------------------------------------- -->
+<!-- AI_GENERATE_END------------------------------------------------------------------------------------------------------------------ -->

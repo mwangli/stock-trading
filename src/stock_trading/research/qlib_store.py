@@ -1,10 +1,9 @@
-# AI_GENERATE_START ---------------------------------
+# AI_GENERATE_START- ---------------------------------
 from __future__ import annotations
 
-import json
 import logging
 import shutil
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, timedelta
 from pathlib import Path
 
 import numpy as np
@@ -17,10 +16,7 @@ from stock_trading.market.minute1_summary import (
 from stock_trading.market.storage import ParquetMarketStore
 from stock_trading.utils.logging_utils import set_log_context, should_log_progress
 from stock_trading.research.labels import build_forward_labels
-from stock_trading.research.qlib_contract import (
-    PREPARE_SUMMARY_FILE,
-    expected_qlib_contract,
-)
+from stock_trading.research.qlib_contract import expected_qlib_contract
 from stock_trading.research.model_config import ModelSpec
 
 LOGGER = logging.getLogger(__name__)
@@ -162,7 +158,6 @@ class QlibBinaryStore:
             encoding="utf-8",
         )
         self._write_contract(temporary)
-        self._write_prepare_summary(temporary, calendar, len(instruments))
         self._replace_target(temporary)
         set_log_context(step="3/3", progress="-/-", target=str(self._target))
         LOGGER.info("Qlib 制品切换完成")
@@ -268,42 +263,6 @@ class QlibBinaryStore:
             return {normalize_instrument(value) for value in instruments}
         except (OSError, ValueError):
             return None
-
-    def report_summary(self) -> dict[str, object]:
-        """读取 prepare 生成的摘要；旧目录仅做轻量兼容读取。"""
-        summary_path = self._target / PREPARE_SUMMARY_FILE
-        try:
-            summary = json.loads(summary_path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            summary = None
-        if isinstance(summary, dict):
-            return summary | {
-                "summaryAvailable": True,
-                "contractValid": (
-                    summary.get("contractVersion") == self._expected_contract
-                    and self._contract_version() == self._expected_contract
-                ),
-            }
-
-        try:
-            calendar = self._read_calendar(self._target)
-        except (OSError, ValueError):
-            calendar = pd.DatetimeIndex([])
-        instruments = self.instruments()
-        return {
-            "modelId": self._spec.model_id if self._spec else "legacy",
-            "contractVersion": self._contract_version(),
-            "startDate": calendar.min().strftime("%Y-%m-%d") if len(calendar) else None,
-            "endDate": calendar.max().strftime("%Y-%m-%d") if len(calendar) else None,
-            "tradingDays": len(calendar),
-            "instruments": len(instruments or ()),
-            "validFeatureInstruments": None,
-            "coverage": None,
-            "contractValid": self._contract_version() == self._expected_contract,
-            "bytes": None,
-            "updatedAt": None,
-            "summaryAvailable": False,
-        }
 
     def _feature_files_valid(
         self, instrument: str, calendar_days: int | None = None
@@ -537,7 +496,6 @@ class QlibBinaryStore:
             prepared = QlibBinaryStore(self._market_store, temporary, self._spec)
             if not prepared.is_valid(codes, start_date, end_date):
                 raise ValueError("Qlib 增量制品检查失败")
-            self._write_prepare_summary(temporary, calendar, len(intervals))
             self._replace_target(temporary)
         finally:
             shutil.rmtree(temporary, ignore_errors=True)
@@ -644,36 +602,6 @@ class QlibBinaryStore:
             self._expected_contract, encoding="ascii"
         )
 
-    def _write_prepare_summary(
-        self,
-        target: Path,
-        calendar: pd.DatetimeIndex,
-        instrument_count: int,
-    ) -> None:
-        data_bytes = sum(
-            path.stat().st_size
-            for path in target.rglob("*")
-            if path.is_file() and path.name != PREPARE_SUMMARY_FILE
-        )
-        summary = {
-            "schemaVersion": 1,
-            "modelId": self._spec.model_id if self._spec else "legacy",
-            "contractVersion": self._expected_contract,
-            "featureFrequency": self._feature_frequency,
-            "startDate": calendar.min().strftime("%Y-%m-%d"),
-            "endDate": calendar.max().strftime("%Y-%m-%d"),
-            "tradingDays": len(calendar),
-            "instruments": instrument_count,
-            "validFeatureInstruments": instrument_count,
-            "coverage": 1.0 if instrument_count else None,
-            "bytes": data_bytes,
-            "updatedAt": datetime.now(UTC).isoformat(),
-        }
-        (target / PREPARE_SUMMARY_FILE).write_text(
-            json.dumps(summary, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-
     def _replace_target(self, temporary: Path) -> None:
         backup = self._target.with_name(f".{self._target.name}.previous")
         shutil.rmtree(backup, ignore_errors=True)
@@ -687,4 +615,4 @@ class QlibBinaryStore:
             raise
         shutil.rmtree(backup, ignore_errors=True)
 
-# AI_GENERATE_END ---------------------------------
+# AI_GENERATE_END- ---------------------------------

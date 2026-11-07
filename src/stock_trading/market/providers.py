@@ -1,4 +1,4 @@
-# AI_GENERATE_START--------- --------
+# AI_GENERATE_START---------- --------
 from __future__ import annotations
 
 import logging
@@ -172,10 +172,7 @@ class TushareMarketProvider:
         end_date: date,
     ) -> dict[str, object]:
         del store, codes, start_date, end_date
-        raise ValueError(
-            "当前 TuShare 适配器未启用分钟行情权限；请设置 "
-            "MINUTE5_MARKET_PROVIDER=baostock"
-        )
+        raise ValueError("当前 TuShare 适配器不提供本项目使用的 5 分钟行情")
 
     def sync_minute(
         self,
@@ -545,4 +542,4 @@ def _to_minute_bars(
         )
         for point in regular
     ]
-# AI_GENERATE_END--------- --------
+# AI_GENERATE_END---------- --------

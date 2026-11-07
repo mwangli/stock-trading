@@ -1,4 +1,4 @@
-# AI_GENERATE_START---------------------- ----------------------------------------------------------------------------------------------------------------------------------------
+# AI_GENERATE_START------------------------- ----------------------------------------------------------------------------------------------------------------------------------------
 from __future__ import annotations
 
 import json
@@ -17,7 +17,6 @@ from stock_trading.utils.logging_utils import (
     set_log_context,
 )
 from stock_trading.research.model_config import ModelSpec, resolve_model_spec
-from stock_trading.reports import render_report, summary_report
 from stock_trading.utils.time_utils import shanghai_today
 
 LOGGER = logging.getLogger(__name__)
@@ -33,10 +32,9 @@ def _execute(
     parameters: dict[str, object],
     operation: Callable[[AppConfig], T],
     result_summary: Callable[[T], str] | None = None,
-    console_logs: bool = False,
 ) -> T:
     load_project_environment()
-    configure_logging(console=console_logs)
+    configure_logging()
     started_at = perf_counter()
     config: AppConfig | None = None
     with log_context(
@@ -86,20 +84,6 @@ def _execute(
         )
         LOGGER.info("业务命令完成：总耗时=%.2f 秒", perf_counter() - started_at)
         return result
-
-
-def _execute_report(
-    operation: Callable[[AppConfig], tuple[object, ...]],
-) -> None:
-    """执行只读汇报，不配置业务日志、不写通知或任务状态。"""
-    try:
-        load_project_environment()
-        render_report(operation(AppConfig.from_env()))
-    except CliParameterError:
-        raise
-    except Exception as error:
-        echo(f"汇报失败：{error}", color=BOLD_RED, error=True)
-        raise SystemExit(1) from None
 
 
 def order_command(
@@ -183,32 +167,24 @@ def prepare_command(
     )
 
 
-def model_command(
+def train_command(
     split: str | None = None,
     force: bool = False,
     model_value: str | None = None,
 ) -> None:
     from stock_trading.research.training import run_training_pipeline
 
-    load_project_environment()
-    configure_logging(console=False)
-    logger = logging.getLogger("stock_trading")
-    previous_level = logger.level
-    logger.setLevel(logging.WARNING)
-    try:
-        _execute(
-            "train",
-            {"split": split, "force": force, "model": model_value},
-            lambda config: run_training_pipeline(
-                config,
-                _resolve_model(model_value),
-                _parse_model_split(split) if split else None,
-                force=force,
-            ),
-            result_summary=_summarize_training,
-        )
-    finally:
-        logger.setLevel(previous_level)
+    _execute(
+        "train",
+        {"split": split, "force": force, "model": model_value},
+        lambda config: run_training_pipeline(
+            config,
+            _resolve_model(model_value),
+            _parse_model_split(split) if split else None,
+            force=force,
+        ),
+        result_summary=_summarize_training,
+    )
 
 
 def rank_command(
@@ -228,7 +204,7 @@ def rank_command(
     )
 
 
-def trading_command(
+def settle_command(
     trade_type: str,
     model_value: str | None = None,
 ) -> None:
@@ -303,25 +279,9 @@ def sync_command(
         },
         lambda config: sync_data(config, pull=pull, push=push, force=force),
         result_summary=_summarize_sync,
-        console_logs=True,
     )
     if result.get("status") == "PARTIAL":
         raise SystemExit(1)
-
-
-def report_command(
-    model_value: str | None = None,
-    date_value: str | None = None,
-) -> None:
-    spec = _resolve_model(model_value) if model_value else None
-    start_date = end_date = None
-    if date_value is not None:
-        start_date, end_date = _parse_date_expression(
-            date_value, shanghai_today(), shanghai_today()
-        )
-    _execute_report(
-        lambda config: summary_report(config, spec, start_date, end_date)
-    )
 
 
 def _business_date(value: str | None) -> date:
@@ -583,4 +543,4 @@ def _format_bytes(value: object) -> str:
     return "-"
 
 
-# AI_GENERATE_END---------------------- ----------------------------------------------------------------------------------------------------------------------------------------
+# AI_GENERATE_END------------------------- ----------------------------------------------------------------------------------------------------------------------------------------

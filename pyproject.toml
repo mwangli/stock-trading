@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "stock-trading"
-version = "0.1.59"
+version = "0.1.60"
 description = "Minimal A-share T+1 model research and trading application"
 requires-python = ">=3.11,<=3.12"
 dependencies = [
@@ -12,7 +12,6 @@ dependencies = [
     "pandas>=2.2,<4",
     "pillow>=13,<14",
     "pyarrow>=18,<24",
-    "shtab>=1.7,<2",
     "gym==0.26.2",
     "lightgbm>=4.5,<5",
     "xgboost>=2.1,<4",
@@ -20,7 +19,15 @@ dependencies = [
 ]
 
 [project.scripts]
-stock-trading = "stock_trading.shortcuts:main"
+stock-collect = "stock_trading.commands:collect_main"
+stock-prepare = "stock_trading.commands:prepare_main"
+stock-train = "stock_trading.commands:train_main"
+stock-rank = "stock_trading.commands:rank_main"
+stock-settle = "stock_trading.commands:settle_main"
+stock-order = "stock_trading.commands:order_main"
+stock-review = "stock_trading.commands:review_main"
+stock-clean = "stock_trading.commands:clean_main"
+stock-sync = "stock_trading.commands:sync_main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
