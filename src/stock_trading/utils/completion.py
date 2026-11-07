@@ -1,4 +1,4 @@
-# AI_GENERATE_START --
+# AI_GENERATE_START -----
 from __future__ import annotations
 
 import argparse
@@ -17,15 +17,94 @@ BASH_SOURCE = (
     '[ -r "$HOME/.local/share/bash-completion/completions/stock-trading" ] '
     '&& source "$HOME/.local/share/bash-completion/completions/stock-trading"'
 )
+POWERSHELL_TAB_COMPLETION = """
+
+# Cycle through completions without printing a candidate list.
+if (Get-Command Set-PSReadLineKeyHandler -ErrorAction SilentlyContinue) {
+  Set-PSReadLineKeyHandler -Key Tab -ScriptBlock {
+    [string]$line = ''
+    [int]$cursor = 0
+    [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState(
+      [ref]$line,
+      [ref]$cursor
+    )
+    if ($script:stockTradingCompletionOptions -and
+        $cursor -eq $line.Length -and
+        $line -eq ($script:stockTradingCompletionBase +
+          $script:stockTradingCompletionOptions[
+            $script:stockTradingCompletionIndex
+          ])) {
+      $current = $script:stockTradingCompletionOptions[
+        $script:stockTradingCompletionIndex
+      ]
+      $script:stockTradingCompletionIndex = (
+        $script:stockTradingCompletionIndex + 1
+      ) % $script:stockTradingCompletionOptions.Count
+      $next = $script:stockTradingCompletionOptions[
+        $script:stockTradingCompletionIndex
+      ]
+      [Microsoft.PowerShell.PSConsoleReadLine]::Replace(
+        $cursor - $current.Length,
+        $current.Length,
+        $next
+      )
+      return
+    }
+    $script:stockTradingCompletionOptions = $null
+    $words = @($line.Substring(0, $cursor) -split '\\s+' | Where-Object { $_ })
+    if ($words.Count -ge 2 -and
+        $words[0] -in @('stock-trading', 'stock-trading.exe') -and
+        $words[-1] -in @('-', '--')) {
+      $prefix = '_shtab_stock_trading'
+      if ($words.Count -ge 3 -and
+          $_shtab_stock_trading_subparsers[$prefix] -contains $words[1]) {
+        $prefix += '_' + (_shtab_powershell_replace_nonword $words[1])
+      }
+      $options = @(
+        $_shtab_stock_trading_option_strings[$prefix] |
+          Where-Object { $_ -like "$($words[-1])*" }
+      )
+      if ($options.Count -gt 0) {
+        $script:stockTradingCompletionOptions = $options
+        $script:stockTradingCompletionIndex = 0
+        $script:stockTradingCompletionBase = $line.Substring(
+          0,
+          $cursor - $words[-1].Length
+        )
+        [Microsoft.PowerShell.PSConsoleReadLine]::Replace(
+          $cursor - $words[-1].Length,
+          $words[-1].Length,
+          $options[0]
+        )
+        return
+      }
+    }
+    [Microsoft.PowerShell.PSConsoleReadLine]::TabCompleteNext()
+  }
+}
+"""
 
 
-def install_completion(parser: argparse.ArgumentParser) -> str:
-    if os.name == "nt":
-        return _install_powershell(parser)
-    return _install_bash(parser)
+def ensure_completion(parser: argparse.ArgumentParser) -> None:
+    try:
+        if os.name == "nt":
+            _ensure_powershell(parser)
+        else:
+            _ensure_bash(parser)
+    except OSError:
+        return
 
 
-def _install_powershell(parser: argparse.ArgumentParser) -> str:
+def _powershell_script(parser: argparse.ArgumentParser) -> str:
+    script = shtab.complete(parser, shell="powershell").replace(
+        "-CommandName stock-trading -ScriptBlock",
+        "-CommandName stock-trading,stock-trading.exe -ScriptBlock",
+        1,
+    )
+    return script + POWERSHELL_TAB_COMPLETION
+
+
+def _ensure_powershell(parser: argparse.ArgumentParser) -> None:
     completion_file = (
         Path.home()
         / ".config"
@@ -33,13 +112,12 @@ def _install_powershell(parser: argparse.ArgumentParser) -> str:
         / "completions"
         / "stock-trading.ps1"
     )
-    script = shtab.complete(parser, shell="powershell").replace(
-        "-CommandName stock-trading -ScriptBlock",
-        "-CommandName stock-trading,stock-trading.exe -ScriptBlock",
-        1,
-    )
-    completion_file.parent.mkdir(parents=True, exist_ok=True)
-    completion_file.write_text(script, encoding="utf-8-sig")
+    script = _powershell_script(parser)
+    if (
+        completion_file.exists()
+        and completion_file.read_text(encoding="utf-8-sig") == script
+    ):
+        return
 
     profiles = _powershell_profiles()
     if not profiles:
@@ -51,7 +129,8 @@ def _install_powershell(parser: argparse.ArgumentParser) -> str:
         ]
     for profile in profiles:
         _append_once(profile, POWERSHELL_SOURCE, encoding="utf-8-sig")
-    return "PowerShell 自动补全已安装，重新打开终端后生效。"
+    completion_file.parent.mkdir(parents=True, exist_ok=True)
+    completion_file.write_text(script, encoding="utf-8-sig")
 
 
 def _powershell_profiles() -> list[Path]:
@@ -76,7 +155,7 @@ def _powershell_profiles() -> list[Path]:
     return profiles
 
 
-def _install_bash(parser: argparse.ArgumentParser) -> str:
+def _ensure_bash(parser: argparse.ArgumentParser) -> None:
     completion_file = (
         Path.home()
         / ".local"
@@ -85,13 +164,12 @@ def _install_bash(parser: argparse.ArgumentParser) -> str:
         / "completions"
         / "stock-trading"
     )
-    completion_file.parent.mkdir(parents=True, exist_ok=True)
-    completion_file.write_text(
-        shtab.complete(parser, shell="bash"),
-        encoding="utf-8",
-    )
+    script = shtab.complete(parser, shell="bash")
+    if completion_file.exists() and completion_file.read_text() == script:
+        return
     _append_once(Path.home() / ".bashrc", BASH_SOURCE)
-    return "Bash 自动补全已安装，重新打开终端后生效。"
+    completion_file.parent.mkdir(parents=True, exist_ok=True)
+    completion_file.write_text(script, encoding="utf-8")
 
 
 def _append_once(path: Path, line: str, encoding: str = "utf-8") -> None:
@@ -103,4 +181,4 @@ def _append_once(path: Path, line: str, encoding: str = "utf-8") -> None:
     path.write_text(f"{content}{separator}{line}\n", encoding=encoding)
 
 
-# AI_GENERATE_END --
+# AI_GENERATE_END -----

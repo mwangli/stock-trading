@@ -1,4 +1,4 @@
-# AI_GENERATE_START------------------ --------------------------------
+# AI_GENERATE_START------------------------ --------------------------------
 from __future__ import annotations
 
 import argparse
@@ -19,25 +19,41 @@ from stock_trading.cli import (
     sync_command,
     trading_command,
 )
-from stock_trading.utils.console import BOLD_BLUE, style
-from stock_trading.utils.completion import install_completion
+from stock_trading.utils.console import (
+    BOLD_BLUE,
+    BOLD_CYAN,
+    BOLD_YELLOW,
+    style,
+)
+from stock_trading.utils.completion import ensure_completion
 
 
-class InstallCompletionAction(argparse.Action):
-    def __init__(self, option_strings, dest, **kwargs):
-        super().__init__(option_strings, dest, nargs=0, **kwargs)
+class ColoredHelpFormatter(argparse.RawDescriptionHelpFormatter):
+    def start_section(self, heading: str | None) -> None:
+        super().start_section(
+            style(heading, BOLD_BLUE) if heading else heading
+        )
 
-    def __call__(self, parser, namespace, values, option_string=None):
-        print(install_completion(parser))
-        parser.exit(0)
+    def _format_action(self, action: argparse.Action) -> str:
+        rendered = super()._format_action(action)
+        invocation = super()._format_action_invocation(action)
+        return rendered.replace(
+            invocation,
+            style(invocation, BOLD_CYAN),
+            1,
+        )
 
 
 class ChineseArgumentParser(argparse.ArgumentParser):
     def format_help(self) -> str:
-        return super().format_help().replace("usage:", "用法:", 1)
+        return super().format_help().replace(
+            "usage:", style("用法:", BOLD_YELLOW), 1
+        )
 
     def format_usage(self) -> str:
-        return super().format_usage().replace("usage:", "用法:", 1)
+        return super().format_usage().replace(
+            "usage:", style("用法:", BOLD_YELLOW), 1
+        )
 
     def error(self, message: str) -> None:
         translations = {
@@ -63,6 +79,26 @@ def _section(title: str, lines: tuple[str, ...], prefix: str = "") -> str:
     )
 
 
+def _root_command_help(
+    subparsers: argparse._SubParsersAction,
+) -> str:
+    groups = (
+        ("数据与模型", ("collect", "prepare", "train")),
+        ("排名与交易", ("rank", "settle", "order", "review")),
+        ("运维与帮助", ("sync", "clean", "report")),
+    )
+    width = max(len(name) for _, names in groups for name in names)
+    sections = []
+    for title, names in groups:
+        lines = tuple(
+            f"{style(name.ljust(width), BOLD_CYAN)}  "
+            f"{subparsers.choices[name].description}"
+            for name in names
+        )
+        sections.append(_section(title, lines))
+    return f"{style('命令:', BOLD_BLUE)}\n\n" + "\n\n".join(sections)
+
+
 def _command_parser(
     subparsers: argparse._SubParsersAction,
     name: str,
@@ -82,7 +118,7 @@ def _command_parser(
                 _section("业务边界", boundaries, "· "),
             )
         ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
+        formatter_class=ColoredHelpFormatter,
         add_help=False,
     )
     parser.add_argument("-h", "--help", action="help", help="显示帮助信息并退出。")
@@ -172,18 +208,18 @@ def _add_rank(subparsers: argparse._SubParsersAction) -> None:
     _set_action(parser, lambda a: rank_command(a.date, a.model))
 
 
-def _add_trade(subparsers: argparse._SubParsersAction) -> None:
+def _add_settle(subparsers: argparse._SubParsersAction) -> None:
     parser = _command_parser(
         subparsers,
-        "trade",
+        "settle",
         "在独立下午窗口执行买入或卖出。",
         (
             "13:00-14:00 卖出，14:00-15:00 买入。",
             "从排名候选依次检查并尝试交易。",
         ),
         (
-            "stock-trading trade --sell --model v1.2",
-            "stock-trading trade --buy --model v2.1",
+            "stock-trading settle --sell --model v1.2",
+            "stock-trading settle --buy --model v2.1",
         ),
         ("必须且只能指定一个方向。", "最终合法性和成交状态由券商判断。"),
     )
@@ -292,51 +328,54 @@ def _add_report(subparsers: argparse._SubParsersAction) -> None:
 def build_parser() -> ChineseArgumentParser:
     parser = ChineseArgumentParser(
         prog="stock-trading",
+        usage="stock-trading COMMAND ...",
         description="A股 T+1 数据、模型、交易与维护命令。",
+        formatter_class=ColoredHelpFormatter,
         add_help=False,
     )
-    parser.add_argument("-h", "--help", action="help", help="显示帮助信息并退出。")
+    parser.add_argument(
+        "-h",
+        "--help",
+        action="help",
+        help=argparse.SUPPRESS,
+    )
     shtab.add_argument_to(
         parser,
         "--print-completion",
-        help="输出指定 shell 的自动补全脚本。",
+        help=argparse.SUPPRESS,
     )
-    parser.add_argument(
-        "--install-completion",
-        action=InstallCompletionAction,
-        help="安装当前系统的自动补全，重新打开终端后生效。",
-    )
-    parser._optionals.title = "参数"
     subparsers = parser.add_subparsers(
         dest="command",
-        title="命令",
         metavar="COMMAND",
         required=True,
         parser_class=ChineseArgumentParser,
+        help=argparse.SUPPRESS,
     )
     for add_command in (
         _add_collect,
         _add_prepare,
         _add_train,
         _add_rank,
-        _add_trade,
+        _add_settle,
         _add_order,
         _add_review,
-        _add_clean,
         _add_sync,
+        _add_clean,
         _add_report,
     ):
         add_command(subparsers)
+    parser.epilog = _root_command_help(subparsers)
     return parser
 
 
 def main() -> None:
     parser = build_parser()
     arguments = parser.parse_args()
+    ensure_completion(parser)
     try:
         arguments._action(arguments)
     except CliParameterError as error:
         arguments._command_parser.error(str(error))
 
 
-# AI_GENERATE_END------------------ --------------------------------
+# AI_GENERATE_END------------------------ --------------------------------

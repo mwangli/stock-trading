@@ -1,4 +1,4 @@
-<!-- AI_GENERATE_START--------------------------------------------------------------------------------------------------------------- -->
+<!-- AI_GENERATE_START---------------------------------------------------------------------------------------------------------------- -->
 <div align="center">
 
 # stock-trading
@@ -26,19 +26,20 @@
 <p align="center">
   <img src="./src/stock_trading/utils/stock-trading-demo.gif" alt="stock-trading 自动补全与帮助演示" width="80%" />
 </p>
-<p align="center"><sub>真实命令输出：一级命令补全、参数补全、根帮助和交易命令帮助。</sub></p>
+<p align="center"><sub>真实命令输出：一级命令循环补全、参数循环补全和分组帮助。</sub></p>
 
-| 阶段 | 命令 | 作用 |
+| 分组 | 命令 | 作用 |
 | --- | --- | --- |
-| 数据 | `stock-trading collect` | 依次采集基础、复权、日线、5 分钟和 1 分钟行情 |
-| 模型 | `stock-trading prepare` | 增量、幂等准备 Qlib 数据 |
-| 模型 | `stock-trading train` | 训练、评估并回测模型 |
-| 排名 | `stock-trading rank` | 生成指定交易日的完整横截面排名 |
-| 交易 | `stock-trading trade --buy / --sell` | 在独立窗口执行买入或卖出 |
-| 订单 | `stock-trading order` | 同步券商事实并结算交易闭环 |
-| 复盘 | `stock-trading review` | 汇总已实现收益并判断模型状态 |
-| 维护 | `stock-trading clean / sync` | 清理历史数据或同步运行资产 |
-| 汇报 | `stock-trading report` | 汇总数据、模型和最近 10 条闭环交易 |
+| 数据与模型 | `stock-trading collect` | 依次采集基础、复权、日线、5 分钟和 1 分钟行情 |
+| 数据与模型 | `stock-trading prepare` | 增量、幂等准备 Qlib 数据 |
+| 数据与模型 | `stock-trading train` | 训练、评估并回测模型 |
+| 排名与交易 | `stock-trading rank` | 生成指定交易日的完整横截面排名 |
+| 排名与交易 | `stock-trading settle --buy / --sell` | 在独立窗口执行买入或卖出 |
+| 排名与交易 | `stock-trading order` | 同步券商事实并结算交易闭环 |
+| 排名与交易 | `stock-trading review` | 汇总已实现收益并判断模型状态 |
+| 运维与帮助 | `stock-trading sync` | 在本地与服务器之间同步运行数据 |
+| 运维与帮助 | `stock-trading clean` | 清理超过保留期的数据和业务状态 |
+| 运维与帮助 | `stock-trading report` | 汇总数据、模型和最近 10 条闭环交易 |
 
 ## 完整交易闭环
 
@@ -65,20 +66,14 @@ uv pip install --python .venv\Scripts\python.exe -e .
 stock-trading -h
 ```
 
-安装完成后执行一次补全安装，然后重新打开终端：
-
-```bash
-stock-trading --install-completion
-```
-
-该命令在 Windows 安装 PowerShell 补全，在 Linux 安装 Bash 补全；重复执行不会重复写入配置。IDEA 内置终端同样使用其实际 shell 的配置。也可以通过 `--print-completion` 输出脚本，交给自定义 shell 配置管理。
+自动补全由安装流程和 `stock-trading` 自动维护，无需执行单独安装命令。Linux 发行版安装时写入 Bash 补全；Windows 首次执行业务命令时写入 PowerShell 补全。首次完成后重新打开终端即可使用。
 
 根命令和每个子命令都支持 `-h`：
 
 ```bash
 stock-trading -h
 stock-trading prepare -h
-stock-trading trade -h
+stock-trading settle -h
 stock-trading report -h
 ```
 
@@ -97,4 +92,4 @@ Linux 部署使用虚拟环境中的同名命令。项目可通过 Cron 串行�
 - 模型输出不等于成交结果，任何真实交易仍需满足券商权限、资金、价格与市场规则。
 - 本项目用于技术研究与自动化验证，不构成投资建议。
 
-<!-- AI_GENERATE_END---------------------------------------------------------------------------------------------------------------- -->
+<!-- AI_GENERATE_END----------------------------------------------------------------------------------------------------------------- -->
