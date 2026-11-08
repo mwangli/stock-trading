@@ -14,7 +14,7 @@ source_paths:
   - stock-client/src/desktop/pages/modelInfo
 ---
 
-<!-- AI_GENERATE_START ---- -->
+<!-- AI_GENERATE_START ----- -->
 # 模型矩阵与策略标签设计
 
 ## 1. 设计目标
@@ -101,8 +101,8 @@ RANK 保留规则
 ### 3.1 L1：全天日均价策略
 
 ```text
-strategyId: T1_ALL_BUY_ALL_SELL
-displayName: 全天动态执行、日均价 T+1
+strategyId: T1_ALL_SELL_ALL_BUY
+displayName: 全天先卖后买、日均价 T+1
 featureLevel: L1
 labelHorizon: T+1
 ```
@@ -133,8 +133,8 @@ label(D, stock) = daily_vwap(D+2, stock) / daily_vwap(D+1, stock) - 1
 ### 3.2 L2：上午卖出、下午买入策略
 
 ```text
-strategyId: T1_PM_BUY_AM_SELL
-displayName: 收盘排名、下午买入、次日上午卖出
+strategyId: T1_AM_SELL_PM_BUY
+displayName: 收盘排名、次日上午卖出、下午买入
 featureLevel: L2
 labelHorizon: T+1
 ```
@@ -168,7 +168,7 @@ feature(D) -> buy(D+1 afternoon) -> sell(D+2 morning)
 ### 3.3 L3：午间分钟决策策略
 
 ```text
-strategyId: T1_NOON_RANK_PM_BUY_NEXT_PM_SELL
+strategyId: T1_PM_SELL_PM_BUY
 displayName: 午间分钟决策、下午先卖后买
 featureLevel: L3
 labelHorizon: T+1
@@ -249,8 +249,8 @@ retainRank = 15
 
 | 数据等级 | LightGBM | XGBoost | 固定策略标签 |
 |---|---|---|---|
-| L1 daily | `L1_daily_LightGBM` | `L1_daily_XGBoost` | `T1_ALL_BUY_ALL_SELL` |
-| L2 minute5 | `L2_minute5_LightGBM` | `L2_minute5_XGBoost` | `T1_PM_BUY_AM_SELL` |
+| L1 daily | `L1_daily_LightGBM` | `L1_daily_XGBoost` | `T1_ALL_SELL_ALL_BUY` |
+| L2 minute5 | `L2_minute5_LightGBM` | `L2_minute5_XGBoost` | `T1_AM_SELL_PM_BUY` |
 
 第一阶段不包含：
 
@@ -269,9 +269,9 @@ retainRank = 15
 
 | 数据等级 | LightGBM | XGBoost | 第三算法 | 固定策略标签 |
 |---|---|---|---|---|
-| L1 daily | 启用 | 启用 | 规划 | `T1_ALL_BUY_ALL_SELL` |
-| L2 minute5 | 启用 | 启用 | 规划 | `T1_PM_BUY_AM_SELL` |
-| L3 minute1 | 规划 | 规划 | 规划 | `T1_NOON_RANK_PM_BUY_NEXT_PM_SELL` |
+| L1 daily | 启用 | 启用 | 规划 | `T1_ALL_SELL_ALL_BUY` |
+| L2 minute5 | 启用 | 启用 | 规划 | `T1_AM_SELL_PM_BUY` |
+| L3 minute1 | 规划 | 规划 | 规划 | `T1_PM_SELL_PM_BUY` |
 
 第三算法只有在明确训练成本、推理稳定性和增益后再确定，不为凑齐矩阵提前引入依赖。
 
@@ -325,9 +325,9 @@ data/
 │   ├── L2_minute5/
 │   └── L3_minute1/
 ├── targets/
-│   ├── T1_ALL_BUY_ALL_SELL/
-│   ├── T1_PM_BUY_AM_SELL/
-│   └── T1_NOON_RANK_PM_BUY_NEXT_PM_SELL/
+│   ├── T1_ALL_SELL_ALL_BUY/
+│   ├── T1_AM_SELL_PM_BUY/
+│   └── T1_PM_SELL_PM_BUY/
 ├── models/
 │   └── <modelId>/<runId>/
 └── state/
@@ -411,4 +411,4 @@ PC 页面以矩阵为第一视图：
 8. 数据完整后再评估 L3 和第三算法，不提前保留兼容占位代码。
 
 本文记录目标设计。具体能力只有在对应源码完成并经过相应验证后，才能视为已实现。
-<!-- AI_GENERATE_END ---- -->
+<!-- AI_GENERATE_END ----- -->
