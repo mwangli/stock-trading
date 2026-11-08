@@ -1,4 +1,4 @@
-// AI_GENERATE_START-------------------------------------------
+// AI_GENERATE_START--------------------------------------------
 import './styles.css';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Card, Col, Empty, Row, Statistic, Table, Tag, Typography } from 'antd';
@@ -26,9 +26,9 @@ interface PerformanceRankingItem {
   buyAmount: number;
   sellAmount: number;
   tradeQuantity: number;
-  netProfit: number;
+  grossProfit: number;
   returnRate: number;
-  dailyReturnRate: number;
+  dailyGrossReturnRate: number;
   buyTime?: string;
   holdingDays?: number;
   sellTime?: string;
@@ -36,8 +36,8 @@ interface PerformanceRankingItem {
 
 interface PerformancePeriodItem {
   period: string;
-  netProfit: number;
-  cumulativeProfit: number;
+  grossProfit: number;
+  cumulativeGrossProfit: number;
   returnRate: number;
   tradeCount: number;
   winningTradeCount: number;
@@ -48,22 +48,22 @@ interface PerformanceSummary {
   total_trade_count?: number;
   winning_trade_count?: number;
   losing_trade_count?: number;
-  net_profit?: number;
-  net_return?: number;
-  average_net_return?: number;
-  best_net_return?: number;
-  worst_net_return?: number;
-  daily_net_profit?: number;
-  daily_net_return?: number;
-  monthly_net_profit?: number;
-  monthly_net_return?: number;
+  gross_profit?: number;
+  gross_return?: number;
+  average_gross_return?: number;
+  best_gross_return?: number;
+  worst_gross_return?: number;
+  daily_gross_profit?: number;
+  daily_gross_return?: number;
+  monthly_gross_profit?: number;
+  monthly_gross_return?: number;
 }
 
 interface PerformanceDailyReturnItem {
   period: string;
   stockCode: string;
   stockName?: string;
-  netProfit: number;
+  grossProfit: number;
   buyAmount: number;
   sellAmount: number;
   returnRate: number;
@@ -75,20 +75,20 @@ interface PerformanceOverview {
   availableCash?: number;
   marketValue: number;
   frozenCash?: number;
-  cumulativeProfit: number;
-  cumulativeReturnRate: number;
-  dailyProfit: number;
-  dailyReturnRate: number;
-  monthlyProfit: number;
-  monthlyReturnRate: number;
+  cumulativeGrossProfit: number;
+  cumulativeGrossReturnRate: number;
+  dailyGrossProfit: number;
+  dailyGrossReturnRate: number;
+  monthlyGrossProfit: number;
+  monthlyGrossReturnRate: number;
   totalTradeCount: number;
   closedTradeCount: number;
   winningTradeCount: number;
   losingTradeCount: number;
   winRate: number;
-  averageReturnRate: number;
-  bestReturnRate: number;
-  worstReturnRate: number;
+  averageGrossReturnRate: number;
+  bestGrossReturnRate: number;
+  worstGrossReturnRate: number;
   ranking: PerformanceRankingItem[];
   dailyReturns: PerformanceDailyReturnItem[];
   monthlyReturns: PerformancePeriodItem[];
@@ -120,16 +120,16 @@ const profitColor = (value?: number): 'success' | 'danger' => value != null && v
 const numeric = (value: unknown) => value == null || value === '' ? 0 : Number(value);
 const optionalNumeric = (value: unknown) => value == null || value === '' ? undefined : Number(value);
 const text = (value: unknown) => value == null ? '' : String(value);
-const dailyReturnRate = (returnRate: number, holdingDays?: number) => (
+const dailyGrossReturnRate = (returnRate: number, holdingDays?: number) => (
   holdingDays != null && holdingDays > 1 && returnRate > -1
     ? Math.pow(1 + returnRate, 1 / holdingDays) - 1
     : returnRate
 );
 
-const aggregateReturnRate = (rows: Array<Record<string, unknown>>) => {
-  const netProfit = rows.reduce((sum, item) => sum + numeric(item.net_pnl), 0);
-  const investedAmount = rows.reduce((sum, item) => sum + numeric(item.cash) + numeric(item.buy_fee), 0);
-  return investedAmount ? netProfit / investedAmount : 0;
+const aggregateGrossReturnRate = (rows: Array<Record<string, unknown>>) => {
+  const grossProfit = rows.reduce((sum, item) => sum + numeric(item.gross_pnl), 0);
+  const investedAmount = rows.reduce((sum, item) => sum + numeric(item.cash), 0);
+  return investedAmount ? grossProfit / investedAmount : 0;
 };
 
 const adaptDashboardOverview = (overview: DashboardOverview): PerformanceOverview => {
@@ -139,46 +139,46 @@ const adaptDashboardOverview = (overview: DashboardOverview): PerformanceOvervie
   const latestRows = performanceRows.filter((item) => text(item.business_date) === latestPeriod);
   const summary = overview.performanceSummary ?? {};
   const account = overview.account ?? {};
-  const netReturns = performanceRows.map((item) => numeric(item.net_return));
-  const netProfits = performanceRows.map((item) => numeric(item.net_pnl));
-  const winningTradeCount = netProfits.filter((value) => value > 0).length;
-  const losingTradeCount = netProfits.filter((value) => value < 0).length;
+  const grossReturns = performanceRows.map((item) => numeric(item.gross_return));
+  const grossProfits = performanceRows.map((item) => numeric(item.gross_pnl));
+  const winningTradeCount = grossProfits.filter((value) => value > 0).length;
+  const losingTradeCount = grossProfits.filter((value) => value < 0).length;
   const monthly = new Map<string, PerformancePeriodItem>();
 
   performanceRows.forEach((item) => {
     const period = text(item.business_date).slice(0, 7) || '-';
     const current = monthly.get(period) ?? {
       period,
-      netProfit: 0,
-      cumulativeProfit: 0,
+      grossProfit: 0,
+      cumulativeGrossProfit: 0,
       returnRate: 0,
       tradeCount: 0,
       winningTradeCount: 0,
       investedAmount: 0,
     };
-    const profit = numeric(item.net_pnl);
-    current.netProfit += profit;
-    current.investedAmount = numeric(current.investedAmount) + numeric(item.cash) + numeric(item.buy_fee);
-    current.returnRate = current.investedAmount ? current.netProfit / current.investedAmount : 0;
+    const profit = numeric(item.gross_pnl);
+    current.grossProfit += profit;
+    current.investedAmount = numeric(current.investedAmount) + numeric(item.cash);
+    current.returnRate = current.investedAmount ? current.grossProfit / current.investedAmount : 0;
     current.tradeCount += 1;
     current.winningTradeCount += profit > 0 ? 1 : 0;
     monthly.set(period, current);
   });
 
-  let cumulativeProfit = 0;
+  let cumulativeGrossProfit = 0;
   const monthlyRows = overview.monthlyPerformance?.length
     ? overview.monthlyPerformance.map((item): PerformancePeriodItem => ({
       period: text(item.period),
-      netProfit: numeric(item.net_profit),
-      cumulativeProfit: 0,
-      returnRate: numeric(item.net_return),
+      grossProfit: numeric(item.gross_profit),
+      cumulativeGrossProfit: 0,
+      returnRate: numeric(item.gross_return),
       tradeCount: numeric(item.trade_count),
       winningTradeCount: numeric(item.winning_trade_count),
     }))
     : Array.from(monthly.values());
   const monthlyReturns = monthlyRows.slice().reverse().map((item) => {
-    cumulativeProfit += item.netProfit;
-    return { ...item, cumulativeProfit };
+    cumulativeGrossProfit += item.grossProfit;
+    return { ...item, cumulativeGrossProfit };
   }).reverse();
 
   const ranking = (overview.ranking ?? []).map((item): PerformanceRankingItem => {
@@ -196,9 +196,9 @@ const adaptDashboardOverview = (overview: DashboardOverview): PerformanceOvervie
       buyAmount: numeric(item.buy_amount),
       sellAmount: numeric(item.sell_amount),
       tradeQuantity: numeric(item.trade_quantity),
-      netProfit: numeric(item.net_profit),
+      grossProfit: numeric(item.gross_profit),
       returnRate,
-      dailyReturnRate: dailyReturnRate(returnRate, holdingDays),
+      dailyGrossReturnRate: dailyGrossReturnRate(returnRate, holdingDays),
       buyTime,
       holdingDays,
       sellTime,
@@ -211,12 +211,12 @@ const adaptDashboardOverview = (overview: DashboardOverview): PerformanceOvervie
     availableCash: optionalNumeric(account.available_cash),
     marketValue: numeric(account.total_position),
     frozenCash: optionalNumeric(account.frozen_amount),
-    cumulativeProfit: summary.net_profit == null ? netProfits.reduce((sum, value) => sum + value, 0) : numeric(summary.net_profit),
-    cumulativeReturnRate: summary.net_return == null ? aggregateReturnRate(performanceRows) : numeric(summary.net_return),
-    dailyProfit: summary.daily_net_profit == null ? latestRows.reduce((sum, item) => sum + numeric(item.net_pnl), 0) : numeric(summary.daily_net_profit),
-    dailyReturnRate: summary.daily_net_return == null ? aggregateReturnRate(latestRows) : numeric(summary.daily_net_return),
-    monthlyProfit: summary.monthly_net_profit == null ? monthlyReturns[0]?.netProfit ?? 0 : numeric(summary.monthly_net_profit),
-    monthlyReturnRate: summary.monthly_net_return == null ? monthlyReturns[0]?.returnRate ?? 0 : numeric(summary.monthly_net_return),
+    cumulativeGrossProfit: summary.gross_profit == null ? grossProfits.reduce((sum, value) => sum + value, 0) : numeric(summary.gross_profit),
+    cumulativeGrossReturnRate: summary.gross_return == null ? aggregateGrossReturnRate(performanceRows) : numeric(summary.gross_return),
+    dailyGrossProfit: summary.daily_gross_profit == null ? latestRows.reduce((sum, item) => sum + numeric(item.gross_pnl), 0) : numeric(summary.daily_gross_profit),
+    dailyGrossReturnRate: summary.daily_gross_return == null ? aggregateGrossReturnRate(latestRows) : numeric(summary.daily_gross_return),
+    monthlyGrossProfit: summary.monthly_gross_profit == null ? monthlyReturns[0]?.grossProfit ?? 0 : numeric(summary.monthly_gross_profit),
+    monthlyGrossReturnRate: summary.monthly_gross_return == null ? monthlyReturns[0]?.returnRate ?? 0 : numeric(summary.monthly_gross_return),
     totalTradeCount: summary.total_trade_count == null ? performanceRows.length : numeric(summary.total_trade_count),
     closedTradeCount: summary.total_trade_count == null ? performanceRows.length : numeric(summary.total_trade_count),
     winningTradeCount: summary.winning_trade_count == null ? winningTradeCount : numeric(summary.winning_trade_count),
@@ -224,20 +224,20 @@ const adaptDashboardOverview = (overview: DashboardOverview): PerformanceOvervie
     winRate: numeric(summary.total_trade_count) > 0
       ? numeric(summary.winning_trade_count) / numeric(summary.total_trade_count)
       : performanceRows.length ? winningTradeCount / performanceRows.length : 0,
-    averageReturnRate: summary.average_net_return == null
-      ? netReturns.length ? netReturns.reduce((sum, value) => sum + value, 0) / netReturns.length : 0
-      : numeric(summary.average_net_return),
-    bestReturnRate: summary.best_net_return == null ? netReturns.length ? Math.max(...netReturns) : 0 : numeric(summary.best_net_return),
-    worstReturnRate: summary.worst_net_return == null ? netReturns.length ? Math.min(...netReturns) : 0 : numeric(summary.worst_net_return),
+    averageGrossReturnRate: summary.average_gross_return == null
+      ? grossReturns.length ? grossReturns.reduce((sum, value) => sum + value, 0) / grossReturns.length : 0
+      : numeric(summary.average_gross_return),
+    bestGrossReturnRate: summary.best_gross_return == null ? grossReturns.length ? Math.max(...grossReturns) : 0 : numeric(summary.best_gross_return),
+    worstGrossReturnRate: summary.worst_gross_return == null ? grossReturns.length ? Math.min(...grossReturns) : 0 : numeric(summary.worst_gross_return),
     ranking,
     dailyReturns: performanceRows.map((item) => ({
       period: text(item.business_date),
       stockCode: text(item.scenario || item.model_version_id || 'LIVE'),
       stockName: text(item.scenario),
-      netProfit: numeric(item.net_pnl),
+      grossProfit: numeric(item.gross_pnl),
       buyAmount: numeric(item.cash),
       sellAmount: numeric(item.equity),
-      returnRate: numeric(item.net_return),
+      returnRate: numeric(item.gross_return),
     })),
     monthlyReturns,
   };
@@ -283,9 +283,9 @@ const Dashboard: React.FC = () => {
     { title: t('dashboard.columns.buyAmount'), dataIndex: 'buyAmount', key: 'buyAmount', width: 120, render: money },
     { title: t('dashboard.columns.sellAmount'), dataIndex: 'sellAmount', key: 'sellAmount', width: 120, render: money },
     { title: t('dashboard.columns.tradeQuantity'), dataIndex: 'tradeQuantity', key: 'tradeQuantity', width: 110 },
-    { title: t('dashboard.columns.netProfit'), dataIndex: 'netProfit', key: 'netProfit', width: 120, render: (value: number) => <Text type={profitColor(value)}>{money(value)}</Text> },
+    { title: t('dashboard.columns.grossProfit'), dataIndex: 'grossProfit', key: 'grossProfit', width: 120, render: (value: number) => <Text type={profitColor(value)}>{money(value)}</Text> },
     { title: t('dashboard.columns.returnRate'), dataIndex: 'returnRate', key: 'returnRate', width: 110, render: (value: number) => <Text type={profitColor(value)}>{percent(value)}</Text> },
-    { title: t('dashboard.columns.dailyReturnRate'), dataIndex: 'dailyReturnRate', key: 'dailyReturnRate', width: 110, render: (value: number) => <Text type={profitColor(value)}>{percent(value)}</Text> },
+    { title: t('dashboard.columns.dailyGrossReturnRate'), dataIndex: 'dailyGrossReturnRate', key: 'dailyGrossReturnRate', width: 110, render: (value: number) => <Text type={profitColor(value)}>{percent(value)}</Text> },
     { title: t('dashboard.columns.buyTime'), dataIndex: 'buyTime', key: 'buyTime', width: 170, render: formatDateTime },
     { title: t('dashboard.columns.sellTime'), dataIndex: 'sellTime', key: 'sellTime', width: 170, render: formatDateTime },
     { title: t('dashboard.columns.holdingDays'), dataIndex: 'holdingDays', key: 'holdingDays', width: 110, render: (value?: number) => value == null ? '-' : `${Math.trunc(value)} ${t('dashboard.units.days')}` },
@@ -293,7 +293,7 @@ const Dashboard: React.FC = () => {
 
   const periodColumns = [
     { title: t('dashboard.columns.period'), dataIndex: 'period', key: 'period' },
-    { title: t('dashboard.columns.netProfit'), dataIndex: 'netProfit', key: 'netProfit', render: (value: number) => <Text type={profitColor(value)}>{money(value)}</Text> },
+    { title: t('dashboard.columns.grossProfit'), dataIndex: 'grossProfit', key: 'grossProfit', render: (value: number) => <Text type={profitColor(value)}>{money(value)}</Text> },
     { title: t('dashboard.columns.returnRate'), dataIndex: 'returnRate', key: 'returnRate', render: (value: number) => <Text type={profitColor(value)}>{percent(value)}</Text> },
     { title: t('dashboard.columns.tradeCount'), dataIndex: 'tradeCount', key: 'tradeCount' },
     { title: t('dashboard.columns.winningTradeCount'), dataIndex: 'winningTradeCount', key: 'winningTradeCount' },
@@ -304,7 +304,7 @@ const Dashboard: React.FC = () => {
     { title: t('dashboard.columns.stock'), key: 'stock', render: (_value: unknown, item: PerformanceDailyReturnItem) => `${item.stockCode} ${item.stockName ?? ''}` },
     { title: t('dashboard.columns.buyAmount'), dataIndex: 'buyAmount', key: 'buyAmount', render: money },
     { title: t('dashboard.columns.sellAmount'), dataIndex: 'sellAmount', key: 'sellAmount', render: money },
-    { title: t('dashboard.columns.netProfit'), dataIndex: 'netProfit', key: 'netProfit', render: (value: number) => <Text type={profitColor(value)}>{money(value)}</Text> },
+    { title: t('dashboard.columns.grossProfit'), dataIndex: 'grossProfit', key: 'grossProfit', render: (value: number) => <Text type={profitColor(value)}>{money(value)}</Text> },
     { title: t('dashboard.columns.returnRate'), dataIndex: 'returnRate', key: 'returnRate', render: (value: number) => <Text type={profitColor(value)}>{percent(value)}</Text> },
   ];
 
@@ -319,8 +319,8 @@ const Dashboard: React.FC = () => {
         <strong>{money(account?.totalPosition)}</strong>
         <div>
           <span>{t('dashboard.cards.availableCash')} <b>{cashMoney(account?.availableCash)}</b></span>
-          <Text type={profitColor(performance?.cumulativeProfit)}>
-            {t('dashboard.cards.realizedRate')} <b>{percent(performance?.cumulativeReturnRate)}</b>
+          <Text type={profitColor(performance?.cumulativeGrossProfit)}>
+            {t('dashboard.cards.realizedRate')} <b>{percent(performance?.cumulativeGrossReturnRate)}</b>
           </Text>
         </div>
       </section>
@@ -340,17 +340,17 @@ const Dashboard: React.FC = () => {
         </Col>
         <Col xs={12} md={6}>
           <Card className="surface-card compact-card returns-overview-metric-card" loading={loading}>
-            <Statistic title={t('dashboard.cards.realizedToday')} value={performance?.dailyProfit} precision={2} prefix="¥" />
-            <Text className="returns-overview-rate" type={profitColor(performance?.dailyProfit)}>
-              {t('dashboard.cards.dailyRate')} <strong>{percent(performance?.dailyReturnRate)}</strong>
+            <Statistic title={t('dashboard.cards.realizedToday')} value={performance?.dailyGrossProfit} precision={2} prefix="¥" />
+            <Text className="returns-overview-rate" type={profitColor(performance?.dailyGrossProfit)}>
+              {t('dashboard.cards.dailyRate')} <strong>{percent(performance?.dailyGrossReturnRate)}</strong>
             </Text>
           </Card>
         </Col>
         <Col xs={12} md={6}>
           <Card className="surface-card compact-card returns-overview-metric-card" loading={loading}>
-            <Statistic title={t('dashboard.cards.realizedMonth')} value={performance?.monthlyProfit} precision={2} prefix="¥" />
-            <Text className="returns-overview-rate" type={profitColor(performance?.monthlyProfit)}>
-              {t('dashboard.cards.monthlyRate')} <strong>{percent(performance?.monthlyReturnRate)}</strong>
+            <Statistic title={t('dashboard.cards.realizedMonth')} value={performance?.monthlyGrossProfit} precision={2} prefix="¥" />
+            <Text className="returns-overview-rate" type={profitColor(performance?.monthlyGrossProfit)}>
+              {t('dashboard.cards.monthlyRate')} <strong>{percent(performance?.monthlyGrossReturnRate)}</strong>
             </Text>
           </Card>
         </Col>
@@ -361,15 +361,15 @@ const Dashboard: React.FC = () => {
         title={t('dashboard.sections.returnStats')}
         extra={(
           <div className="returns-overview-summary-extra">
-            <Tag color="red">{t('dashboard.sections.best')} {percent(performance?.bestReturnRate)}</Tag>
-            <Tag color="green">{t('dashboard.sections.worst')} {percent(performance?.worstReturnRate)}</Tag>
+            <Tag color="red">{t('dashboard.sections.best')} {percent(performance?.bestGrossReturnRate)}</Tag>
+            <Tag color="green">{t('dashboard.sections.worst')} {percent(performance?.worstGrossReturnRate)}</Tag>
           </div>
         )}
       >
         <Row gutter={[12, 12]}>
           <Col xs={12} md={6}><Statistic title={t('dashboard.sections.completedTrades')} value={performance?.closedTradeCount ?? 0} suffix={`/ ${performance?.totalTradeCount ?? 0}`} /></Col>
           <Col xs={12} md={6}><Statistic title={t('dashboard.sections.winRate')} value={performance ? Number((performance.winRate * 100).toFixed(2)) : 0} suffix="%" /></Col>
-          <Col xs={12} md={6}><Statistic title={t('dashboard.sections.averageReturn')} value={performance ? Number((performance.averageReturnRate * 100).toFixed(2)) : 0} suffix="%" /></Col>
+          <Col xs={12} md={6}><Statistic title={t('dashboard.sections.averageReturn')} value={performance ? Number((performance.averageGrossReturnRate * 100).toFixed(2)) : 0} suffix="%" /></Col>
           <Col xs={12} md={6}><Statistic title={t('dashboard.sections.profitLoss')} value={`${performance?.winningTradeCount ?? 0} / ${performance?.losingTradeCount ?? 0}`} /></Col>
         </Row>
       </Card>
@@ -396,4 +396,4 @@ const Dashboard: React.FC = () => {
 };
 
 export default Dashboard;
-// AI_GENERATE_END-------------------------------------------
+// AI_GENERATE_END--------------------------------------------

@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---------------------
+// AI_GENERATE_START ----------------------
 package com.stock.console.facts;
 
 import com.stock.console.config.ConsoleProperties;
@@ -69,14 +69,25 @@ public class TradingFacts {
                        strftime(CAST(? AS DATE), '%Y-%m') AS current_month
             )
             SELECT count(trade.trade_key) AS total_trade_count,
-                   sum(CASE WHEN trade.net_profit > 0 THEN 1 ELSE 0 END) AS winning_trade_count,
-                   sum(CASE WHEN trade.net_profit < 0 THEN 1 ELSE 0 END) AS losing_trade_count,
+                   sum(CASE WHEN trade.gross_profit > 0 THEN 1 ELSE 0 END) AS winning_trade_count,
+                   sum(CASE WHEN trade.gross_profit < 0 THEN 1 ELSE 0 END) AS losing_trade_count,
+                   coalesce(sum(trade.gross_profit), 0) AS gross_profit,
+                   coalesce(sum(trade.gross_profit) / nullif(sum(trade.cost_basis), 0), 0) AS gross_return,
+                   coalesce(avg(trade.gross_return), 0) AS average_gross_return,
+                   coalesce(max(trade.gross_return), 0) AS best_gross_return,
+                   coalesce(min(trade.gross_return), 0) AS worst_gross_return,
                    coalesce(sum(trade.net_profit), 0) AS net_profit,
                    coalesce(sum(trade.net_profit) / nullif(sum(trade.cost_basis) + sum(trade.buy_fee), 0), 0) AS net_return,
                    coalesce(avg(trade.net_return), 0) AS average_net_return,
                    coalesce(max(trade.net_return), 0) AS best_net_return,
                    coalesce(min(trade.net_return), 0) AS worst_net_return,
                    current_period.current_day AS daily_period,
+                   coalesce(sum(CASE WHEN CAST(trade.sell_date AS DATE) = current_period.current_day THEN trade.gross_profit ELSE 0 END), 0) AS daily_gross_profit,
+                   coalesce(
+                       sum(CASE WHEN CAST(trade.sell_date AS DATE) = current_period.current_day THEN trade.gross_profit ELSE 0 END)
+                       / nullif(sum(CASE WHEN CAST(trade.sell_date AS DATE) = current_period.current_day THEN trade.cost_basis ELSE 0 END), 0),
+                       0
+                   ) AS daily_gross_return,
                    coalesce(sum(CASE WHEN CAST(trade.sell_date AS DATE) = current_period.current_day THEN trade.net_profit ELSE 0 END), 0) AS daily_net_profit,
                    coalesce(
                        sum(CASE WHEN CAST(trade.sell_date AS DATE) = current_period.current_day THEN trade.net_profit ELSE 0 END)
@@ -84,6 +95,12 @@ public class TradingFacts {
                        0
                    ) AS daily_net_return,
                    current_period.current_month AS monthly_period,
+                   coalesce(sum(CASE WHEN strftime(CAST(trade.sell_date AS DATE), '%Y-%m') = current_period.current_month THEN trade.gross_profit ELSE 0 END), 0) AS monthly_gross_profit,
+                   coalesce(
+                       sum(CASE WHEN strftime(CAST(trade.sell_date AS DATE), '%Y-%m') = current_period.current_month THEN trade.gross_profit ELSE 0 END)
+                       / nullif(sum(CASE WHEN strftime(CAST(trade.sell_date AS DATE), '%Y-%m') = current_period.current_month THEN trade.cost_basis ELSE 0 END), 0),
+                       0
+                   ) AS monthly_gross_return,
                    coalesce(sum(CASE WHEN strftime(CAST(trade.sell_date AS DATE), '%Y-%m') = current_period.current_month THEN trade.net_profit ELSE 0 END), 0) AS monthly_net_profit,
                    coalesce(
                        sum(CASE WHEN strftime(CAST(trade.sell_date AS DATE), '%Y-%m') = current_period.current_month THEN trade.net_profit ELSE 0 END)
@@ -102,10 +119,12 @@ public class TradingFacts {
             """;
     private static final String PERFORMANCE_MONTHLY_SQL = """
             SELECT strftime(CAST(sell_date AS DATE), '%Y-%m') AS period,
+                   sum(gross_profit) AS gross_profit,
+                   sum(gross_profit) / nullif(sum(cost_basis), 0) AS gross_return,
                    sum(net_profit) AS net_profit,
                    sum(net_profit) / nullif(sum(cost_basis) + sum(buy_fee), 0) AS net_return,
                    count(*) AS trade_count,
-                   sum(CASE WHEN net_profit > 0 THEN 1 ELSE 0 END) AS winning_trade_count
+                   sum(CASE WHEN gross_profit > 0 THEN 1 ELSE 0 END) AS winning_trade_count
             FROM trading.realized_trade
             GROUP BY period
             ORDER BY period DESC
@@ -115,8 +134,8 @@ public class TradingFacts {
                    coalesce(buy_order.stock_name, sell_order.stock_name) AS stock_name,
                    trade.cost_basis + trade.sell_amount AS transaction_amount,
                    trade.cost_basis AS buy_amount, trade.sell_amount,
-                   trade.quantity AS trade_quantity, trade.net_profit,
-                   trade.net_return AS return_rate, trade.buy_date, trade.sell_date,
+                   trade.quantity AS trade_quantity, trade.gross_profit, trade.net_profit,
+                   trade.gross_return AS return_rate, trade.buy_date, trade.sell_date,
                    trade.buy_time, trade.sell_time
             FROM trading.realized_trade trade
             LEFT JOIN trading.broker_order buy_order
@@ -125,7 +144,7 @@ public class TradingFacts {
             LEFT JOIN trading.broker_order sell_order
               ON sell_order.trade_date = trade.sell_date
              AND sell_order.broker_order_id = trade.sell_order_id
-            ORDER BY trade.net_return DESC, trade.net_profit DESC, trade.sell_time DESC
+            ORDER BY trade.gross_return DESC, trade.gross_profit DESC, trade.sell_time DESC
             """;
     private static final String MODELS_SQL = """
             SELECT model.id, model.model_name, model.feature_set, model.status,
@@ -719,4 +738,4 @@ public class TradingFacts {
         return message == null || message.isBlank() ? "SQLite 数据源无法读取" : message;
     }
 }
-// AI_GENERATE_END ---------------------
+// AI_GENERATE_END ----------------------

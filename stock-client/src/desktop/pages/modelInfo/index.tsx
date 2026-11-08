@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---
+// AI_GENERATE_START ----
 import './styles.css';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card, Col, Descriptions, Drawer, Empty, Row, Statistic, Table, Tag, Typography } from 'antd';
@@ -208,7 +208,7 @@ const ModelInfo: React.FC = () => {
             <Descriptions title="效益明细" column={1} bordered size="small">
               <Descriptions.Item label="预测数">{selectedModel.prediction_count}</Descriptions.Item>
               <Descriptions.Item label="闭环交易">{selectedModel.realized_trade_count}</Descriptions.Item>
-              <Descriptions.Item label="毛收益">{money(selectedModel.gross_profit)}</Descriptions.Item>
+              <Descriptions.Item label="收益">{money(selectedModel.gross_profit)}</Descriptions.Item>
               <Descriptions.Item label="净收益">{money(selectedModel.net_profit)}</Descriptions.Item>
               <Descriptions.Item label="净收益率">{percent(selectedModel.net_return)}</Descriptions.Item>
               <Descriptions.Item label="最近平仓时间">
@@ -224,4 +224,4 @@ const ModelInfo: React.FC = () => {
 };
 
 export default ModelInfo;
-// AI_GENERATE_END ---
+// AI_GENERATE_END ----

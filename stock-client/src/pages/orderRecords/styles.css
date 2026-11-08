@@ -1,4 +1,4 @@
-/* Hallmark · checked: 2026-11-02 · app screen · Blue Ledger · AI_GENERATE_START------------------ */
+/* Hallmark · checked: 2026-11-02 · app screen · Blue Ledger · AI_GENERATE_START-------------------- */
 .order-records-shell { min-width: 0; overflow: hidden; border-radius: 0 !important; padding: 0 16px 16px; }
 .order-records-shell .ant-tabs-nav { min-height: 52px; margin-bottom: 16px; border-bottom: 1px solid var(--border-color); }
 .order-records-shell .ant-tabs-nav::before { border-bottom: 0; }
@@ -47,10 +47,12 @@
   .order-records-mobile-security { display: flex; min-width: 0; flex: 1 1 auto; align-items: center; gap: 6px; }
   .order-records-mobile-security .order-records-stock-code { min-height: 44px; }
   .order-records-mobile-security > strong { min-width: 0; overflow: hidden; color: var(--text-primary); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
-  .order-records-mobile-result { display: flex; min-width: 72px; flex: 0 0 auto; flex-direction: column; align-items: flex-end; gap: 1px; font-variant-numeric: tabular-nums; }
-  .order-records-mobile-result strong,
-  .order-records-mobile-result .ant-typography { font-size: 13px; font-weight: 650; line-height: 1.25; }
-  .order-records-mobile-result > span { color: var(--text-secondary); font-size: 10px; line-height: 1.25; }
+  .order-records-mobile-result { display: flex; min-width: 136px; flex: 0 0 auto; flex-direction: column; align-items: stretch; gap: 3px; font-variant-numeric: tabular-nums; }
+  .order-records-mobile-result-line { display: grid; min-width: 0; grid-template-columns: 30px minmax(42px, 1fr) minmax(38px, auto); align-items: baseline; column-gap: 4px; }
+  .order-records-mobile-result-line > small { color: var(--text-muted); font-size: 10px; text-align: left; }
+  .order-records-mobile-result-line > strong,
+  .order-records-mobile-result-line .ant-typography { font-size: 12px; font-weight: 650; line-height: 1.25; text-align: right; }
+  .order-records-mobile-result-line > span { color: var(--text-secondary); font-size: 10px; line-height: 1.25; text-align: right; }
   .order-records-mobile-grid { display: grid; margin-inline: 12px; border-block: 1px solid var(--border-soft); grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .order-records-mobile-grid > div { display: flex; min-width: 0; min-height: 48px; flex-direction: column; justify-content: center; gap: 2px; padding: 5px 4px; text-align: right; }
   .order-records-mobile-grid > div:first-child { text-align: left; }
@@ -69,4 +71,4 @@
 @media (prefers-reduced-motion: reduce) {
   .order-records-shell * { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
 }
-/* AI_GENERATE_END------------------ */
+/* AI_GENERATE_END-------------------- */

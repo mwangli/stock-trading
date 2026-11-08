@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----------
+// AI_GENERATE_START ------------
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dayjs from 'dayjs';
 import { Button, DatePicker, Empty, Input, Pagination, Space, Spin, Table, Typography } from 'antd';
@@ -98,7 +98,7 @@ const TradeRecordTable: React.FC = () => {
   const [filters, setFilters] = useState<TradeFilters>(defaultFilters);
   const [records, setRecords] = useState<TradeRecord[]>([]);
   const [page, setPage] = useState<PageState>({ current: 1, pageSize: 10, total: 0 });
-  const [cumulativeProfit, setCumulativeProfit] = useState(0);
+  const [cumulativeGrossProfit, setCumulativeGrossProfit] = useState(0);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [isMobile, setIsMobile] = useState(() => (
@@ -175,15 +175,15 @@ const TradeRecordTable: React.FC = () => {
       setRecords((current) => append ? [...current, ...nextRecords] : nextRecords);
       mobileLoadedPageRef.current = append ? targetPage : 1;
       setPage((current) => ({ ...current, total: filteredRecords.length }));
-      setCumulativeProfit(filteredRecords.reduce(
-        (total, item) => total + (item.soldQuantity > 0 ? item.netProfit : 0),
+      setCumulativeGrossProfit(filteredRecords.reduce(
+        (total, item) => total + (item.soldQuantity > 0 ? item.grossProfit : 0),
         0,
       ));
     } catch (cause) {
       if (!append) {
         setRecords([]);
         setPage((current) => ({ ...current, total: 0 }));
-        setCumulativeProfit(0);
+        setCumulativeGrossProfit(0);
       }
       setError(cause instanceof Error ? cause.message : '交易记录读取失败');
     } finally {
@@ -283,12 +283,12 @@ const TradeRecordTable: React.FC = () => {
         { key: 'buyAmount', label: localizedText('买入金额', 'Buy amount'), value: money(item.buyAmount) },
         { key: 'sellAmount', label: localizedText('卖出金额', 'Sell amount'), value: money(item.sellAmount) },
         { key: 'totalFee', label: localizedText('手续费', 'Fees'), value: money(item.totalFee) },
-        { key: 'grossProfit', label: localizedText('毛收益', 'Gross profit'), value: hasSell ? profit(item.grossProfit) : '-' },
+        { key: 'grossProfit', label: localizedText('收益', 'Profit'), value: hasSell ? profit(item.grossProfit) : '-' },
         { key: 'netProfit', label: localizedText('净收益', 'Net profit'), value: hasSell ? profit(item.netProfit) : '-' },
-        { key: 'grossReturnRate', label: localizedText('毛收益率', 'Gross return'), value: hasSell ? rate(item.grossReturnRate) : '-' },
+        { key: 'grossReturnRate', label: localizedText('收益率', 'Return'), value: hasSell ? rate(item.grossReturnRate) : '-' },
         { key: 'returnRate', label: localizedText('净收益率', 'Net return'), value: hasSell ? rate(item.returnRate) : '-' },
         { key: 'holdingDays', label: localizedText('持仓时间', 'Holding period'), value: days(item.holdingDays) },
-        { key: 'grossDailyReturnRate', label: localizedText('毛日收益率', 'Gross daily return'), value: hasSell ? rate(item.grossDailyReturnRate) : '-' },
+        { key: 'grossDailyReturnRate', label: localizedText('日收益率', 'Daily return'), value: hasSell ? rate(item.grossDailyReturnRate) : '-' },
         { key: 'dailyReturnRate', label: localizedText('净日收益率', 'Net daily return'), value: hasSell ? rate(item.dailyReturnRate) : '-' },
       ],
     });
@@ -327,8 +327,10 @@ const TradeRecordTable: React.FC = () => {
     { title: '卖出时间', dataIndex: 'lastSellTime', key: 'lastSellTime', width: 180, render: (value?: string) => value ? formatDateTime(value) : <Typography.Text type="secondary">待卖出</Typography.Text> },
     { title: '买入价格', dataIndex: 'buyPrice', key: 'buyPrice', width: 120, className: 'trade-record-number', render: money },
     { title: '卖出价格', dataIndex: 'averageSellPrice', key: 'averageSellPrice', width: 120, className: 'trade-record-number', render: money },
+    { title: '收益', dataIndex: 'grossProfit', key: 'grossProfit', width: 125, className: 'trade-record-number', render: (value: number, item) => item.soldQuantity > 0 ? <strong className="trade-record-result">{profit(value)}</strong> : '-' },
+    { title: '收益率', dataIndex: 'grossReturnRate', key: 'grossReturnRate', width: 120, className: 'trade-record-number', render: (value: number, item) => item.soldQuantity > 0 ? <strong className="trade-record-result">{rate(value)}</strong> : '-' },
     { title: '净收益', dataIndex: 'netProfit', key: 'netProfit', width: 125, className: 'trade-record-number', render: (value: number, item) => item.soldQuantity > 0 ? <strong className="trade-record-result">{profit(value)}</strong> : '-' },
-    { title: '收益率', dataIndex: 'returnRate', key: 'returnRate', width: 120, className: 'trade-record-number', render: (value: number, item) => item.soldQuantity > 0 ? <strong className="trade-record-result">{rate(value)}</strong> : '-' },
+    { title: '净收益率', dataIndex: 'returnRate', key: 'returnRate', width: 120, className: 'trade-record-number', render: (value: number, item) => item.soldQuantity > 0 ? <strong className="trade-record-result">{rate(value)}</strong> : '-' },
   ];
 
   return (
@@ -385,8 +387,8 @@ const TradeRecordTable: React.FC = () => {
           </div>
           <div className="order-records-mobile-lead-item order-records-mobile-lead-result">
             <span>累计收益</span>
-            <strong className={cumulativeProfit >= 0 ? 'is-up' : 'is-down'}>
-              {signedMoney(cumulativeProfit)}
+            <strong className={cumulativeGrossProfit >= 0 ? 'is-up' : 'is-down'}>
+              {signedMoney(cumulativeGrossProfit)}
             </strong>
           </div>
         </section>
@@ -423,12 +425,24 @@ const TradeRecordTable: React.FC = () => {
                     </span>
                   </span>
                   <span className="order-records-mobile-row-result">
-                    <strong className={item.soldQuantity <= 0 ? 'is-neutral' : item.netProfit >= 0 ? 'is-up' : 'is-down'}>
-                      {item.soldQuantity > 0 ? signedMoney(item.netProfit) : '持仓中'}
-                    </strong>
-                    <small className={item.soldQuantity <= 0 ? 'is-neutral' : item.netProfit >= 0 ? 'is-up' : 'is-down'}>
-                      {item.soldQuantity > 0 ? signedPercent(item.dailyReturnRate) : '-'}
-                    </small>
+                    <span className="order-records-mobile-row-result-line">
+                      <small>收益</small>
+                      <strong className={item.soldQuantity <= 0 ? 'is-neutral' : item.grossProfit >= 0 ? 'is-up' : 'is-down'}>
+                        {item.soldQuantity > 0 ? signedMoney(item.grossProfit) : '持仓中'}
+                      </strong>
+                      <small className={item.soldQuantity <= 0 ? 'is-neutral' : item.grossProfit >= 0 ? 'is-up' : 'is-down'}>
+                        {item.soldQuantity > 0 ? signedPercent(item.grossReturnRate) : '-'}
+                      </small>
+                    </span>
+                    <span className="order-records-mobile-row-result-line">
+                      <small>净收益</small>
+                      <strong className={item.soldQuantity <= 0 ? 'is-neutral' : item.netProfit >= 0 ? 'is-up' : 'is-down'}>
+                        {item.soldQuantity > 0 ? signedMoney(item.netProfit) : '-'}
+                      </strong>
+                      <small className={item.soldQuantity <= 0 ? 'is-neutral' : item.netProfit >= 0 ? 'is-up' : 'is-down'}>
+                        {item.soldQuantity > 0 ? signedPercent(item.returnRate) : '-'}
+                      </small>
+                    </span>
                   </span>
                 </article>
               ))}
@@ -467,4 +481,4 @@ const TradeRecordTable: React.FC = () => {
 };
 
 export default TradeRecordTable;
-// AI_GENERATE_END ----------
+// AI_GENERATE_END ------------
