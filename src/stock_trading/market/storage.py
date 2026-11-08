@@ -1,4 +1,4 @@
-# AI_GENERATE_START--------------------- -----------------------------------------------------------------
+# AI_GENERATE_START-------------------------- -----------------------------------------------------------------
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -184,8 +184,10 @@ class ParquetMarketStore:
         start_date: date,
         end_date: date,
         minimum_days: int,
+        start_dates: Mapping[str, date] | None = None,
+        end_dates: Mapping[str, date] | None = None,
     ) -> list[str]:
-        """返回具有足够换手率、量比和流通市值历史的股票。"""
+        """返回换手率、量比和流通市值覆盖生命周期范围的股票。"""
         try:
             frame = self.read_basic_panel(start_date, end_date, set(codes))
             turnover = pd.to_numeric(frame["turnover_rate"], errors="coerce")
@@ -198,8 +200,27 @@ class ParquetMarketStore:
         usable = frame[
             turnover.notna() & volume_ratio.gt(0) & circulating.gt(0)
         ]
-        counts = usable.groupby("code", sort=False).size()
-        return [code for code in codes if int(counts.get(code, 0)) >= minimum_days]
+        groups = {
+            str(code): values
+            for code, values in usable.groupby("code", sort=False)
+        }
+        result: list[str] = []
+        for code in codes:
+            values = groups.get(code)
+            if values is None or len(values) < minimum_days:
+                continue
+            dates = pd.to_datetime(
+                values["trade_date"], errors="coerce"
+            ).dt.date
+            code_start = (start_dates or {}).get(code, start_date)
+            code_end = (end_dates or {}).get(code, end_date)
+            if (
+                dates.notna().all()
+                and dates.min() <= code_start + timedelta(days=15)
+                and dates.max() >= code_end - timedelta(days=15)
+            ):
+                result.append(code)
+        return result
 
     def write_factors(
         self,
@@ -479,18 +500,26 @@ class ParquetMarketStore:
             required.issubset(frame.columns)
             and not frame.empty
             and dates.notna().all()
+            and dates.min() <= start_date + timedelta(days=15)
             and dates.le(end_date).any()
             and dates.max() >= end_date - timedelta(days=15)
             and frame["source_contract"].eq(DAILY_CONTRACT_BAOSTOCK).all()
         )
 
-    def factors_valid(self, code: str, end_date: date) -> bool:
+    def factors_valid(
+        self,
+        code: str,
+        end_date: date,
+        start_date: date | None = None,
+    ) -> bool:
         """检查复权因子文件可读、字段完整且日期不超过目标日。"""
         try:
             frame = self.read_factors(code)
         except (OSError, ValueError, KeyError, AttributeError):
             return False
-        return self._factor_frame_valid(frame, end_date=end_date)
+        return self._factor_frame_valid(
+            frame, earliest_date=start_date, end_date=end_date
+        )
 
     def minute_summaries_valid(
         self,
@@ -572,8 +601,16 @@ class ParquetMarketStore:
         )
         if not expected_dates:
             return True
-        actual_dates = set(minutes["trade_date"].dt.date)
-        return expected_dates.issubset(actual_dates)
+        summaries = summarize_trading_windows(minutes)
+        if summaries.empty:
+            return False
+        complete = summaries[
+            summaries["full_complete"].fillna(False).astype(bool)
+            & summaries["buy_complete"].fillna(False).astype(bool)
+            & summaries["sell_complete"].fillna(False).astype(bool)
+        ]
+        complete_dates = set(complete["trade_date"].dt.date)
+        return expected_dates.issubset(complete_dates)
 
     def minute_data_valid(
         self,
@@ -649,13 +686,26 @@ class ParquetMarketStore:
         )
 
     def valid_daily_codes(
-        self, codes: list[str], start_date: date, end_date: date
+        self,
+        codes: list[str],
+        start_date: date,
+        end_date: date,
+        start_dates: Mapping[str, date] | None = None,
+        end_dates: Mapping[str, date] | None = None,
     ) -> list[str]:
         """返回日线和复权数据均通过窗口校验的股票编号。"""
         return [
             code for code in codes
-            if self.daily_history_valid(code, start_date, end_date)
-            and self.factors_valid(code, end_date)
+            if self.daily_history_valid(
+                code,
+                (start_dates or {}).get(code, start_date),
+                (end_dates or {}).get(code, end_date),
+            )
+            and self.factors_valid(
+                code,
+                (end_dates or {}).get(code, end_date),
+                (start_dates or {}).get(code, start_date),
+            )
         ]
 
     def valid_research_codes(
@@ -664,9 +714,19 @@ class ParquetMarketStore:
         start_date: date,
         end_date: date,
         require_full_end: bool = False,
+        start_dates: Mapping[str, date] | None = None,
+        end_dates: Mapping[str, date] | None = None,
     ) -> list[str]:
         """返回日线、复权因子和分钟窗口均覆盖研究范围的股票编号。"""
-        daily = set(self.valid_daily_codes(codes, start_date, end_date))
+        daily = set(
+            self.valid_daily_codes(
+                codes,
+                start_date,
+                end_date,
+                start_dates=start_dates,
+                end_dates=end_dates,
+            )
+        )
         researchable = set(self.model_research_codes(codes, start_date, end_date))
         return [
             code
@@ -1154,4 +1214,4 @@ def _normalize_minute1_frame(frame: pd.DataFrame, code: str) -> pd.DataFrame:
     )
 
 
-# AI_GENERATE_END---------------------- -----------------------------------------------------------------
+# AI_GENERATE_END--------------------------- -----------------------------------------------------------------

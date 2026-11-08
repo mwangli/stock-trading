@@ -1,7 +1,8 @@
-# AI_GENERATE_START -
+# AI_GENERATE_START ----
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from datetime import date
 from decimal import Decimal
 
@@ -24,10 +25,29 @@ def prepare_daily_derivatives(
     codes: list[str],
     start_date: date,
     end_date: date,
+    start_dates: Mapping[str, date] | None = None,
+    end_dates: Mapping[str, date] | None = None,
 ) -> dict[str, object]:
     """从本地日线一次生成 basic 与 factor，不访问外部数据源。"""
-    basic_ready = set(store.valid_basic_codes(codes, start_date, end_date, 63))
-    factor_ready = {code for code in codes if store.factors_valid(code, end_date)}
+    basic_ready = set(
+        store.valid_basic_codes(
+            codes,
+            start_date,
+            end_date,
+            63,
+            start_dates=start_dates,
+            end_dates=end_dates,
+        )
+    )
+    factor_ready = {
+        code
+        for code in codes
+        if store.factors_valid(
+            code,
+            (end_dates or {}).get(code, end_date),
+            (start_dates or {}).get(code, start_date),
+        )
+    }
     pending = [
         code
         for code in codes
@@ -49,8 +69,10 @@ def prepare_daily_derivatives(
             )
         try:
             daily = store.read_daily_history(code)
+            code_start = (start_dates or {}).get(code, start_date)
+            code_end = (end_dates or {}).get(code, end_date)
             if code not in basic_ready:
-                basics = _derive_basics(code, daily, start_date, end_date)
+                basics = _derive_basics(code, daily, code_start, code_end)
                 if basics:
                     store.write_basic_history(code, basics)
                     basic_codes += 1
@@ -157,4 +179,4 @@ def _decimal_or_none(value: object) -> Decimal | None:
     return Decimal(str(value))
 
 
-# AI_GENERATE_END -
+# AI_GENERATE_END ----

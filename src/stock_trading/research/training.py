@@ -1,4 +1,4 @@
-# AI_GENERATE_START------- ---------------------------------
+# AI_GENERATE_START---------- ---------------------------------
 from __future__ import annotations
 
 import json
@@ -9,7 +9,11 @@ from decimal import Decimal
 from pathlib import Path
 
 from stock_trading.config import AppConfig
-from stock_trading.market.quality import audit_research_quality, require_data_quality
+from stock_trading.market.quality import (
+    audit_research_quality,
+    require_data_quality,
+    research_coverage_ranges,
+)
 from stock_trading.market.storage import ParquetMarketStore
 from stock_trading.market.sync import research_codes, resolve_completed_trade_date
 from stock_trading.market.providers import l1_market_provider
@@ -139,16 +143,38 @@ def assert_training_data_ready(
 ) -> dict[str, object]:
     store = ParquetMarketStore(config.market_dir)
     stocks = store.read_stock_basics()
+    coverage_ranges = research_coverage_ranges(
+        stocks, codes, start_date, end_date
+    )
+    end_dates = {
+        code: coverage_ranges[code][1]
+        for code in codes
+    }
+    start_dates = {
+        code: coverage_ranges[code][0]
+        for code in codes
+    }
     audit = (
         audit_research_quality(store, stocks, codes, start_date, end_date)
         if spec.feature_frequency == "minute5"
         else None
     )
-    daily_ready = store.valid_daily_codes(codes, start_date, end_date)
+    daily_ready = store.valid_daily_codes(
+        codes,
+        start_date,
+        end_date,
+        start_dates=start_dates,
+        end_dates=end_dates,
+    )
     if "basic" in spec.required_fields:
         basic_ready = set(
             store.valid_basic_codes(
-                daily_ready, start_date, end_date, MINIMUM_MODEL_DAYS
+                daily_ready,
+                start_date,
+                end_date,
+                MINIMUM_MODEL_DAYS,
+                start_dates=start_dates,
+                end_dates=end_dates,
             )
         )
         daily_ready = [code for code in daily_ready if code in basic_ready]
@@ -279,4 +305,4 @@ def _write_evaluation(model_dir: Path, evaluation: dict[str, object]) -> None:
     )
 
 
-# AI_GENERATE_END------- ---------------------------------
+# AI_GENERATE_END---------- ---------------------------------

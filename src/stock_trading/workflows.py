@@ -1,4 +1,4 @@
-# AI_GENERATE_START---------------------------------- -------------------------------------
+# AI_GENERATE_START---------------------------------------- -------------------------------------
 from __future__ import annotations
 
 import json
@@ -17,7 +17,10 @@ from stock_trading.utils.instruments import normalize_instrument
 from stock_trading.market.storage import ParquetMarketStore
 from stock_trading.market.derived import prepare_daily_derivatives
 from stock_trading.market.trade_calendar import trade_dates
-from stock_trading.market.quality import require_data_quality
+from stock_trading.market.quality import (
+    require_data_quality,
+    research_coverage_ranges,
+)
 from stock_trading.market.providers import (
     l1_market_provider,
     market_provider,
@@ -221,17 +224,30 @@ def _collect_daily(
     dates = trading_dates_between(store, provider, start_date, end_date)
     if not dates:
         raise ValueError("指定日期范围内没有交易日")
+    coverage_ranges = research_coverage_ranges(
+        stocks, codes, start_date, end_date
+    )
+    end_dates = {
+        code: coverage_ranges[code][1]
+        for code in codes
+    }
+    start_dates = {
+        code: coverage_ranges[code][0]
+        for code in codes
+    }
     pending_codes = [
         code
         for code in codes
-        if not store.daily_history_valid(code, start_date, end_date)
+        if not store.daily_history_valid(
+            code, start_dates[code], end_dates[code]
+        )
     ]
     if pending_codes:
         result = sync_daily(store, provider, stocks, pending_codes, dates)
     else:
         result = {"skipped": True, "reason": "daily 数据已完整"}
     usable_codes = sum(
-        store.daily_history_valid(code, start_date, end_date)
+        store.daily_history_valid(code, start_dates[code], end_dates[code])
         for code in codes
     )
     code_quality = require_data_quality(
@@ -446,26 +462,66 @@ def prepare_workflow(
     codes = research_codes(stocks, start_date, end_date)
     if not codes:
         raise ValueError("股票基础信息中没有满足当前日期范围的研究股票")
+    coverage_ranges = research_coverage_ranges(
+        stocks, codes, start_date, end_date
+    )
+    end_dates = {
+        code: coverage_ranges[code][1]
+        for code in codes
+    }
+    start_dates = {
+        code: coverage_ranges[code][0]
+        for code in codes
+    }
     LOGGER.info(
         "开始准备研究数据：股票数=%d；日期=%s 至 %s",
         len(codes),
         start_date,
         end_date,
     )
-    daily_ready = store.valid_daily_codes(codes, start_date, end_date)
+    raw_daily_ready = [
+        code
+        for code in codes
+        if store.daily_history_valid(
+            code, start_dates[code], end_dates[code]
+        )
+    ]
     derived: dict[str, object] = {}
     if {"basic", "factor"} & set(spec.required_fields):
         derived["daily"] = prepare_daily_derivatives(
-            store, daily_ready, start_date, end_date
+            store,
+            raw_daily_ready,
+            start_date,
+            end_date,
+            start_dates=start_dates,
+            end_dates=end_dates,
         )
+    daily_ready = store.valid_daily_codes(
+        raw_daily_ready,
+        start_date,
+        end_date,
+        start_dates=start_dates,
+        end_dates=end_dates,
+    )
     if "basic" in spec.required_fields:
         basic_ready = set(
-            store.valid_basic_codes(daily_ready, start_date, end_date, 63)
+            store.valid_basic_codes(
+                daily_ready,
+                start_date,
+                end_date,
+                63,
+                start_dates=start_dates,
+                end_dates=end_dates,
+            )
         )
         daily_ready = [code for code in daily_ready if code in basic_ready]
     if "factor" in spec.required_fields:
         factor_ready = {
-            code for code in daily_ready if store.factors_valid(code, end_date)
+            code
+            for code in daily_ready
+            if store.factors_valid(
+                code, end_dates[code], start_dates[code]
+            )
         }
         daily_ready = [code for code in daily_ready if code in factor_ready]
     if spec.feature_frequency == "minute5":
@@ -511,11 +567,8 @@ def prepare_workflow(
 
 
 def _minute5_date_batches(dates: list[date]) -> list[list[date]]:
-    """BaoStock 支持范围查询，按自然年倒序回填以兼顾效率和时间切片完整性。"""
-    by_year: dict[int, list[date]] = {}
-    for trade_date in dates:
-        by_year.setdefault(trade_date.year, []).append(trade_date)
-    return [by_year[year] for year in sorted(by_year, reverse=True)]
+    """BaoStock 单连接按完整日期范围查询，避免按年度重复请求和写盘。"""
+    return [dates] if dates else []
 
 
 def cleanup_workflow(config: AppConfig, reference_date: date) -> dict[str, object]:
@@ -852,4 +905,4 @@ def _build_broker(config: AppConfig) -> ZXBrokerClient:
     return ZXBrokerClient(config, captcha_solver=BaiduCaptchaSolver(config).solve)
 
 
-# AI_GENERATE_END----------------------------------- -------------------------------------
+# AI_GENERATE_END----------------------------------------- -------------------------------------

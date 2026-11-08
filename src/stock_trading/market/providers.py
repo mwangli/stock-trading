@@ -1,13 +1,15 @@
-# AI_GENERATE_START------------------- --------
+# AI_GENERATE_START--------------------- --------
 from __future__ import annotations
 
 import logging
 import time
 from collections import defaultdict
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
 from datetime import date, time as datetime_time
 from decimal import Decimal
+from pathlib import Path
 from threading import Lock
 from urllib.error import HTTPError, URLError
 
@@ -17,7 +19,11 @@ from stock_trading.broker.client import ZXBrokerClient
 from stock_trading.broker.captcha import BaiduCaptchaSolver
 from stock_trading.broker.models import BrokerMinuteSeries
 from stock_trading.config import AppConfig
-from stock_trading.market.baostock_client import BaoStockClient, BaoStockError
+from stock_trading.market.baostock_client import (
+    BaoStockClient,
+    BaoStockConcurrentAccessError,
+    BaoStockError,
+)
 from stock_trading.market.models import DailyBar, MinuteBar
 from stock_trading.market.provider import MarketDataProvider
 from stock_trading.market.storage import ParquetMarketStore
@@ -30,11 +36,16 @@ from stock_trading.utils.logging_utils import (
 from stock_trading.utils.time_utils import shanghai_today
 
 LOGGER = logging.getLogger(__name__)
+BAOSTOCK_SESSION_REQUEST_LIMIT = 500
+BAOSTOCK_CODE_MAX_ATTEMPTS = 3
 
 
 def market_provider(config: AppConfig, name: str) -> MarketDataProvider:
     if name == "baostock":
-        return BaoStockMarketProvider(config.baostock_proxy)
+        return BaoStockMarketProvider(
+            config.baostock_proxy,
+            config.state_db_path.parent / "baostock.lock",
+        )
     if name == "zxbroker":
         return ZXBrokerMarketProvider(config)
     raise ValueError(f"不支持的行情数据源：{name}")
@@ -48,8 +59,9 @@ def l1_market_provider(config: AppConfig) -> MarketDataProvider:
 class BaoStockMarketProvider:
     name = "baostock"
 
-    def __init__(self, proxy_url: str | None) -> None:
+    def __init__(self, proxy_url: str | None, process_lock_path: Path) -> None:
         self._proxy_url = proxy_url
+        self._process_lock_path = process_lock_path
 
     def sync_stock_basics(
         self, store: ParquetMarketStore, snapshot_date: date
@@ -73,30 +85,14 @@ class BaoStockMarketProvider:
         del stocks
         if not dates:
             raise ValueError("指定日期范围内没有交易日")
-        completed = 0
-        rows = 0
-        failures: dict[str, str] = {}
-        with self._client() as client:
-            for index, code in enumerate(codes, start=1):
-                set_log_context(progress=f"{index}/{len(codes)}", target=code)
-                _log_code_progress("日线", index, len(codes), code)
-                try:
-                    values = client.fetch_daily_history(code, dates[0], dates[-1])
-                    if not values:
-                        raise ValueError("日线为空")
-                    store.write_daily_history(code, values)
-                    completed += 1
-                    rows += len(values)
-                except Exception as error:
-                    failures[code] = str(error)
-                    LOGGER.warning("日线采集失败：股票=%s；原因=%s", code, error)
-        return {
-            "provider": self.name,
-            "rows": rows,
-            "codes": completed,
-            "failedCodes": len(failures),
-            "failureSamples": dict(list(failures.items())[:20]),
-        }
+        def collect(client: BaoStockClient, code: str) -> int:
+            values = client.fetch_daily_history(code, dates[0], dates[-1])
+            if not values:
+                raise ValueError("日线为空")
+            store.write_daily_history(code, values)
+            return len(values)
+
+        return self._sync_serial_codes(codes, "日线", collect)
 
     def sync_minute5(
         self,
@@ -105,37 +101,19 @@ class BaoStockMarketProvider:
         start_date: date,
         end_date: date,
     ) -> dict[str, object]:
-        completed = 0
-        rows = 0
-        failures: dict[str, str] = {}
-        with self._client() as client:
-            for index, code in enumerate(codes, start=1):
-                if should_log_progress(index, len(codes)):
-                    LOGGER.info(
-                        "5分钟线日期批次覆盖：日期=%s 至 %s；股票=%s；批次内=%d/%d",
-                        start_date,
-                        end_date,
-                        code,
-                        index,
-                        len(codes),
-                    )
-                try:
-                    values = client.fetch_minutes(code, start_date, end_date)
-                    if not values:
-                        raise ValueError("5分钟线为空")
-                    store.write_minute_history(code, values, end_date)
-                    completed += 1
-                    rows += len(values)
-                except Exception as error:
-                    failures[code] = str(error)
-                    LOGGER.warning("5分钟线采集失败：股票=%s；原因=%s", code, error)
-        return {
-            "provider": self.name,
-            "rows": rows,
-            "codes": completed,
-            "failedCodes": len(failures),
-            "failureSamples": dict(list(failures.items())[:20]),
-        }
+        def collect(client: BaoStockClient, code: str) -> int:
+            values = client.fetch_minutes(code, start_date, end_date)
+            if not values:
+                raise ValueError("5分钟线为空")
+            store.write_minute_history(code, values, end_date)
+            return len(values)
+
+        return self._sync_serial_codes(
+            codes,
+            "5分钟线",
+            collect,
+            date_range=(start_date, end_date),
+        )
 
     def sync_minute(
         self,
@@ -147,14 +125,102 @@ class BaoStockMarketProvider:
         del store, codes, start_date, end_date
         raise ValueError("BaoStock 适配器只提供项目使用的 5 分钟行情")
 
+    def _sync_serial_codes(
+        self,
+        codes: list[str],
+        label: str,
+        collect: Callable[[BaoStockClient, str], int],
+        date_range: tuple[date, date] | None = None,
+    ) -> dict[str, object]:
+        completed = 0
+        rows = 0
+        failures: dict[str, str] = {}
+        attempts: dict[str, int] = defaultdict(int)
+        index = 0
+        while index < len(codes):
+            session_end = min(index + BAOSTOCK_SESSION_REQUEST_LIMIT, len(codes))
+            reconnect = False
+            with self._client() as client:
+                while index < session_end:
+                    code = codes[index]
+                    current = index + 1
+                    set_log_context(progress=f"{current}/{len(codes)}", target=code)
+                    if should_log_progress(current, len(codes)):
+                        if date_range is None:
+                            _log_code_progress(label, current, len(codes), code)
+                        else:
+                            LOGGER.info(
+                                "%s日期批次覆盖：日期=%s 至 %s；股票=%s；批次内=%d/%d",
+                                label,
+                                date_range[0],
+                                date_range[1],
+                                code,
+                                current,
+                                len(codes),
+                            )
+                    try:
+                        written_rows = collect(client, code)
+                    except BaoStockConcurrentAccessError:
+                        raise
+                    except BaoStockError as error:
+                        if "10001011" in str(error):
+                            raise BaoStockError(
+                                f"BaoStock IP 已进入黑名单：{error}"
+                            ) from error
+                        attempts[code] += 1
+                        if attempts[code] >= BAOSTOCK_CODE_MAX_ATTEMPTS:
+                            failures[code] = str(error)
+                            LOGGER.warning(
+                                "%s采集失败：股票=%s；已重试=%d；原因=%s",
+                                label,
+                                code,
+                                attempts[code],
+                                error,
+                            )
+                            index += 1
+                        else:
+                            LOGGER.warning(
+                                "%s连接失效，关闭后串行重连：股票=%s；尝试=%d/%d；原因=%s",
+                                label,
+                                code,
+                                attempts[code],
+                                BAOSTOCK_CODE_MAX_ATTEMPTS,
+                                error,
+                            )
+                        reconnect = True
+                        break
+                    except Exception as error:
+                        failures[code] = str(error)
+                        LOGGER.warning("%s采集失败：股票=%s；原因=%s", label, code, error)
+                        index += 1
+                    else:
+                        completed += 1
+                        rows += written_rows
+                        index += 1
+            if reconnect:
+                continue
+        return {
+            "provider": self.name,
+            "execution": "single-process-serial",
+            "rows": rows,
+            "codes": completed,
+            "failedCodes": len(failures),
+            "failureSamples": dict(list(failures.items())[:20]),
+        }
+
     @contextmanager
     def _client(self):
         active: BaoStockClient | None = None
         for attempt in range(1, 4):
-            client = BaoStockClient(self._proxy_url)
+            client = BaoStockClient(
+                self._proxy_url,
+                process_lock_path=self._process_lock_path,
+            )
             try:
                 active = client.__enter__()
             except (BaoStockError, OSError, TimeoutError) as error:
+                if isinstance(error, BaoStockConcurrentAccessError):
+                    raise
                 if "10001011" in str(error):
                     raise BaoStockError(f"BaoStock IP 已进入黑名单：{error}") from error
                 if attempt == 3:
@@ -459,4 +525,4 @@ def _to_minute_bars(
         )
         for point in regular
     ]
-# AI_GENERATE_END------------------- --------
+# AI_GENERATE_END--------------------- --------

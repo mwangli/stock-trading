@@ -1,12 +1,14 @@
-# AI_GENERATE_START -----------------------
+# AI_GENERATE_START ------------------------
 from __future__ import annotations
 
 import logging
+import os
 import socket
 from collections.abc import Callable
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import date, timedelta
 from io import StringIO
+from pathlib import Path
 from types import TracebackType
 from typing import Any, TypeVar
 from urllib.parse import urlparse
@@ -31,28 +33,96 @@ class BaoStockError(RuntimeError):
     """BaoStock 协议或数据错误。"""
 
 
+class BaoStockConcurrentAccessError(BaoStockError):
+    """另一个进程已经占用 BaoStock 连接。"""
+
+
+class BaoStockProcessLock:
+    """禁止多个进程同时建立 BaoStock 连接。"""
+
+    def __init__(self, path: Path) -> None:
+        self._path = path
+        self._handle: Any = None
+
+    def acquire(self) -> None:
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        handle = self._path.open("a+b")
+        handle.seek(0, 2)
+        if handle.tell() == 0:
+            handle.write(b"0")
+            handle.flush()
+        handle.seek(0)
+        try:
+            if os.name == "nt":
+                import msvcrt
+
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as error:
+            handle.close()
+            raise BaoStockConcurrentAccessError(
+                "已有 BaoStock 采集进程运行；禁止并发连接，请等待当前任务完成"
+            ) from error
+        self._handle = handle
+
+    def release(self) -> None:
+        handle = self._handle
+        if handle is None:
+            return
+        try:
+            handle.seek(0)
+            if os.name == "nt":
+                import msvcrt
+
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        finally:
+            handle.close()
+            self._handle = None
+
+
 class BaoStockClient:
     """提供统一模型对象的 BaoStock 客户端。"""
 
     def __init__(
-        self, proxy_url: str | None = None, socket_timeout_seconds: int = 60
+        self,
+        proxy_url: str | None = None,
+        socket_timeout_seconds: int = 60,
+        process_lock_path: Path | None = None,
     ) -> None:
         self._proxy_url = proxy_url
         self._socket_timeout_seconds = socket_timeout_seconds
+        self._process_lock = (
+            BaoStockProcessLock(process_lock_path)
+            if process_lock_path is not None
+            else None
+        )
         self._original_connect: Any = None
         self._logged_in = False
 
     def __enter__(self) -> "BaoStockClient":
-        self._install_connector()
+        if self._process_lock is not None:
+            self._process_lock.acquire()
         try:
+            self._install_connector()
             result = self._request(bs.login)
         except BaseException:
             self._close_connection()
             self._restore_connector()
+            if self._process_lock is not None:
+                self._process_lock.release()
             raise
         if result.error_code != "0":
             self._close_connection()
             self._restore_connector()
+            if self._process_lock is not None:
+                self._process_lock.release()
             raise BaoStockError(
                 f"BaoStock 登录失败：{result.error_code} {result.error_msg}"
             )
@@ -73,6 +143,8 @@ class BaoStockClient:
             self._logged_in = False
             self._close_connection()
             self._restore_connector()
+            if self._process_lock is not None:
+                self._process_lock.release()
 
     def fetch_stock_basics(self, snapshot_date: date) -> list[StockBasic]:
         market_rows = self._rows(
@@ -249,4 +321,4 @@ class BaoStockClient:
         if self._original_connect is not None:
             bs_socket.SocketUtil.connect = self._original_connect
             self._original_connect = None
-# AI_GENERATE_END ------------------------
+# AI_GENERATE_END -------------------------

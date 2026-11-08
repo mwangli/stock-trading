@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---
+# AI_GENERATE_START ----
 from __future__ import annotations
 
 import logging
@@ -19,6 +19,24 @@ def audit_research_quality(
     end_date: date,
 ) -> ResearchDataAudit:
     """使用统一股票生命周期范围审计研究数据。"""
+    coverage_ranges = research_coverage_ranges(
+        stocks, codes, start_date, end_date
+    )
+    return store.audit_research_data(
+        codes,
+        start_date,
+        end_date,
+        coverage_ranges=coverage_ranges,
+    )
+
+
+def research_coverage_ranges(
+    stocks: pd.DataFrame,
+    codes: list[str],
+    start_date: date,
+    end_date: date,
+) -> dict[str, tuple[date, date, bool]]:
+    """返回每只股票在研究区间内应有数据的生命周期范围。"""
     frame = stocks.set_index("code", drop=False)
     coverage_ranges: dict[str, tuple[date, date, bool]] = {}
     for code in codes:
@@ -32,12 +50,7 @@ def audit_research_quality(
             code_end,
             out_date is None or out_date >= end_date,
         )
-    return store.audit_research_data(
-        codes,
-        start_date,
-        end_date,
-        coverage_ranges=coverage_ranges,
-    )
+    return coverage_ranges
 
 
 def require_data_quality(
@@ -100,4 +113,4 @@ def require_data_quality(
     return details
 
 
-# AI_GENERATE_END ---
+# AI_GENERATE_END ----
