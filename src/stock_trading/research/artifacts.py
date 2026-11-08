@@ -1,4 +1,4 @@
-# AI_GENERATE_START- -------------------------
+# AI_GENERATE_START--- -------------------------
 from __future__ import annotations
 
 import json
@@ -24,7 +24,7 @@ _REQUIRED_FILES = (
 
 def model_directory(artifact_dir: Path, spec: ModelSpec) -> Path:
     """返回模型 ID 唯一对应的当前制品目录。"""
-    return spec.artifact_dir(artifact_dir)
+    return spec.model_dir(artifact_dir)
 
 
 def staging_model_directory(target: Path) -> Path:
@@ -97,7 +97,7 @@ def prediction_artifact_valid(
 
 def model_artifacts_valid(
     directory: Path,
-    spec: ModelSpec | None = None,
+    spec: ModelSpec,
     require_evaluation: bool = False,
 ) -> bool:
     """检查模型、指标和测试预测是否属于同一模型配置。"""
@@ -137,13 +137,9 @@ def model_artifacts_valid(
         and predictions["score"].notna().any()
         and metrics.get("timeContractVersion") == TRADING_TIME_CONTRACT
         and metrics.get("labelContract") == expected_label_contract(spec)
-        and (spec is None or metrics.get("modelId") == spec.model_id)
-        and metrics.get("algorithm") in {
-            "LightGBM",
-            "XGBoost",
-            "XGBoostRanker",
-            None,
-        }
+        and metrics.get("modelId") == spec.model_id
+        and metrics.get("strategyId") == spec.strategy.strategy_id
+        and metrics.get("algorithm") == spec.algorithm
         and (
             evaluation is None
             or (
@@ -166,4 +162,4 @@ def validate_model_artifacts(directory: Path, spec: ModelSpec) -> None:
         raise ValueError(f"训练模型无法反序列化: {directory / 'model.pkl'}") from error
 
 
-# AI_GENERATE_END- -------------------------
+# AI_GENERATE_END--- -------------------------

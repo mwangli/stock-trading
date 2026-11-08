@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---------------------------------
+# AI_GENERATE_START- ----------------------------------
 from __future__ import annotations
 
 import logging
@@ -16,7 +16,7 @@ from stock_trading.broker.models import (
     FiveLevelQuote,
 )
 from stock_trading.config import AppConfig
-from stock_trading.contracts import BUY_START, BUY_END, SELL_START, SELL_END
+from stock_trading.contracts import BUY_START, BUY_END, SELL_START, SELL_END, execution_window_seconds
 from stock_trading.market.trade_calendar import trade_dates
 from stock_trading.state.store import ORDER_ACTIVE_STATUSES, StateStore
 from stock_trading.trading.strategy import permission_scope, affordable_quantity, select_execution_price
@@ -72,7 +72,7 @@ class OrderExecutionOrchestrator:
         """在固定执行窗口内按时间紧迫度策略处理一个买入或卖出目标。"""
         instrument = str(target["instrument"])
         side = str(target["side"])
-        mode = "AFTERNOON_BUY" if side == "BUY" else "AFTERNOON_SELL"
+        mode = "AFTERNOON_BUY" if side == "BUY" else "MORNING_SELL"
         prefix = f"LIVE:{mode}:{business_date.isoformat()}:{instrument}"
         started_at = monotonic()
         attempts: list[dict[str, object]] = []
@@ -82,7 +82,7 @@ class OrderExecutionOrchestrator:
             "交易流程开始：业务日期=%s；股票=%s；方向=%s；模式=%s；最大尝试=%d；执行窗口=%d秒",
             business_date, instrument, side, mode,
             self._config.trading_max_attempts,
-            self._config.trading_execution_window_seconds,
+            execution_window_seconds(side),
         )
         self._reconcile_orders(reason="EXECUTION_START")
         existing = self._matching_intents(prefix)
@@ -91,10 +91,9 @@ class OrderExecutionOrchestrator:
         deadline = started_at + max(
             0.0,
             min(
-                self._config.trading_execution_window_seconds,
+                execution_window_seconds(side) - elapsed_before_resume,
                 remaining_window,
-            )
-            - elapsed_before_resume,
+            ),
         )
         filled = next((row for row in reversed(existing) if row["status"] == "FILLED"), None)
         if filled is not None:
@@ -296,7 +295,7 @@ class OrderExecutionOrchestrator:
             quote=quote,
             side=side,
             elapsed_seconds=elapsed_seconds,
-            window_seconds=self._config.trading_execution_window_seconds,
+            window_seconds=execution_window_seconds(side),
             passive_fraction=self._config.trading_passive_fraction,
             normal_fraction=self._config.trading_normal_fraction,
         )
@@ -512,7 +511,7 @@ class OrderExecutionOrchestrator:
         if (
             side not in {"BUY", "SELL"}
             or now.date() != business_date
-            or business_date not in trade_dates(business_date.year, self._config.data_dir / "calendar")
+            or business_date not in trade_dates(business_date.year, self._config.market_dir / "raw" / "calendar")
             or not start_time <= now.time() < end_time
         ):
             return 0.0
@@ -610,4 +609,4 @@ def _is_permission_denial(message: str) -> bool:
         keyword in normalized
         for keyword in ("无权限", "没有权限", "未开通", "禁止交易", "不允许交易")
     )
-# AI_GENERATE_END ---------------------------------
+# AI_GENERATE_END- ----------------------------------

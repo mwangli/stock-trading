@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------
+# AI_GENERATE_START -------
 from __future__ import annotations
 
 import json
@@ -33,7 +33,7 @@ def trade_dates(year: int, calendar_dir: Path | None = None) -> tuple[date, ...]
         payload = json.loads(cache.read_text(encoding="utf-8"))
         if (
             payload.get("year") != year
-            or payload.get("source") not in {"baostock", "tushare"}
+            or payload.get("source") != "baostock"
             or payload.get("completeYear") is not True
         ):
             raise ValueError(f"{year} 年交易日历缓存来源或覆盖范围无效")
@@ -109,4 +109,4 @@ def count_holding_trade_days(
         for value in trade_dates(year)
     )
     return sum(buy_date < value <= end_date for value in values)
-# AI_GENERATE_END ------
+# AI_GENERATE_END -------

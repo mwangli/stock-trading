@@ -1,4 +1,4 @@
-# AI_GENERATE_START- ------------------------------------------------------
+# AI_GENERATE_START----- ------------------------------------------------------
 from __future__ import annotations
 
 import json
@@ -22,7 +22,7 @@ def ensure_trade_calendar(
         try:
             trade_dates(year, directory)
             continue
-        except MissingTradeCalendarError:
+        except (MissingTradeCalendarError, ValueError):
             pass
         values = provider.trading_dates(date(year, 1, 1), date(year, 12, 31))
         if not values or values != sorted(set(values)) or any(value.year != year for value in values):
@@ -74,6 +74,8 @@ def live_codes(stocks: pd.DataFrame, snapshot_date: date) -> list[str]:
         ipo_date = pd.Timestamp(row.ipo_date).date() if pd.notna(row.ipo_date) else None
         out_date = pd.Timestamp(row.out_date).date() if pd.notna(row.out_date) else None
         if (ipo_date and ipo_date > snapshot_date) or (out_date and out_date < snapshot_date):
+            continue
+        if out_date and out_date <= snapshot_date + timedelta(days=30):
             continue
         if str(row.status) not in {"", "1"} or str(row.trade_status) != "1":
             continue
@@ -128,15 +130,6 @@ def sync_daily(
     return provider.sync_daily(store, stocks, codes, dates)
 
 
-def sync_factors(
-    store: ParquetMarketStore,
-    provider: MarketDataProvider,
-    codes: list[str],
-    dates: list[date],
-) -> dict[str, object]:
-    return provider.sync_factors(store, codes, dates)
-
-
 def sync_minute5(
     store: ParquetMarketStore,
     provider: MarketDataProvider,
@@ -157,4 +150,4 @@ def sync_minute(
     return provider.sync_minute(store, codes, start_date, end_date)
 
 
-# AI_GENERATE_END- ------------------------------------------------------
+# AI_GENERATE_END----- ------------------------------------------------------

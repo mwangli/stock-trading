@@ -1,169 +1,166 @@
-# AI_GENERATE_START -------
+# AI_GENERATE_START-- ----------
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+
+
+@dataclass(frozen=True)
+class StrategySpec:
+    """数据等级唯一绑定的标签和交易合同。"""
+
+    strategy_id: str
+    display_name: str
+    label_contract: str
+    signal_timing: str
+    sell_window: tuple[str, str]
+    buy_window: tuple[str, str]
+    price_benchmark: str
 
 
 @dataclass(frozen=True)
 class ModelSpec:
-    """一套可独立准备、训练、排名和复盘的研究模型配置。"""
+    """第一阶段模型矩阵中的一个固定单元格。"""
 
     model_id: str
-    version: tuple[int, ...]
+    data_level: str
+    dataset_id: str
     algorithm: str
     feature_frequency: str
     feature_set: str
-    label_horizon: int
     business_description: str
     algorithm_parameters: dict[str, object]
     required_fields: tuple[str, ...]
-    training_target: str = "raw_return"
-    training_window_days: int | None = None
+    strategy: StrategySpec
 
-    def qlib_dir(self, root: Path) -> Path:
+    def prepared_dir(self, root: Path) -> Path:
+        return root / self.dataset_id
+
+    def model_dir(self, root: Path) -> Path:
         return root / self.model_id
 
-    def artifact_dir(self, root: Path) -> Path:
-        return root / self.model_id
+    @property
+    def label_horizon(self) -> int:
+        return 1
 
     @property
     def label_name(self) -> str:
-        return f"T+{self.label_horizon}"
+        return "T+1"
 
     @property
     def label_description(self) -> str:
-        return (
-            "预测日 D 收盘后生成排名，D+1 14:00–15:00 窗口 VWAP 买入，"
-            f"持有 {self.label_horizon} 个交易日后 13:00–14:00 窗口 VWAP 卖出的收益率"
+        return self.strategy.label_contract
+
+
+L1_STRATEGY = StrategySpec(
+    strategy_id="T1_ALL_SELL_ALL_BUY",
+    display_name="全天先卖后买、日均价 T+1",
+    label_contract="daily_vwap(D+2) / daily_vwap(D+1) - 1",
+    signal_timing="after-close",
+    sell_window=("09:30", "15:00"),
+    buy_window=("09:30", "15:00"),
+    price_benchmark="daily-vwap",
+)
+L2_STRATEGY = StrategySpec(
+    strategy_id="T1_AM_SELL_PM_BUY",
+    display_name="收盘排名、次日上午卖出、下午买入",
+    label_contract=(
+        "sell_vwap(D+2,09:30-11:30) / buy_vwap(D+1,14:00-15:00) - 1"
+    ),
+    signal_timing="after-close",
+    sell_window=("09:30", "11:30"),
+    buy_window=("14:00", "15:00"),
+    price_benchmark="window-vwap",
+)
+L3_PLANNED_STRATEGY = StrategySpec(
+    strategy_id="T1_PM_SELL_PM_BUY",
+    display_name="午间分钟决策、下午先卖后买",
+    label_contract=(
+        "sell_vwap(D+1,13:00-14:00) / buy_vwap(D,14:00-15:00) - 1"
+    ),
+    signal_timing="after-noon-rank",
+    sell_window=("13:00", "14:00"),
+    buy_window=("14:00", "15:00"),
+    price_benchmark="minute1-window-vwap",
+)
+
+ALGORITHMS: dict[str, dict[str, object]] = {
+    "LightGBM": {
+        "learning_rate": 0.05,
+        "num_leaves": 31,
+        "max_depth": 6,
+        "n_estimators": 300,
+    },
+    "XGBoost": {
+        "learning_rate": 0.05,
+        "max_depth": 6,
+        "n_estimators": 300,
+        "subsample": 0.8,
+        "colsample_bytree": 0.8,
+    },
+}
+
+
+def _models_for_level(
+    level: str,
+    frequency: str,
+    feature_set: str,
+    required_fields: tuple[str, ...],
+    strategy: StrategySpec,
+) -> tuple[ModelSpec, ...]:
+    return tuple(
+        ModelSpec(
+            model_id=f"{level}_{frequency}_{algorithm}",
+            data_level=level,
+            dataset_id=f"{level}_{frequency}",
+            algorithm=algorithm,
+            feature_frequency=frequency,
+            feature_set=feature_set,
+            business_description=(
+                f"{strategy.display_name}的 {algorithm} 横截面排名模型"
+            ),
+            algorithm_parameters=dict(parameters),
+            required_fields=required_fields,
+            strategy=strategy,
         )
+        for algorithm, parameters in ALGORITHMS.items()
+    )
 
 
 MODEL_SPECS = (
-    ModelSpec(
-        model_id="v1.1_LightGBM_daily_T+1",
-        version=(1, 1),
-        algorithm="LightGBM",
-        feature_frequency="daily",
-        feature_set="DailyAlpha158",
-        label_horizon=1,
-        business_description="使用排名日 D 收盘后完整日线的 LightGBM T+1 排名模型。",
-        algorithm_parameters={
-            "learning_rate": 0.05,
-            "num_leaves": 31,
-            "max_depth": 6,
-            "n_estimators": 300,
-        },
-        required_fields=("daily", "factor", "minute_summary"),
+    *_models_for_level(
+        "L1",
+        "daily",
+        "DailyAlpha158Basic",
+        ("daily", "basic", "factor"),
+        L1_STRATEGY,
     ),
-    ModelSpec(
-        model_id="v1.2_LightGBM_minute5_T+1",
-        version=(1, 2),
-        algorithm="LightGBM",
-        feature_frequency="minute5",
-        feature_set="MorningAlpha158",
-        label_horizon=1,
-        business_description="使用预测日上午 5 分钟行情、服务次日买入的 LightGBM T+1 模型。",
-        algorithm_parameters={
-            "learning_rate": 0.05,
-            "num_leaves": 31,
-            "max_depth": 6,
-            "n_estimators": 300,
-        },
-        required_fields=("minute5", "factor", "minute_summary"),
-    ),
-    ModelSpec(
-        model_id="v1.3_LightGBM_minute1_T+1",
-        version=(1, 3),
-        algorithm="LightGBM",
-        feature_frequency="minute1",
-        feature_set="FullDayMinute1Alpha158",
-        label_horizon=1,
-        business_description=(
-            "使用排名日 D 完整1分钟量价与日线背景的 LightGBM 稳健 T+1 收益模型。"
-        ),
-        algorithm_parameters={
-            "objective": "huber",
-            "learning_rate": 0.03,
-            "num_leaves": 31,
-            "max_depth": 6,
-            "n_estimators": 500,
-        },
-        required_fields=("minute1", "daily", "factor", "minute_summary"),
-        training_target="winsorized_return",
-        training_window_days=500,
-    ),
-    ModelSpec(
-        model_id="v2.1_XGBoost_minute5_T+1",
-        version=(2, 1),
-        algorithm="XGBoost",
-        feature_frequency="minute5",
-        feature_set="MorningAlpha158",
-        label_horizon=1,
-        business_description="使用预测日上午 5 分钟行情、服务次日买入的 XGBoost T+1 模型。",
-        algorithm_parameters={
-            "learning_rate": 0.05,
-            "max_depth": 6,
-            "n_estimators": 300,
-            "subsample": 0.8,
-            "colsample_bytree": 0.8,
-        },
-        required_fields=("minute5", "factor", "minute_summary"),
-    ),
-    ModelSpec(
-        model_id="v2.3_XGBoostRanker_minute1_T+1",
-        version=(2, 3),
-        algorithm="XGBoostRanker",
-        feature_frequency="minute1",
-        feature_set="FullDayMinute1Alpha158",
-        label_horizon=1,
-        business_description=(
-            "使用排名日 D 完整1分钟量价、按交易日分组优化横截面顺序的 T+1 模型。"
-        ),
-        algorithm_parameters={
-            "learning_rate": 0.03,
-            "max_depth": 6,
-            "n_estimators": 500,
-            "subsample": 0.8,
-            "colsample_bytree": 0.8,
-        },
-        required_fields=("minute1", "daily", "factor", "minute_summary"),
-        training_target="cross_sectional_rank",
-        training_window_days=500,
+    *_models_for_level(
+        "L2",
+        "minute5",
+        "FullDayMinute5Alpha158Basic",
+        ("daily", "basic", "factor", "minute5"),
+        L2_STRATEGY,
     ),
 )
-DEFAULT_MODEL_ID = "v2.1_XGBoost_minute5_T+1"
+DEFAULT_MODEL_ID = "L1_daily_LightGBM"
+_MODEL_BY_ID = {spec.model_id: spec for spec in MODEL_SPECS}
 
 
 def supported_model_ids() -> tuple[str, ...]:
-    return tuple(spec.model_id for spec in MODEL_SPECS)
+    return tuple(_MODEL_BY_ID)
 
 
-def resolve_model_spec(
-    value: str | None,
-    warning: Callable[[str], None] | None = None,
-) -> ModelSpec:
-    """按完整 ID、版本前缀或算法前缀选择数字版本最高的模型。"""
-    if value is None or not value.strip():
-        return next(spec for spec in MODEL_SPECS if spec.model_id == DEFAULT_MODEL_ID)
-    query = value.strip().lower()
-    exact = [spec for spec in MODEL_SPECS if spec.model_id.lower() == query]
-    matches = exact or [
-        spec
-        for spec in MODEL_SPECS
-        if spec.model_id.lower().startswith(query)
-        or spec.algorithm.lower().startswith(query)
-    ]
-    if not matches:
+def resolve_model_spec(value: str | None) -> ModelSpec:
+    """只接受第一阶段四个完整模型 ID。"""
+    model_id = value.strip() if value and value.strip() else DEFAULT_MODEL_ID
+    try:
+        return _MODEL_BY_ID[model_id]
+    except KeyError:
         supported = "、".join(supported_model_ids())
-        raise ValueError(f"模型 ID 不存在：{value}；支持的模型：{supported}")
-    selected = max(matches, key=lambda item: item.version)
-    if len(matches) > 1 and warning is not None:
-        warning(
-            f"模型参数 {value} 匹配多个版本，已选择最高版本 {selected.model_id}"
-        )
-    return selected
+        raise ValueError(
+            f"模型 ID 不存在：{model_id}；支持的模型：{supported}"
+        ) from None
 
 
-# AI_GENERATE_END -------
+# AI_GENERATE_END-- ----------

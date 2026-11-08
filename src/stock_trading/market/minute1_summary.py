@@ -1,10 +1,12 @@
-# AI_GENERATE_START -
+# AI_GENERATE_START --
 from __future__ import annotations
 
 from datetime import time
 
 import numpy as np
 import pandas as pd
+
+from stock_trading.contracts import BUY_END, BUY_START, SELL_END, SELL_START
 
 
 EXPECTED_MINUTE1_BARS = 241
@@ -77,6 +79,8 @@ def _summarize_day(day: pd.DataFrame, trade_date: pd.Timestamp) -> dict[str, obj
     morning = _window(day, time(9, 30), time(11, 30))
     afternoon = _window(day, time(13, 0), time(15, 0))
     last30 = _window(day, time(14, 30), time(15, 0))
+    buy_window = _window(day, BUY_START, BUY_END)
+    sell_window = _window(day, SELL_START, SELL_END)
     high = float(pd.to_numeric(day["high"], errors="coerce").max())
     low = float(pd.to_numeric(day["low"], errors="coerce").min())
     last_price = float(close.iloc[-1])
@@ -92,6 +96,9 @@ def _summarize_day(day: pd.DataFrame, trade_date: pd.Timestamp) -> dict[str, obj
         if total_volume > 0
         else float("nan")
     )
+    minute1_complete = len(day) == EXPECTED_MINUTE1_BARS and total_volume > 0
+    buy_volume = float(pd.to_numeric(buy_window["volume"], errors="coerce").sum())
+    sell_volume = float(pd.to_numeric(sell_window["volume"], errors="coerce").sum())
     return {
         "trade_date": pd.Timestamp(trade_date),
         "open": first_price,
@@ -128,8 +135,16 @@ def _summarize_day(day: pd.DataFrame, trade_date: pd.Timestamp) -> dict[str, obj
         if high > low
         else 0.5,
         "trend_slope": trend_slope,
+        "buy_vwap": _window_vwap(buy_window),
+        "buy_low": _window_price(buy_window, "low", "min"),
+        "buy_high": _window_price(buy_window, "high", "max"),
+        "buy_complete": minute1_complete and len(buy_window) >= 60 and buy_volume > 0,
+        "sell_vwap": _window_vwap(sell_window),
+        "sell_low": _window_price(sell_window, "low", "min"),
+        "sell_high": _window_price(sell_window, "high", "max"),
+        "sell_complete": minute1_complete and len(sell_window) >= 120 and sell_volume > 0,
         "minute1_bars": len(day),
-        "minute1_complete": len(day) == EXPECTED_MINUTE1_BARS and total_volume > 0,
+        "minute1_complete": minute1_complete,
     }
 
 
@@ -153,6 +168,21 @@ def _volume_ratio(window: pd.DataFrame, total_volume: float) -> float:
     return float(volume.sum() / total_volume)
 
 
+def _window_vwap(window: pd.DataFrame) -> float:
+    if window.empty:
+        return float("nan")
+    volume = float(pd.to_numeric(window["volume"], errors="coerce").sum())
+    amount = float(pd.to_numeric(window["amount"], errors="coerce").sum())
+    return amount / volume if volume > 0 else float("nan")
+
+
+def _window_price(window: pd.DataFrame, field: str, operation: str) -> float:
+    if window.empty:
+        return float("nan")
+    values = pd.to_numeric(window[field], errors="coerce")
+    return float(values.min() if operation == "min" else values.max())
+
+
 def _summary_columns() -> list[str]:
     return [
         "trade_date",
@@ -164,6 +194,14 @@ def _summary_columns() -> list[str]:
         "amount",
         "vwap",
         *MINUTE1_FEATURE_FIELDS,
+        "buy_vwap",
+        "buy_low",
+        "buy_high",
+        "buy_complete",
+        "sell_vwap",
+        "sell_low",
+        "sell_high",
+        "sell_complete",
         "minute1_bars",
         "minute1_complete",
     ]
@@ -173,4 +211,4 @@ def _empty_summary() -> pd.DataFrame:
     return pd.DataFrame(columns=_summary_columns())
 
 
-# AI_GENERATE_END -
+# AI_GENERATE_END --

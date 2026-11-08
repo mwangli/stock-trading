@@ -1,38 +1,48 @@
-# AI_GENERATE_START ----
+# AI_GENERATE_START-------- ------
 from __future__ import annotations
 
+import hashlib
+import json
+
+from stock_trading.contracts import TRADING_TIME_CONTRACT
 from stock_trading.research.model_config import ModelSpec
-from stock_trading.contracts import TRADING_TIME_CONTRACT, BUY_START, BUY_END, SELL_START, SELL_END
+
+QLIB_CONTRACT_VERSION = "15"
+MIN_QLIB_TRADING_DAYS = 63
 
 
-QLIB_CONTRACT_VERSION = "8"
-
-
-
-def expected_label_contract(spec: ModelSpec | None) -> str:
-    frequency = spec.feature_frequency if spec else "minute5"
-    horizon = spec.label_horizon if spec else 1
-    return f"{TRADING_TIME_CONTRACT}:{frequency}:T+{horizon}"
-
-
-def trading_time_contract(spec: ModelSpec | None) -> dict[str, object]:
-    frequency = spec.feature_frequency if spec else "minute5"
+def strategy_contract(spec: ModelSpec) -> dict[str, object]:
+    strategy = spec.strategy
     return {
         "version": TRADING_TIME_CONTRACT,
-        "timezone": "Asia/Shanghai",
-        "signalTiming": "after-close-and-data-ready",
-        "featureCutoff": "11:30" if frequency == "minute5" else "15:00",
-        "entryTradeDayOffset": 1,
-        "exitTradeDayOffset": 1 + (spec.label_horizon if spec else 1),
-        "buyWindow": [BUY_START.strftime("%H:%M"), BUY_END.strftime("%H:%M")],
-        "sellWindow": [SELL_START.strftime("%H:%M"), SELL_END.strftime("%H:%M")],
-        "priceBenchmark": "window-vwap",
+        "strategyId": strategy.strategy_id,
+        "featureLevel": spec.data_level,
+        "featureFrequency": spec.feature_frequency,
+        "signalTiming": strategy.signal_timing,
+        "sellWindow": list(strategy.sell_window),
+        "buyWindow": list(strategy.buy_window),
+        "priceBenchmark": strategy.price_benchmark,
+        "labelContract": strategy.label_contract,
+        "entryRank": 5,
+        "retainRank": 15,
     }
 
 
-def expected_qlib_contract(spec: ModelSpec | None) -> str:
-    model_id = spec.model_id if spec else "legacy"
-    frequency = spec.feature_frequency if spec else "minute5"
-    horizon = spec.label_horizon if spec else 1
-    return f"{QLIB_CONTRACT_VERSION}:{model_id}:{frequency}:T+{horizon}"
-# AI_GENERATE_END ----
+def strategy_contract_hash(spec: ModelSpec) -> str:
+    payload = json.dumps(strategy_contract(spec), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def expected_label_contract(spec: ModelSpec) -> str:
+    return f"{spec.strategy.strategy_id}:{spec.strategy.label_contract}"
+
+
+def trading_time_contract(spec: ModelSpec) -> dict[str, object]:
+    return strategy_contract(spec)
+
+
+def expected_qlib_contract(spec: ModelSpec) -> str:
+    return f"{QLIB_CONTRACT_VERSION}:{spec.dataset_id}:{strategy_contract_hash(spec)}"
+
+
+# AI_GENERATE_END-------- ------

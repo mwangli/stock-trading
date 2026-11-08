@@ -1,4 +1,4 @@
-# AI_GENERATE_START- --------------------------------------
+# AI_GENERATE_START------- ----------------------------------------
 from __future__ import annotations
 
 import logging
@@ -10,26 +10,24 @@ import numpy as np
 import pandas as pd
 
 from stock_trading.utils.instruments import normalize_instrument
-from stock_trading.market.minute1_summary import (
-    MINUTE1_FEATURE_FIELDS,
-)
 from stock_trading.market.storage import ParquetMarketStore
 from stock_trading.market.trade_calendar import trade_dates
 from stock_trading.market.minute5_summary import require_window_contract
 from stock_trading.utils.logging_utils import set_log_context, should_log_progress
-from stock_trading.research.labels import build_forward_labels
-from stock_trading.research.qlib_contract import expected_qlib_contract
+from stock_trading.research.labels import build_labels
+from stock_trading.research.features import BASIC_FEATURE_FIELDS
+from stock_trading.research.qlib_contract import MIN_QLIB_TRADING_DAYS, expected_qlib_contract
 from stock_trading.research.model_config import ModelSpec
 
 LOGGER = logging.getLogger(__name__)
 QLIB_BASE_FIELDS = (
     "open", "high", "low", "close", "volume", "amount", "vwap", "factor",
 )
-QLIB_FIELDS = QLIB_BASE_FIELDS + (
-    "morning_return", "morning_range", "morning_close_vwap",
-    "morning_last30_return", "label",
+DAILY_QLIB_FIELDS = QLIB_BASE_FIELDS + BASIC_FEATURE_FIELDS + ("label",)
+MINUTE5_QLIB_FIELDS = QLIB_BASE_FIELDS + BASIC_FEATURE_FIELDS + (
+    "full_return", "full_range", "full_close_vwap",
+    "full_last30_return", "label",
 )
-MINUTE1_QLIB_FIELDS = QLIB_BASE_FIELDS + MINUTE1_FEATURE_FIELDS + ("label",)
 
 
 def _official_calendar(
@@ -53,19 +51,18 @@ class QlibBinaryStore:
         self,
         market_store: ParquetMarketStore,
         target: Path,
-        spec: ModelSpec | None = None,
+        spec: ModelSpec,
     ) -> None:
         self._market_store = market_store
         self._target = target
         self._spec = spec
-        self._feature_frequency = spec.feature_frequency if spec else "minute5"
-        self._label_horizon = spec.label_horizon if spec else 1
-        self._qlib_fields = (
-            MINUTE1_QLIB_FIELDS
-            if self._feature_frequency == "minute1"
-            else QLIB_FIELDS
-        )
+        self._feature_frequency = spec.feature_frequency
+        self._qlib_fields = {
+            "daily": DAILY_QLIB_FIELDS,
+            "minute5": MINUTE5_QLIB_FIELDS,
+        }[self._feature_frequency]
         self._expected_contract = expected_qlib_contract(spec)
+        self._basic_by_code: dict[str, pd.DataFrame] = {}
 
     def prepare(
         self,
@@ -102,6 +99,20 @@ class QlibBinaryStore:
             result = self.rebuild(codes, start_date, end_date)
             return {"mode": "rebuilt", "skipped": False} | result
 
+        if (
+            existing_range == (start_date, end_date)
+            and existing_instruments == expected
+        ):
+            return {
+                "mode": "reused",
+                "skipped": True,
+                "codes": len(codes),
+                "calendarDays": existing_days,
+                "startDate": existing_range[0].isoformat(),
+                "endDate": existing_range[1].isoformat(),
+                "path": str(self._target),
+            }
+
         effective_start = existing_range[0]
         effective_end = max(existing_range[1], end_date)
         result = self._increment(
@@ -121,6 +132,7 @@ class QlibBinaryStore:
     def rebuild(
         self, codes: list[str], start_date: date, end_date: date
     ) -> dict[str, object]:
+        self._load_basic_cache(codes, start_date, end_date)
         frames: dict[str, pd.DataFrame] = {}
         total_codes = len(codes)
         set_log_context(step="1/3", progress="0/-", target="Qlib 日线")
@@ -131,8 +143,8 @@ class QlibBinaryStore:
                 set_log_context(progress=f"{index}/{total_codes}", target=code)
                 LOGGER.info("Qlib 日线处理完成")
         calendar = _official_calendar(start_date, end_date, self._market_store.root / "calendar")
-        if len(calendar) < 63:
-            raise ValueError("Qlib calendar requires at least 63 trading days for Alpha158")
+        if len(calendar) < MIN_QLIB_TRADING_DAYS:
+            raise ValueError(f"Qlib calendar requires at least {MIN_QLIB_TRADING_DAYS} trading days for Alpha158")
 
         temporary = self._target.with_name(f".{self._target.name}.building")
         shutil.rmtree(temporary, ignore_errors=True)
@@ -147,7 +159,7 @@ class QlibBinaryStore:
         LOGGER.info("开始生成标签和特征：交易日数=%d", len(calendar))
         for index, (code, frame) in enumerate(frames.items(), start=1):
             aligned = frame.reindex(calendar)
-            labels = build_forward_labels(frame, calendar, self._label_horizon)
+            labels = build_labels(frame, calendar, self._spec)
             aligned["label"] = labels.reindex(calendar)
             qlib_code = normalize_instrument(code)
             self._write_features(temporary, qlib_code, aligned)
@@ -205,7 +217,7 @@ class QlibBinaryStore:
             return False
         expected = {normalize_instrument(code) for code in codes}
         return (
-            len(calendar) >= 120
+            len(calendar) >= MIN_QLIB_TRADING_DAYS
             and start_date <= calendar[0] <= start_date + timedelta(days=15)
             and calendar[-1] == end_date
             and instruments == expected
@@ -299,113 +311,134 @@ class QlibBinaryStore:
     def _adjusted_daily(
         self, code: str, start_date: date, end_date: date
     ) -> pd.DataFrame:
-        summaries = self._market_store.read_minute_summaries(code).set_index(
-            "trade_date"
-        )
-        require_window_contract(summaries)
-        summaries = summaries[
-            (summaries.index.date >= start_date)
-            & (summaries.index.date <= end_date)
-            & summaries["morning_complete"].fillna(False).astype(bool)
-        ]
-        if summaries.empty:
-            return pd.DataFrame(
-                index=summaries.index,
-                columns=self._qlib_fields[:-1],
-                dtype=float,
-            )
-        minute1 = pd.DataFrame()
-        if self._feature_frequency == "minute1":
-            minute1 = self._market_store.read_minute1_summaries(code).set_index(
-                "trade_date"
-            )
-            minute1 = minute1[
-                (minute1.index.date >= start_date)
-                & (minute1.index.date <= end_date)
-                & minute1["minute1_complete"].fillna(False).astype(bool)
-            ]
-            summaries = summaries.loc[summaries.index.intersection(minute1.index)]
-        daily = self._market_store.read_daily_history(code).set_index("trade_date")
-        status = daily[["tradestatus", "is_st"]].reindex(summaries.index)
-        summaries = summaries[
-            status["tradestatus"].astype(str).eq("1")
-            & ~status["is_st"].astype(str).eq("1")
-        ]
-        if summaries.empty:
-            return pd.DataFrame(
-                index=summaries.index, columns=self._qlib_fields[:-1], dtype=float
-            )
-        factors = self._market_store.read_factors(code).set_index("operate_date")
-        cumulative = factors["cumulative_factor"].astype(float).reindex(
-            summaries.index, method="ffill"
-        )
-        if cumulative.isna().any() or cumulative.le(0).any():
-            raise ValueError(f"复权因子不能覆盖分钟聚合范围：{code}")
-        factor = cumulative / float(factors["cumulative_factor"].iloc[0])
         if self._feature_frequency == "daily":
-            adjusted = self._same_day_daily_features(daily, factors, summaries.index)
-        elif self._feature_frequency == "minute1":
-            source = minute1.reindex(summaries.index)
-            adjusted = pd.DataFrame(index=summaries.index)
+            daily = self._market_store.read_daily_history(code).set_index("trade_date")
+            daily = daily[
+                (daily.index.date >= start_date)
+                & (daily.index.date <= end_date)
+                & daily["tradestatus"].astype(str).eq("1")
+                & ~daily["is_st"].astype(str).eq("1")
+            ]
+            factors = self._market_store.read_factors(code).set_index("operate_date")
+            adjusted = self._same_day_daily_features(daily, factors)
+            return self._attach_basic_features(code, adjusted)
+
+        if self._feature_frequency == "minute5":
+            source = self._market_store.read_minute_summaries(
+                code, start_date, end_date
+            ).set_index("trade_date")
+            require_window_contract(source)
+            source = source[source["full_complete"].fillna(False).astype(bool)]
+            factors = self._market_store.read_factors(code).set_index("operate_date")
+            factor = self._adjustment_factor(factors, source.index, code)
+            adjusted = pd.DataFrame(index=source.index)
             for field in ("open", "high", "low", "close"):
-                adjusted[field] = source[field].astype(float) * factor
-            adjusted["volume"] = source["volume"].astype(float) / factor
-            adjusted["amount"] = source["amount"].astype(float)
-            adjusted["vwap"] = adjusted["amount"] / adjusted["volume"].replace(
-                0, np.nan
-            )
-            adjusted["factor"] = factor.astype(float)
-            for field in MINUTE1_FEATURE_FIELDS:
+                adjusted[field] = source[f"full_{field}"].astype(float) * factor
+            adjusted["volume"] = source["full_volume"].astype(float) / factor
+            adjusted["amount"] = source["full_amount"].astype(float)
+            adjusted["vwap"] = adjusted["amount"] / adjusted["volume"].replace(0, np.nan)
+            adjusted["factor"] = factor
+            for field in (
+                "full_return",
+                "full_range",
+                "full_close_vwap",
+                "full_last30_return",
+            ):
                 adjusted[field] = source[field].astype(float)
         else:
-            adjusted = pd.DataFrame(index=summaries.index)
-            for field in ("open", "high", "low", "close"):
-                adjusted[field] = summaries[f"morning_{field}"].astype(float) * factor
-            adjusted["volume"] = summaries["morning_volume"].astype(float) / factor
-            adjusted["amount"] = summaries["morning_amount"].astype(float)
-            adjusted["vwap"] = adjusted["amount"] / adjusted["volume"].replace(0, np.nan)
-            adjusted["factor"] = factor.astype(float)
-            for field in (
-                "morning_return",
-                "morning_range",
-                "morning_close_vwap",
-                "morning_last30_return",
-            ):
-                adjusted[field] = summaries[field].astype(float)
-        adjusted["morning_complete"] = summaries["morning_complete"].astype(bool)
-        adjusted["buy_complete"] = summaries["buy_complete"].astype(bool)
-        adjusted["sell_complete"] = summaries["sell_complete"].astype(bool)
-        adjusted["buy_vwap"] = summaries["buy_vwap"].astype(float) * factor
-        adjusted["sell_vwap"] = summaries["sell_vwap"].astype(float) * factor
+            raise ValueError(f"当前阶段不支持的数据频率：{self._feature_frequency}")
+
+        adjusted["full_complete"] = True
+        adjusted["buy_complete"] = source["buy_complete"].fillna(False).astype(bool)
+        adjusted["sell_complete"] = source["sell_complete"].fillna(False).astype(bool)
+        adjusted["buy_vwap"] = pd.to_numeric(
+            source["buy_vwap"], errors="coerce"
+        ) * factor
+        adjusted["sell_vwap"] = pd.to_numeric(
+            source["sell_vwap"], errors="coerce"
+        ) * factor
+        return self._attach_basic_features(code, adjusted)
+
+    @staticmethod
+    def _adjustment_factor(
+        factors: pd.DataFrame,
+        target_index: pd.DatetimeIndex,
+        code: str,
+    ) -> pd.Series:
+        factors = factors.sort_index()
+        cumulative = pd.to_numeric(
+            factors["cumulative_factor"], errors="coerce"
+        ).reindex(target_index, method="ffill")
+        if cumulative.isna().any() or cumulative.le(0).any():
+            raise ValueError(f"复权因子不能覆盖模型特征范围：{code}")
+        baseline = pd.to_numeric(
+            factors["cumulative_factor"], errors="coerce"
+        ).dropna()
+        if baseline.empty or not float(baseline.iloc[0]) > 0:
+            raise ValueError(f"复权因子基准值无效：{code}")
+        return cumulative / float(baseline.iloc[0])
+
+    def _load_basic_cache(
+        self,
+        codes: list[str],
+        start_date: date,
+        end_date: date,
+    ) -> None:
+        frame = self._market_store.read_basic_panel(
+            start_date, end_date, set(codes)
+        )
+        if frame.empty:
+            raise ValueError("L1 basic 数据为空，无法准备模型特征")
+        self._basic_by_code = {
+            str(code): values.set_index("trade_date").sort_index()
+            for code, values in frame.groupby("code", sort=False)
+        }
+
+    def _attach_basic_features(
+        self, code: str, adjusted: pd.DataFrame
+    ) -> pd.DataFrame:
+        basic = self._basic_by_code.get(code)
+        if basic is None:
+            for field in BASIC_FEATURE_FIELDS:
+                adjusted[field] = np.nan
+            return adjusted
+        aligned = basic.reindex(adjusted.index)
+        adjusted["turnover_rate"] = pd.to_numeric(
+            aligned["turnover_rate"], errors="coerce"
+        )
+        adjusted["volume_ratio"] = pd.to_numeric(
+            aligned["volume_ratio"], errors="coerce"
+        )
+        circulating = pd.to_numeric(
+            aligned["circulating_market_value"], errors="coerce"
+        )
+        adjusted["log_circulating_market_value"] = np.log1p(
+            circulating.where(circulating.gt(0))
+        )
         return adjusted
 
     @staticmethod
     def _same_day_daily_features(
         daily: pd.DataFrame,
         factors: pd.DataFrame,
-        target_index: pd.DatetimeIndex,
     ) -> pd.DataFrame:
-        """使用排名日 D 收盘后已经完整落库的当日日线。"""
+        """仅使用排名日 D 收盘后已经完整落库的日线字段。"""
         daily = daily.sort_index().copy()
-        cumulative = factors["cumulative_factor"].astype(float).reindex(
-            daily.index, method="ffill"
+        factor = QlibBinaryStore._adjustment_factor(
+            factors, daily.index, "daily"
         )
-        if cumulative.isna().any() or cumulative.le(0).any():
-            raise ValueError("复权因子不能覆盖日线特征范围")
-        factor = cumulative / float(factors["cumulative_factor"].iloc[0])
         source = pd.DataFrame(index=daily.index)
         for field in ("open", "high", "low", "close"):
-            source[field] = pd.to_numeric(daily[field], errors="coerce") * factor
-        source["volume"] = pd.to_numeric(daily["volume"], errors="coerce") / factor
+            source[field] = pd.to_numeric(
+                daily[field], errors="coerce"
+            ) * factor
+        source["volume"] = pd.to_numeric(
+            daily["volume"], errors="coerce"
+        ) / factor
         source["amount"] = pd.to_numeric(daily["amount"], errors="coerce")
         source["vwap"] = source["amount"] / source["volume"].replace(0, np.nan)
         source["factor"] = factor
-        adjusted = source.reindex(pd.DatetimeIndex(target_index))
-        adjusted["morning_return"] = adjusted["close"] / adjusted["open"] - 1.0
-        adjusted["morning_range"] = adjusted["high"] / adjusted["low"] - 1.0
-        adjusted["morning_close_vwap"] = adjusted["close"] / adjusted["vwap"] - 1.0
-        adjusted["morning_last30_return"] = adjusted["morning_return"]
-        return adjusted
+        return source
 
     @staticmethod
     def _write_calendar(target: Path, calendar: pd.DatetimeIndex) -> None:
@@ -422,6 +455,7 @@ class QlibBinaryStore:
         existing_range: tuple[date, date],
         existing_instruments: set[str],
     ) -> dict[str, object]:
+        self._load_basic_cache(codes, start_date, end_date)
         existing_calendar = self._read_calendar(self._target)
         new_start = existing_range[1] + timedelta(days=1)
         new_frames = {
@@ -472,9 +506,7 @@ class QlibBinaryStore:
                     )
                 else:
                     aligned = full.reindex(calendar)
-                    labels = build_forward_labels(
-                        full, calendar, self._label_horizon
-                    )
+                    labels = build_labels(full, calendar, self._spec)
                     aligned["label"] = labels.reindex(calendar)
                     self._write_features(temporary, instrument, aligned)
                     valid = full.dropna(subset=["close"])
@@ -485,9 +517,7 @@ class QlibBinaryStore:
                         valid.index.max().date(),
                     )
 
-                labels = build_forward_labels(
-                    full, calendar, self._label_horizon
-                ).reindex(calendar)
+                labels = build_labels(full, calendar, self._spec).reindex(calendar)
                 self._write_field(temporary, instrument, "label", labels)
                 label_count += int(labels.notna().sum())
                 if should_log_progress(index, total_codes):
@@ -619,4 +649,4 @@ class QlibBinaryStore:
             raise
         shutil.rmtree(backup, ignore_errors=True)
 
-# AI_GENERATE_END- --------------------------------------
+# AI_GENERATE_END-------- ----------------------------------------

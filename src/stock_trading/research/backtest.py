@@ -1,11 +1,11 @@
-# AI_GENERATE_START -----------------------------
+# AI_GENERATE_START--- -------------------------------
 from __future__ import annotations
 
 import json
 import logging
 import math
 from dataclasses import asdict, dataclass
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 
@@ -16,6 +16,7 @@ from stock_trading.market.rules import limit_price, limit_rate, recent_limit_dow
 from stock_trading.utils.instruments import normalize_instrument, to_market_code
 from stock_trading.market.storage import ParquetMarketStore
 from stock_trading.market.minute5_summary import require_window_contract
+from stock_trading.research.model_config import ModelSpec, resolve_model_spec
 from stock_trading.research.qlib_contract import TRADING_TIME_CONTRACT, trading_time_contract
 from stock_trading.utils.logging_utils import set_log_context, should_log_progress
 
@@ -35,8 +36,7 @@ class BacktestConfig:
     sell_slices: int = 1
     allowed_prefixes: tuple[str, ...] = ()
     entry_rank: int = 5
-    exit_rank: int = 10
-    max_holding_days: int = 3
+    exit_rank: int = 15
     limit_down_lookback_days: int = 10
     max_recent_limit_downs: int = 2
 
@@ -47,8 +47,6 @@ class BacktestConfig:
             raise ValueError("lot size and order slices must be positive")
         if self.entry_rank <= 0 or self.exit_rank < self.entry_rank:
             raise ValueError("entry and exit ranks must be positive and ordered")
-        if self.max_holding_days <= 0:
-            raise ValueError("max holding days must be positive")
         if self.limit_down_lookback_days <= 0 or self.max_recent_limit_downs < 0:
             raise ValueError("limit-down lookback must be positive and threshold non-negative")
 
@@ -65,7 +63,7 @@ class Position:
 
 
 class PortfolioBacktester:
-    """按上一交易日排名，下午买入并在下一交易日 13:00–14:00 卖出的 T+1 回测。"""
+    """按上一交易日排名，下午买入并在下一交易日 09:30–11:30 卖出的 T+1 回测。"""
 
     def __init__(
         self,
@@ -73,6 +71,7 @@ class PortfolioBacktester:
         calendar_path: Path,
         topk_path: Path,
         config: BacktestConfig,
+        model_spec: ModelSpec,
     ) -> None:
         self._market_store = market_store
         self._calendar = pd.DatetimeIndex(
@@ -85,6 +84,13 @@ class PortfolioBacktester:
         )
         self._topk["datetime"] = pd.to_datetime(self._topk["datetime"])
         self._config = config
+        self._model_spec = model_spec
+        stocks = self._market_store.read_stock_basics()
+        self._out_dates = {
+            normalize_instrument(str(row.code)): pd.Timestamp(row.out_date).date()
+            for row in stocks.itertuples(index=False)
+            if pd.notna(row.out_date)
+        }
         self._daily: dict[str, pd.DataFrame] = {}
         self._windows: dict[str, pd.DataFrame] = {}
 
@@ -123,28 +129,24 @@ class PortfolioBacktester:
                 holding_days = self._holding_trade_days(
                     position.buy_date, trade_date
                 )
-                sale, sell_reject_reason = self._try_sell(position, trade_date)
-                if sale is None:
-                    rejects.append(
-                        _reject_record(
-                            trade_date,
-                            position.instrument,
-                            sell_reject_reason or "SELL_UNAVAILABLE",
-                        )
-                    )
+                exit_rank = (
+                    self._candidate_rank(candidates, position.instrument)
+                    if candidates is not None
+                    else None
+                )
+                if exit_rank is not None and exit_rank <= self._config.exit_rank:
+                    retained_days += 1
                 else:
-                    cash += sale["sellNotional"]
-                    trade = _trade_record(
-                        position,
-                        sale,
-                        None,
-                        holding_days,
-                        "T1_AFTERNOON_EXIT" if holding_days == 1 else "T1_RETRY_EXIT",
-                    )
-                    trades.append(trade)
-                    realized_gross_profit += float(trade["grossPnl"])
-                    realized_net_profit += float(trade["netPnl"])
-                    position = None
+                    sale, sell_reject_reason = self._try_sell(position, trade_date)
+                    if sale is None:
+                        rejects.append(_reject_record(trade_date, position.instrument, sell_reject_reason or "SELL_UNAVAILABLE"))
+                    else:
+                        cash += sale["sellNotional"]
+                        trade = _trade_record(position, sale, exit_rank, holding_days, "RANK_EXIT")
+                        trades.append(trade)
+                        realized_gross_profit += float(trade["grossPnl"])
+                        realized_net_profit += float(trade["netPnl"])
+                        position = None
 
             if (
                 position is None
@@ -218,10 +220,11 @@ class PortfolioBacktester:
             amount = pd.to_numeric(daily["amount"], errors="coerce")
             daily["vwap"] = (amount / volume).where(volume > 0)
             self._daily[code] = daily
-            self._windows[code] = self._market_store.read_minute_summaries(code).set_index(
-                "trade_date"
-            )
-            require_window_contract(self._windows[code])
+            if self._model_spec.data_level == "L2":
+                self._windows[code] = self._market_store.read_minute_summaries(
+                    code, self._calendar.min().date(), self._calendar.max().date()
+                ).set_index("trade_date")
+                require_window_contract(self._windows[code])
             if should_log_progress(index, total_codes):
                 set_log_context(progress=f"{index}/{total_codes}", target=code)
                 LOGGER.info("回测行情加载完成")
@@ -235,8 +238,6 @@ class PortfolioBacktester:
     ) -> tuple[tuple[Position, float] | None, list[dict[str, object]]]:
         rejects: list[dict[str, object]] = []
         for rank, row in enumerate(candidates.itertuples(index=False), start=1):
-            if rank > self._config.entry_rank:
-                break
             instrument = normalize_instrument(row.instrument)
             code = to_market_code(instrument)
             reason = self._buy_reject_reason(
@@ -245,8 +246,7 @@ class PortfolioBacktester:
             if reason is not None:
                 rejects.append(_reject_record(buy_date, instrument, reason, rank))
                 continue
-            window = self._window_row(self._windows[code], buy_date)
-            buy_price = float(window["buy_vwap"]) * (
+            buy_price = self._buy_benchmark(code, buy_date) * (
                 1.0 + self._config.slippage_bps / 10_000.0
             )
             quantity, fees = self._affordable_quantity(cash, buy_price)
@@ -289,6 +289,9 @@ class PortfolioBacktester:
             instrument.startswith(prefix) for prefix in self._config.allowed_prefixes
         ):
             return "NO_TRADING_PERMISSION"
+        out_date = self._out_dates.get(instrument)
+        if out_date is not None and out_date <= buy_date + timedelta(days=30):
+            return "DELISTING_SOON"
         prediction = self._daily_row(code, prediction_date)
         if prediction is None:
             return "PREDICTION_DAY_DATA_MISSING"
@@ -310,11 +313,14 @@ class PortfolioBacktester:
             return "BUY_DAY_DATA_MISSING"
         if str(buy_daily["tradestatus"]) != "1":
             return "BUY_DAY_SUSPENDED"
-        window = self._window_row(self._windows[code], buy_date)
-        if window is None or not bool(window["buy_complete"]):
-            return "BUY_WINDOW_INCOMPLETE"
-        if _buy_locked_at_limit(code, buy_daily, window):
-            return "LIMIT_UP_LOCKED"
+        if self._model_spec.data_level == "L2":
+            window = self._window_row(self._windows[code], buy_date)
+            if window is None or not bool(window["buy_complete"]):
+                return "BUY_WINDOW_INCOMPLETE"
+            if _buy_locked_at_limit(code, buy_daily, window):
+                return "LIMIT_UP_LOCKED"
+        elif not float(buy_daily["vwap"]) > 0:
+            return "BUY_DAILY_VWAP_MISSING"
         return None
 
     def _try_sell(
@@ -322,16 +328,22 @@ class PortfolioBacktester:
     ) -> tuple[dict[str, float] | None, str | None]:
         code = to_market_code(position.instrument)
         daily = self._daily_row(code, sell_date)
-        window = self._window_row(self._windows[code], sell_date)
         if daily is None:
             return None, "SELL_DAY_DATA_MISSING"
         if str(daily["tradestatus"]) != "1":
             return None, "SELL_DAY_SUSPENDED"
-        if window is None or not bool(window["sell_complete"]):
-            return None, "SELL_WINDOW_INCOMPLETE"
-        if _sell_locked_at_limit(code, daily, window):
-            return None, "LIMIT_DOWN_LOCKED"
-        sell_price = float(window["sell_vwap"]) * (
+        if self._model_spec.data_level == "L2":
+            window = self._window_row(self._windows[code], sell_date)
+            if window is None or not bool(window["sell_complete"]):
+                return None, "SELL_WINDOW_INCOMPLETE"
+            if _sell_locked_at_limit(code, daily, window):
+                return None, "LIMIT_DOWN_LOCKED"
+            benchmark = float(window["sell_vwap"])
+        else:
+            benchmark = float(daily["vwap"])
+            if not benchmark > 0:
+                return None, "SELL_DAILY_VWAP_MISSING"
+        sell_price = benchmark * (
             1.0 - self._config.slippage_bps / 10_000.0
         )
         sell_notional = sell_price * position.quantity
@@ -346,6 +358,11 @@ class PortfolioBacktester:
             },
             None,
         )
+
+    def _buy_benchmark(self, code: str, buy_date: date) -> float:
+        if self._model_spec.data_level == "L1":
+            return float(self._daily_row(code, buy_date)["vwap"])
+        return float(self._window_row(self._windows[code], buy_date)["buy_vwap"])
 
     def _affordable_quantity(self, cash: float, price: float) -> tuple[int, float]:
         quantity = math.floor(cash / (price * self._config.lot_size)) * self._config.lot_size
@@ -435,7 +452,7 @@ class PortfolioBacktester:
         return {
             "config": asdict(self._config),
             "timeContractVersion": TRADING_TIME_CONTRACT,
-            "timeContract": trading_time_contract(None),
+            "timeContract": trading_time_contract(self._model_spec),
             "simulationType": "window-vwap-benchmark",
             "executionLimitations": (
                 "窗口VWAP基准，并非逐分钟成交回放；不模拟盘口排队、部分成交和撤单。"
@@ -486,15 +503,17 @@ def run_portfolio_backtest(
         allowed_prefixes=config.trading_allowed_prefixes,
         entry_rank=config.trading_entry_rank,
         exit_rank=config.trading_exit_rank,
-        max_holding_days=config.trading_max_holding_days,
         limit_down_lookback_days=config.trading_limit_down_lookback_days,
         max_recent_limit_downs=config.trading_max_recent_limit_downs,
     )
+    metrics = json.loads((model_dir / "metrics.json").read_text(encoding="utf-8"))
+    spec = resolve_model_spec(metrics["modelId"])
     return PortfolioBacktester(
-        ParquetMarketStore(config.data_dir),
-        (qlib_dir or config.qlib_dir) / "calendars" / "day.txt",
+        ParquetMarketStore(config.market_dir),
+        (qlib_dir or config.prepared_dir) / "calendars" / "day.txt",
         model_dir / "test_predictions.parquet",
         backtest_config,
+        model_spec=spec,
     ).run(artifact_dir)
 
 
@@ -572,7 +591,6 @@ def backtest_artifact_valid(
     initial_cash: float | None = None,
     entry_rank: int | None = None,
     exit_rank: int | None = None,
-    max_holding_days: int | None = None,
     limit_down_lookback_days: int | None = None,
     max_recent_limit_downs: int | None = None,
 ) -> bool:
@@ -618,11 +636,6 @@ def backtest_artifact_valid(
     if exit_rank is not None and int(config.get("exit_rank", 0)) != exit_rank:
         return False
     if (
-        max_holding_days is not None
-        and int(config.get("max_holding_days", 0)) != max_holding_days
-    ):
-        return False
-    if (
         limit_down_lookback_days is not None
         and int(config.get("limit_down_lookback_days", 0))
         != limit_down_lookback_days
@@ -641,4 +654,4 @@ def read_backtest_summary(directory: Path) -> dict[str, object]:
     """读取模型回测摘要。"""
     return json.loads((directory / "summary.json").read_text(encoding="utf-8"))
 
-# AI_GENERATE_END -----------------------------
+# AI_GENERATE_END--- -------------------------------

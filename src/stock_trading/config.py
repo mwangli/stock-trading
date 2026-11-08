@@ -1,4 +1,4 @@
-# AI_GENERATE_START--- ---------------------------------------------------------
+# AI_GENERATE_START------- ---------------------------------------------------------
 from __future__ import annotations
 
 import logging
@@ -13,8 +13,7 @@ TRADING_MIN_PRICE = 0.01
 TRADING_MAX_PRICE = 1_000_000.0
 TRADING_ORDER_FEE = 5.0
 TRADING_ENTRY_RANK = 5
-TRADING_EXIT_RANK = 10
-TRADING_MAX_HOLDING_DAYS = 3
+TRADING_EXIT_RANK = 15
 TRADING_LIMIT_DOWN_LOOKBACK_DAYS = 10
 TRADING_MAX_RECENT_LIMIT_DOWNS = 2
 EXECUTION_WINDOW_SECONDS = 60 * 60
@@ -45,11 +44,10 @@ _LOADED_ENV_ROOTS: set[Path] = set()
 class AppConfig:
     """Runtime paths and optional network settings."""
 
-    data_dir: Path
-    qlib_dir: Path
-    artifact_dir: Path
+    market_dir: Path
+    prepared_dir: Path
+    model_dir: Path
     state_db_path: Path
-    tushare_token: str | None
     baostock_proxy: str | None
     market_history_days: int
     bark_device_key: str
@@ -72,13 +70,13 @@ class AppConfig:
     broker_history_page_size: int
     broker_history_max_records: int
     broker_history_request_interval_seconds: float
+    minute_market_workers: int
     minute_market_request_interval_seconds: float
     trading_min_price: float
     trading_max_price: float
     trading_order_fee: float
     trading_entry_rank: int
     trading_exit_rank: int
-    trading_max_holding_days: int
     trading_limit_down_lookback_days: int
     trading_max_recent_limit_downs: int
     trading_allowed_prefixes: tuple[str, ...]
@@ -105,19 +103,17 @@ class AppConfig:
         if project_dir is None:
             project_dir = load_project_environment()
         runtime_dir = project_dir / "data"
-        data_dir = runtime_dir / "market"
-        qlib_dir = runtime_dir / "qlib"
-        artifact_dir = runtime_dir / "artifacts"
+        market_dir = runtime_dir / "market"
+        prepared_dir = runtime_dir / "prepared"
+        model_dir = runtime_dir / "models"
         state_db_path = runtime_dir / "state" / "trading.db"
-        tushare_token = _optional_env("TUSHARE_TOKEN")
         baostock_proxy = _optional_env("BAOSTOCK_PROXY")
         broker_token = _optional_env("ZXBROKER_TOKEN")
         return cls(
-            data_dir=data_dir,
-            qlib_dir=qlib_dir,
-            artifact_dir=artifact_dir,
+            market_dir=market_dir,
+            prepared_dir=prepared_dir,
+            model_dir=model_dir,
             state_db_path=state_db_path,
-            tushare_token=tushare_token,
             baostock_proxy=baostock_proxy,
             market_history_days=min(
                 365 * 5,
@@ -170,16 +166,18 @@ class AppConfig:
                 0.0,
                 _env_float("ZXBROKER_HISTORY_REQUEST_INTERVAL_SECONDS", 0.2),
             ),
+            minute_market_workers=min(
+                16, max(1, _env_int("MINUTE_MARKET_WORKERS", 4))
+            ),
             minute_market_request_interval_seconds=max(
-                1.5,
-                _env_float("MINUTE_MARKET_REQUEST_INTERVAL_SECONDS", 1.5),
+                0.25,
+                _env_float("MINUTE_MARKET_REQUEST_INTERVAL_SECONDS", 0.5),
             ),
             trading_min_price=TRADING_MIN_PRICE,
             trading_max_price=TRADING_MAX_PRICE,
             trading_order_fee=TRADING_ORDER_FEE,
             trading_entry_rank=TRADING_ENTRY_RANK,
             trading_exit_rank=TRADING_EXIT_RANK,
-            trading_max_holding_days=TRADING_MAX_HOLDING_DAYS,
             trading_limit_down_lookback_days=TRADING_LIMIT_DOWN_LOOKBACK_DAYS,
             trading_max_recent_limit_downs=TRADING_MAX_RECENT_LIMIT_DOWNS,
             trading_allowed_prefixes=tuple(
@@ -300,4 +298,4 @@ def _env_float(name: str, default: float) -> float:
         return float(value)
     except ValueError:
         raise ValueError(f"环境变量 {name} 必须是数字") from None
-# AI_GENERATE_END--- ---------------------------------------------------------
+# AI_GENERATE_END------- ---------------------------------------------------------

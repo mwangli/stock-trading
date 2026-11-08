@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---------
+# AI_GENERATE_START ----------
 from __future__ import annotations
 
 import logging
@@ -139,6 +139,8 @@ class IncrementalSettlementService:
         while remaining > 0 and lots:
             lot = lots[0]
             buy_order = dict(lot["order"])
+            if str(buy_order["trade_date"]) >= str(order["trade_date"]):
+                break
             matched = min(remaining, int(lot["remaining"]))
             buy_before = int(buy_order["matched_quantity"]) + settled_increments.get(
                 self._order_key(buy_order), 0
@@ -449,4 +451,4 @@ def _unknown_permission(scope: str, observed_date: date) -> dict[str, str]:
         "observedAt": observed_date.isoformat(),
     }
 
-# AI_GENERATE_END ---------
+# AI_GENERATE_END ----------

@@ -1,4 +1,4 @@
-# AI_GENERATE_START---------------------- ------------------------------------
+# AI_GENERATE_START---------------------------------- -------------------------------------
 from __future__ import annotations
 
 import json
@@ -14,16 +14,13 @@ from stock_trading.broker.captcha import BaiduCaptchaSolver
 from stock_trading.broker.client import ZXBrokerClient
 from stock_trading.config import AppConfig
 from stock_trading.utils.instruments import normalize_instrument
-from stock_trading.market.storage import ParquetMarketStore, ResearchDataAudit
-from stock_trading.contracts import BUY_START, BUY_END, SELL_START, SELL_END
+from stock_trading.market.storage import ParquetMarketStore
+from stock_trading.market.derived import prepare_daily_derivatives
 from stock_trading.market.trade_calendar import trade_dates
-from stock_trading.market.quality import (
-    audit_research_quality,
-    require_data_quality,
-)
+from stock_trading.market.quality import require_data_quality
 from stock_trading.market.providers import (
+    l1_market_provider,
     market_provider,
-    preferred_market_provider,
 )
 from stock_trading.market.sync import (
     ensure_trade_calendar,
@@ -31,13 +28,13 @@ from stock_trading.market.sync import (
     live_codes,
     research_codes,
     sync_daily,
-    sync_factors,
     sync_minute,
     sync_minute5,
     sync_stock_basics,
     trading_dates_between,
 )
 from stock_trading.utils.notifications import push_execution_result
+from stock_trading.utils.logging_utils import log_context
 from stock_trading.research.artifacts import (
     model_artifacts_valid,
     model_directory,
@@ -59,8 +56,7 @@ from stock_trading.utils.time_utils import shanghai_now, shanghai_today
 from stock_trading.market.trade_calendar import shift_trade_date
 
 LOGGER = logging.getLogger(__name__)
-MINUTE1_MIN_TRAINING_DAYS = 252
-COLLECTION_TYPES = ("basic", "factor", "daily", "minute5", "minute")
+COLLECTION_TYPES = ("stock", "daily", "minute5", "minute1")
 
 
 @contextmanager
@@ -80,22 +76,32 @@ def collect_workflow(
     start_date: date,
     end_date: date,
     requested_codes: list[str] | None = None,
+    required_fields: tuple[str, ...] | None = None,
+    requested_types: tuple[str, ...] | None = None,
 ) -> dict[str, object]:
     """按固定顺序采集全部数据类型，单项失败不阻断后续阶段。"""
-    if requested_codes:
-        LOGGER.warning("basic 始终写入全市场快照，--codes 对 basic 不生效")
+    collection_types = _collection_types(required_fields, requested_types)
+    if requested_codes and "stock" in collection_types:
+        LOGGER.warning("stock 始终写入全市场快照，--codes 对 stock 不生效")
 
-    state = StateStore(config.state_db_path, calendar_dir=config.data_dir / "calendar")
-    store = ParquetMarketStore(config.data_dir)
+    state = StateStore(config.state_db_path, calendar_dir=config.market_dir / "raw" / "calendar")
+    store = ParquetMarketStore(config.market_dir)
     collection: dict[str, object] = {}
     errors: dict[str, str] = {}
     today = shanghai_today()
-    for collection_type in COLLECTION_TYPES:
-        task_date = today if collection_type == "basic" else end_date
+    stocks: pd.DataFrame | None = None
+    codes: list[str] | None = None
+    for collection_type in collection_types:
+        task_date = today if collection_type == "stock" else end_date
         business_key = state.start_task(
             f"COLLECT_{collection_type.upper()}", task_date
         )
         try:
+            if collection_type != "stock" and stocks is None:
+                stocks = _local_stock_basics(store)
+                codes = _collection_codes(
+                    stocks, start_date, end_date, requested_codes
+                )
             result = _collect_type(
                 config,
                 store,
@@ -103,6 +109,8 @@ def collect_workflow(
                 start_date,
                 end_date,
                 requested_codes,
+                stocks,
+                codes,
             )
         except Exception as error:
             state.finish_task(business_key, False, error)
@@ -121,13 +129,37 @@ def collect_workflow(
 
     summary = {
         "status": "PARTIAL" if errors else "SUCCESS",
-        "types": list(COLLECTION_TYPES),
+        "types": list(collection_types),
         "startDate": start_date.isoformat(),
         "endDate": end_date.isoformat(),
         "collection": collection,
         "errors": errors,
     }
     return summary
+
+
+def _collection_types(
+    required_fields: tuple[str, ...] | None,
+    requested_types: tuple[str, ...] | None = None,
+) -> tuple[str, ...]:
+    if requested_types is not None:
+        unknown = set(requested_types) - set(COLLECTION_TYPES)
+        if unknown:
+            raise ValueError(f"不支持的采集类型：{','.join(sorted(unknown))}")
+        return tuple(name for name in COLLECTION_TYPES if name in requested_types)
+    if required_fields is None:
+        return COLLECTION_TYPES
+    selected = {"stock"}
+    field_types = {
+        "daily": "daily",
+        "factor": "daily",
+        "basic": "daily",
+        "minute_summary": "minute5",
+        "minute5": "minute5",
+        "minute1": "minute1",
+    }
+    selected.update(field_types[field] for field in required_fields if field in field_types)
+    return tuple(name for name in COLLECTION_TYPES if name in selected)
 
 
 def _collect_type(
@@ -137,27 +169,27 @@ def _collect_type(
     start_date: date,
     end_date: date,
     requested_codes: list[str] | None,
+    stocks: pd.DataFrame | None = None,
+    codes: list[str] | None = None,
 ) -> dict[str, object]:
-    if collection_type == "basic":
-        return _collect_basic(config, store)
-    stocks = _local_stock_basics(store)
-    codes = _collection_codes(stocks, start_date, end_date, requested_codes)
+    if collection_type == "stock":
+        return _collect_stock(config, store)
+    if stocks is None or codes is None:
+        raise ValueError("非基础采集缺少股票范围")
     if collection_type == "daily":
         return _collect_daily(config, store, stocks, codes, start_date, end_date)
-    if collection_type == "factor":
-        return _collect_factor(config, store, stocks, codes, start_date, end_date)
     if collection_type == "minute5":
         return _collect_minute5(config, store, codes, start_date, end_date)
-    if collection_type == "minute":
+    if collection_type == "minute1":
         return _collect_minute(config, store, codes, start_date, end_date)
     raise ValueError(f"不支持的采集类型：{collection_type}")
 
 
-def _collect_basic(
+def _collect_stock(
     config: AppConfig, store: ParquetMarketStore
 ) -> dict[str, object]:
-    snapshot_date = shanghai_today()
-    provider = preferred_market_provider(config)
+    provider = l1_market_provider(config)
+    snapshot_date = resolve_completed_trade_date(store, provider, shanghai_now())
     if store.stock_basics_valid(snapshot_date):
         result: dict[str, object] = {
             "skipped": True,
@@ -165,9 +197,9 @@ def _collect_basic(
         }
     else:
         result = sync_stock_basics(store, provider, snapshot_date)
-    quality = _basic_quality(store, snapshot_date)
+    quality = _stock_quality(store, snapshot_date)
     if not quality["valid"]:
-        raise ValueError("股票基础信息快照检查失败")
+        raise ValueError("股票清单快照检查失败")
     return {
         "skipped": bool(result.get("skipped")),
         "provider": provider.name,
@@ -185,65 +217,37 @@ def _collect_daily(
     start_date: date,
     end_date: date,
 ) -> dict[str, object]:
-    audit = audit_research_quality(store, stocks, codes, start_date, end_date)
-    pending_codes = [plan.code for plan in audit.pending if plan.needs_daily]
-    provider = preferred_market_provider(config)
+    provider = l1_market_provider(config)
+    dates = trading_dates_between(store, provider, start_date, end_date)
+    if not dates:
+        raise ValueError("指定日期范围内没有交易日")
+    pending_codes = [
+        code
+        for code in codes
+        if not store.daily_history_valid(code, start_date, end_date)
+    ]
     if pending_codes:
-        dates = trading_dates_between(store, provider, start_date, end_date)
-        if not dates:
-            raise ValueError("指定日期范围内没有交易日")
         result = sync_daily(store, provider, stocks, pending_codes, dates)
-        audit = audit_research_quality(store, stocks, codes, start_date, end_date)
     else:
         result = {"skipped": True, "reason": "daily 数据已完整"}
-    quality = _component_quality(
-        "collect-daily",
-        codes,
-        audit,
-        "needs_daily",
+    usable_codes = sum(
+        store.daily_history_valid(code, start_date, end_date)
+        for code in codes
+    )
+    code_quality = require_data_quality(
+        "collect-daily-codes",
+        len(codes),
+        usable_codes,
         config.data_quality_min_ratio,
     )
     return {
         "skipped": not pending_codes,
         "provider": provider.name,
         "researchCodes": len(codes),
+        "tradeDates": len(dates),
+        "pendingCodes": len(pending_codes),
         "result": result,
-        "dataQuality": quality,
-    }
-
-
-def _collect_factor(
-    config: AppConfig,
-    store: ParquetMarketStore,
-    stocks: pd.DataFrame,
-    codes: list[str],
-    start_date: date,
-    end_date: date,
-) -> dict[str, object]:
-    audit = audit_research_quality(store, stocks, codes, start_date, end_date)
-    pending_codes = [plan.code for plan in audit.pending if plan.needs_factor]
-    provider = preferred_market_provider(config)
-    if pending_codes:
-        dates = trading_dates_between(store, provider, start_date, end_date)
-        if not dates:
-            raise ValueError("指定日期范围内没有交易日")
-        result = sync_factors(store, provider, pending_codes, dates)
-        audit = audit_research_quality(store, stocks, codes, start_date, end_date)
-    else:
-        result = {"skipped": True, "reason": "factor 数据已完整"}
-    quality = _component_quality(
-        "collect-factor",
-        codes,
-        audit,
-        "needs_factor",
-        config.data_quality_min_ratio,
-    )
-    return {
-        "skipped": not pending_codes,
-        "provider": provider.name,
-        "researchCodes": len(codes),
-        "result": result,
-        "dataQuality": quality,
+        "dataQuality": code_quality,
     }
 
 
@@ -254,24 +258,63 @@ def _collect_minute5(
     start_date: date,
     end_date: date,
 ) -> dict[str, object]:
-    require_full_end = _requires_complete_end_window(end_date)
-    pending_codes = [
-        code
-        for code in codes
-        if not store.minute_summaries_valid(
-            code, start_date, end_date, require_full_end
-        )
-    ]
-    provider = market_provider(config, "baostock")
-    result = (
-        sync_minute5(store, provider, pending_codes, start_date, end_date)
-        if pending_codes
-        else {"skipped": True, "reason": "minute5 数据已完整"}
+    dates = trading_dates_between(
+        store, l1_market_provider(config), start_date, end_date
     )
+    if not dates:
+        raise ValueError("指定日期范围内没有交易日")
+    provider = market_provider(config, "baostock")
+    batches = _minute5_date_batches(dates)
+    batch_results: list[dict[str, object]] = []
+    fetched_rows = 0
+    fetched_codes = 0
+    failed_codes = 0
+    for index, batch in enumerate(batches, start=1):
+        batch_start, batch_end = batch[0], batch[-1]
+        with log_context(
+            progress=f"{index}/{len(batches)}",
+            target=f"{batch_start}:{batch_end}",
+        ):
+            pending = [
+                code
+                for code in codes
+                if not store.minute_history_valid(code, batch_start, batch_end)
+            ]
+            LOGGER.info(
+                "5分钟线日期批次开始：日期=%s 至 %s；交易日=%d；待采股票=%d",
+                batch_start,
+                batch_end,
+                len(batch),
+                len(pending),
+            )
+            fetched = (
+                sync_minute5(
+                    store, provider, pending, batch_start, batch_end
+                )
+                if pending
+                else {"skipped": True, "reason": "该日期批次已完整"}
+            )
+            fetched_rows += int(fetched.get("rows", 0))
+            fetched_codes += int(fetched.get("codes", 0))
+            failed_codes += int(fetched.get("failedCodes", 0))
+            batch_results.append(
+                {
+                    "startDate": batch_start.isoformat(),
+                    "endDate": batch_end.isoformat(),
+                    "tradeDates": len(batch),
+                    "pendingCodes": len(pending),
+                    "fetch": fetched,
+                }
+            )
+            LOGGER.info(
+                "5分钟线日期批次完成：日期=%s 至 %s；采集股票=%d；失败股票=%d",
+                batch_start,
+                batch_end,
+                int(fetched.get("codes", 0)),
+                int(fetched.get("failedCodes", 0)),
+            )
     usable = sum(
-        store.minute_summaries_valid(
-            code, start_date, end_date, require_full_end
-        )
+        store.minute_history_valid(code, start_date, end_date)
         for code in codes
     )
     quality = require_data_quality(
@@ -281,10 +324,20 @@ def _collect_minute5(
         config.data_quality_min_ratio,
     )
     return {
-        "skipped": not pending_codes,
+        "skipped": all(
+            bool(item["fetch"].get("skipped")) for item in batch_results
+        ),
         "provider": provider.name,
         "researchCodes": len(codes),
-        "result": result,
+        "result": {
+            "progressUnit": "date-range",
+            "batchUnit": "calendar-year",
+            "batches": len(batches),
+            "fetchedRows": fetched_rows,
+            "fetchedCodes": fetched_codes,
+            "failedCodes": failed_codes,
+            "batchResults": batch_results,
+        },
         "dataQuality": quality,
     }
 
@@ -301,7 +354,7 @@ def _collect_minute(
     quality = require_data_quality(
         "collect-minute",
         len(codes),
-        len(store.minute1_codes_between(codes, start_date, end_date)),
+        len(store.valid_minute1_raw_codes(codes, start_date, end_date)),
         config.data_quality_min_ratio,
     )
     return {
@@ -341,30 +394,14 @@ def _local_stock_basics(store: ParquetMarketStore) -> pd.DataFrame:
     return stocks
 
 
-def _basic_quality(
+def _stock_quality(
     store: ParquetMarketStore, snapshot_date: date
 ) -> dict[str, object]:
     return {
-        "stage": "collect-basic",
+        "stage": "collect-stock",
         "valid": bool(store.stock_basics_valid(snapshot_date)),
         "snapshotDate": snapshot_date.isoformat(),
     }
-
-
-def _component_quality(
-    stage: str,
-    codes: list[str],
-    audit: ResearchDataAudit,
-    missing_field: str,
-    threshold: float,
-) -> dict[str, object]:
-    missing = sum(bool(getattr(plan, missing_field)) for plan in audit.pending)
-    return require_data_quality(
-        stage,
-        len(codes),
-        len(codes) - missing,
-        threshold,
-    )
 
 
 def _collection_codes(
@@ -396,9 +433,9 @@ def prepare_workflow(
     force: bool = False,
 ) -> dict[str, object]:
     """读取原始 Parquet，补齐可信年度日历后幂等准备指定范围的 Qlib。"""
-    store = ParquetMarketStore(config.data_dir)
+    store = ParquetMarketStore(config.market_dir)
     ensure_trade_calendar(
-        store, preferred_market_provider(config), range(start_date.year, end_date.year + 1)
+        store, l1_market_provider(config), range(start_date.year, end_date.year + 1)
     )
     try:
         stocks = store.read_stock_basics()
@@ -410,41 +447,47 @@ def prepare_workflow(
     if not codes:
         raise ValueError("股票基础信息中没有满足当前日期范围的研究股票")
     LOGGER.info(
-        "开始检查 Qlib 原始数据：股票数=%d；日期=%s 至 %s",
+        "开始准备研究数据：股票数=%d；日期=%s 至 %s",
         len(codes),
         start_date,
         end_date,
     )
-    audit = audit_research_quality(
-        store, stocks, codes, start_date, end_date
-    )
-    _log_collection_audit("Qlib 原始数据检查完成", audit)
-    ready_codes = store.valid_research_codes(
-        codes,
+    daily_ready = store.valid_daily_codes(codes, start_date, end_date)
+    derived: dict[str, object] = {}
+    if {"basic", "factor"} & set(spec.required_fields):
+        derived["daily"] = prepare_daily_derivatives(
+            store, daily_ready, start_date, end_date
+        )
+    if "basic" in spec.required_fields:
+        basic_ready = set(
+            store.valid_basic_codes(daily_ready, start_date, end_date, 63)
+        )
+        daily_ready = [code for code in daily_ready if code in basic_ready]
+    if "factor" in spec.required_fields:
+        factor_ready = {
+            code for code in daily_ready if store.factors_valid(code, end_date)
+        }
+        daily_ready = [code for code in daily_ready if code in factor_ready]
+    if spec.feature_frequency == "minute5":
+        derived["minute5"] = store.rebuild_minute_summaries(
+            daily_ready, start_date, end_date
+        )
+    elif spec.feature_frequency == "minute1":
+        derived["minute1"] = store.rebuild_minute1_summaries(
+            daily_ready, start_date, end_date
+        )
+    ready_codes = store.valid_model_codes(
+        daily_ready,
+        spec.feature_frequency,
         start_date,
         end_date,
-        require_full_end=_requires_complete_end_window(end_date),
+        63,
     )
-    if spec.feature_frequency == "minute1":
-        minute1_codes = store.valid_minute1_codes(
-            ready_codes,
-            start_date,
-            end_date,
-            MINUTE1_MIN_TRAINING_DAYS,
-        )
-        require_data_quality(
-            "prepare-minute1",
-            len(ready_codes),
-            len(minute1_codes),
-            config.data_quality_min_ratio,
-        )
-        ready_codes = minute1_codes
     quality = require_data_quality(
         "prepare",
         len(codes),
         len(ready_codes),
         config.data_quality_min_ratio,
-        audit,
     )
     prepared = create_research_model(config, spec).prepare(
         ready_codes, start_date, end_date, force=force
@@ -462,36 +505,27 @@ def prepare_workflow(
         "endDate": end_date.isoformat(),
         "researchCodes": len(ready_codes),
         "dataQuality": quality,
+        "derived": derived,
         "qlib": prepared,
     }
 
 
-def _log_collection_audit(message: str, audit: ResearchDataAudit) -> None:
-    LOGGER.info(
-        "%s：缺失股票=%d；日线=%d；复权因子=%d；5分钟线=%d",
-        message,
-        len(audit.pending),
-        sum(plan.needs_daily for plan in audit.pending),
-        sum(plan.needs_factor for plan in audit.pending),
-        sum(plan.needs_minute5 for plan in audit.pending),
-    )
-
-
-def _requires_complete_end_window(end_date: date) -> bool:
-    now = shanghai_now()
-    return end_date < now.date() or (
-        end_date == now.date() and now.time() >= time(15, 0)
-    )
+def _minute5_date_batches(dates: list[date]) -> list[list[date]]:
+    """BaoStock 支持范围查询，按自然年倒序回填以兼顾效率和时间切片完整性。"""
+    by_year: dict[int, list[date]] = {}
+    for trade_date in dates:
+        by_year.setdefault(trade_date.year, []).append(trade_date)
+    return [by_year[year] for year in sorted(by_year, reverse=True)]
 
 
 def cleanup_workflow(config: AppConfig, reference_date: date) -> dict[str, object]:
     """按统一基准日期清理可淘汰状态，不删除长期业务事实。"""
     LOGGER.info("开始清理持久化数据：基准日期=%s", reference_date)
-    store = StateStore(config.state_db_path, calendar_dir=config.data_dir / "calendar")
+    store = StateStore(config.state_db_path, calendar_dir=config.market_dir / "raw" / "calendar")
     business_key = store.start_task("CLEAN", reference_date)
     before_bytes = _cleanup_storage_bytes(config)
     try:
-        market = ParquetMarketStore(config.data_dir).cleanup_minutes(reference_date)
+        market = ParquetMarketStore(config.market_dir).cleanup_minutes(reference_date)
         state = store.cleanup(reference_date)
         after_bytes = _cleanup_storage_bytes(config)
         result = {
@@ -513,8 +547,8 @@ def cleanup_workflow(config: AppConfig, reference_date: date) -> dict[str, objec
 
 def _cleanup_storage_bytes(config: AppConfig) -> int:
     paths = (
-        config.data_dir / "minute5",
-        config.data_dir / "minute5_summary",
+        config.market_dir / "raw" / "minute5",
+        config.market_dir / "derived" / "minute5_summary",
     )
     total = sum(
         path.stat().st_size
@@ -538,7 +572,7 @@ def sync_order_workflow(
 ) -> dict[str, object]:
     """同步券商已成交事实、费用和权限，并完成可闭环的 FIFO 收益。"""
     LOGGER.info("开始同步券商历史订单：日期=%s 至 %s", start_date, end_date)
-    store = StateStore(config.state_db_path, calendar_dir=config.data_dir / "calendar")
+    store = StateStore(config.state_db_path, calendar_dir=config.market_dir / "raw" / "calendar")
     active_broker = broker or _build_broker(config)
     with _record_task(store, "ORDER", end_date):
         account_snapshot = store.save_account_snapshot(
@@ -575,9 +609,9 @@ def rank_workflow(
 ) -> dict[str, object]:
     """收盘且数据就绪后生成 D 信号，明确用于下一交易日买入。"""
     now = shanghai_now()
-    store = ParquetMarketStore(config.data_dir)
-    provider = preferred_market_provider(config)
-    calendar_dir = config.data_dir / "calendar"
+    store = ParquetMarketStore(config.market_dir)
+    provider = l1_market_provider(config)
+    calendar_dir = config.market_dir / "raw" / "calendar"
     if prediction_date is None:
         prediction_date = resolve_completed_trade_date(store, provider, now)
     if prediction_date > now.date() or (
@@ -589,20 +623,15 @@ def rank_workflow(
         ensure_trade_calendar(store, provider, (prediction_date.year + 1,))
     execution_date = shift_trade_date(prediction_date, 1, calendar_dir)
     LOGGER.info("开始生成完整横截面预测：预测日期=%s", prediction_date)
-    state_store = StateStore(config.state_db_path, calendar_dir=config.data_dir / "calendar")
+    state_store = StateStore(config.state_db_path, calendar_dir=config.market_dir / "raw" / "calendar")
     _assert_task_success(state_store, "COLLECT_DAILY", prediction_date)
-    _assert_task_success(state_store, "COLLECT_FACTOR", prediction_date)
     if spec.feature_frequency == "minute5":
         _assert_task_success(state_store, "COLLECT_MINUTE5", prediction_date)
-    elif spec.feature_frequency == "minute1":
-        _assert_task_success(state_store, "COLLECT_MINUTE", prediction_date)
     model = create_research_model(config, spec)
     stocks = store.read_stock_basics()
     metadata_codes = live_codes(stocks, prediction_date)
     if spec.feature_frequency == "minute5":
         current_codes = store.minute5_codes_on(metadata_codes, prediction_date)
-    elif spec.feature_frequency == "minute1":
-        current_codes = store.minute1_codes_on(metadata_codes, prediction_date)
     else:
         current_codes = metadata_codes
     expected_instruments = {
@@ -621,7 +650,7 @@ def rank_workflow(
         len(ready_instruments),
         config.data_quality_min_ratio,
     )
-    model_dir = model_directory(config.artifact_dir, spec)
+    model_dir = model_directory(config.model_dir, spec)
     if not model_artifacts_valid(model_dir, spec):
         raise ValueError(
             f"模型制品不存在或不完整：{spec.model_id}；请先执行 stock-train"
@@ -694,7 +723,7 @@ def _existing_prediction_summary(
         return None
     metrics = json.loads((model_dir / "metrics.json").read_text(encoding="utf-8"))
     return {
-        "modelId": metrics.get("modelId", "legacy"),
+        "modelId": metrics["modelId"],
         "model": metrics["model"],
         "featureSet": metrics["featureSet"],
         "predictionDate": prediction_date.isoformat(),
@@ -719,36 +748,33 @@ def trading_workflow(
     if side not in {"BUY", "SELL"}:
         raise ValueError("交易方向必须是 BUY 或 SELL")
     now = shanghai_now()
-    start_time, end_time = (
-        (BUY_START, BUY_END)
-        if side == "BUY"
-        else (SELL_START, SELL_END)
-    )
+    window = spec.strategy.buy_window if side == "BUY" else spec.strategy.sell_window
+    start_time, end_time = (time.fromisoformat(value) for value in window)
     if now.date() != business_date or not start_time <= now.time() < end_time:
         action = "买入" if side == "BUY" else "卖出"
         raise ValueError(
             f"{action}只能在 {start_time.strftime('%H:%M')}-"
             f"{end_time.strftime('%H:%M')} 执行"
         )
-    calendar_dir = config.data_dir / "calendar"
-    calendar_store = ParquetMarketStore(config.data_dir)
-    provider = preferred_market_provider(config)
+    calendar_dir = config.market_dir / "raw" / "calendar"
+    calendar_store = ParquetMarketStore(config.market_dir)
+    provider = l1_market_provider(config)
     ensure_trade_calendar(calendar_store, provider, (business_date.year,))
     dates = trade_dates(business_date.year, calendar_dir)
     if business_date not in dates:
         raise ValueError(f"不是交易日: {business_date}")
     if side == "BUY" and business_date == dates[0]:
         ensure_trade_calendar(calendar_store, provider, (business_date.year - 1,))
-    mode = "AFTERNOON_BUY" if side == "BUY" else "AFTERNOON_SELL"
-    mode_name = "下午买入" if side == "BUY" else "下午卖出"
+    mode = f"{spec.data_level}_{side}"
+    mode_name = "买入" if side == "BUY" else "卖出"
     LOGGER.info(
         "开始执行实时交易窗口：日期=%s；时段=%s；策略=%s；窗口=%d秒",
         business_date,
         mode_name,
         config.trading_execution_strategy,
-        config.trading_execution_window_seconds,
+        ((end_time.hour * 60 + end_time.minute) - (start_time.hour * 60 + start_time.minute)) * 60,
     )
-    store = StateStore(config.state_db_path, calendar_dir=config.data_dir / "calendar")
+    store = StateStore(config.state_db_path, calendar_dir=config.market_dir / "raw" / "calendar")
     broker = _build_broker(config)
     account_snapshot = store.save_account_snapshot(broker.get_account())
     LOGGER.info(
@@ -789,7 +815,7 @@ def review_workflow(
     config: AppConfig, spec: ModelSpec, business_date: date
 ) -> dict[str, object]:
     """汇总已实现收益并判断模型是否需要重训。"""
-    store = StateStore(config.state_db_path, calendar_dir=config.data_dir / "calendar")
+    store = StateStore(config.state_db_path, calendar_dir=config.market_dir / "raw" / "calendar")
     _assert_task_success(store, "ORDER", business_date)
     with _record_task(store, "REVIEW", business_date):
         profit = RealizedProfitService(store).summarize(
@@ -826,4 +852,4 @@ def _build_broker(config: AppConfig) -> ZXBrokerClient:
     return ZXBrokerClient(config, captcha_solver=BaiduCaptchaSolver(config).solve)
 
 
-# AI_GENERATE_END---------------------- ------------------------------------
+# AI_GENERATE_END----------------------------------- -------------------------------------

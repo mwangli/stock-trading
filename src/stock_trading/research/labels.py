@@ -1,52 +1,48 @@
-# AI_GENERATE_START ---------
+# AI_GENERATE_START ------------
 from __future__ import annotations
 
 import pandas as pd
 
+from stock_trading.research.model_config import ModelSpec
 
-def build_forward_labels(
-    observation: pd.DataFrame,
-    calendar: pd.DatetimeIndex,
-    horizon: int,
-) -> pd.Series:
-    """生成次日下午买入、持有 N 个交易日后13:00–14:00 卖出的收益标签。"""
-    if horizon <= 0:
-        raise ValueError("标签交易日周期必须大于 0")
-    labels = pd.Series(index=calendar, dtype="float32", name="label")
+
+def build_labels(observation: pd.DataFrame, calendar: pd.DatetimeIndex, spec: ModelSpec) -> pd.Series:
+    """严格按模型绑定的唯一策略生成 T+1 标签。"""
     if observation.empty:
-        return labels
-    required = {
-        "buy_vwap", "sell_vwap", "morning_complete", "buy_complete", "sell_complete",
-    }
+        return pd.Series(index=calendar, dtype="float32", name="label")
+    if spec.data_level == "L1":
+        return _daily_vwap_labels(observation, calendar)
+    if spec.data_level == "L2":
+        return _minute5_window_labels(observation, calendar)
+    raise ValueError(f"当前阶段不支持的数据等级：{spec.data_level}")
+
+
+def _daily_vwap_labels(observation: pd.DataFrame, calendar: pd.DatetimeIndex) -> pd.Series:
+    if not {"amount", "volume"}.issubset(observation.columns):
+        raise ValueError("L1 标签缺少 amount/volume 日线字段")
+    amount = pd.to_numeric(observation["amount"], errors="coerce").reindex(calendar)
+    volume = pd.to_numeric(observation["volume"], errors="coerce").reindex(calendar)
+    daily_vwap = amount / volume.where(volume.gt(0))
+    buy_vwap = daily_vwap.shift(-1)
+    sell_vwap = daily_vwap.shift(-2)
+    labels = (sell_vwap / buy_vwap - 1.0).where(buy_vwap.gt(0) & sell_vwap.gt(0))
+    return labels.astype("float32").rename("label")
+
+
+def _minute5_window_labels(observation: pd.DataFrame, calendar: pd.DatetimeIndex) -> pd.Series:
+    required = {"full_complete", "buy_vwap", "sell_vwap", "buy_complete", "sell_complete"}
     if not required.issubset(observation.columns):
-        raise ValueError(f"T+{horizon} 标签缺少上午观察或下午执行窗口字段")
-    buy_vwap = pd.to_numeric(observation["buy_vwap"], errors="coerce").reindex(calendar)
-    sell_vwap = pd.to_numeric(observation["sell_vwap"], errors="coerce").reindex(calendar)
-    morning_complete = observation["morning_complete"].reindex(calendar).fillna(False)
-    entry_buy_complete = (
-        observation["buy_complete"].reindex(calendar).shift(-1).fillna(False)
+        raise ValueError("L2 标签缺少完整日或买卖窗口字段")
+    full_complete = observation["full_complete"].reindex(calendar).fillna(False)
+    buy_complete = observation["buy_complete"].reindex(calendar).shift(-1).fillna(False)
+    sell_complete = observation["sell_complete"].reindex(calendar).shift(-2).fillna(False)
+    buy_vwap = pd.to_numeric(observation["buy_vwap"], errors="coerce").reindex(calendar).shift(-1)
+    sell_vwap = pd.to_numeric(observation["sell_vwap"], errors="coerce").reindex(calendar).shift(-2)
+    labels = (sell_vwap / buy_vwap - 1.0).where(
+        full_complete.astype(bool) & buy_complete.astype(bool) & sell_complete.astype(bool)
+        & buy_vwap.gt(0) & sell_vwap.gt(0)
     )
-    exit_sell_complete = (
-        observation["sell_complete"]
-        .reindex(calendar)
-        .shift(-(horizon + 1))
-        .fillna(False)
-    )
-    entry_buy_vwap = buy_vwap.shift(-1)
-    exit_sell_vwap = sell_vwap.shift(-(horizon + 1))
-    result = (exit_sell_vwap / entry_buy_vwap - 1.0).where(
-        morning_complete.astype(bool)
-        & entry_buy_complete.astype(bool)
-        & exit_sell_complete.astype(bool)
-        & entry_buy_vwap.gt(0)
-        & exit_sell_vwap.gt(0)
-    )
-    return result.astype("float32").rename("label")
+    return labels.astype("float32").rename("label")
 
 
-def build_t1_labels(observation: pd.DataFrame, calendar: pd.DatetimeIndex) -> pd.Series:
-    """生成预测日 D、D+1 14:00–15:00 买入、D+2 13:00–14:00 卖出的 T+1 标签。"""
-    return build_forward_labels(observation, calendar, 1)
-
-
-# AI_GENERATE_END ---------
+# AI_GENERATE_END ------------

@@ -1,4 +1,4 @@
-# AI_GENERATE_START-- ----------------------------
+# AI_GENERATE_START--- -----------------------------
 from __future__ import annotations
 
 import logging
@@ -49,7 +49,7 @@ class LiveTradingOrchestrator:
         self._broker = broker
         self._model_id = model_id
         self._qlib_dir = qlib_dir
-        self._market_store = ParquetMarketStore(config.data_dir)
+        self._market_store = ParquetMarketStore(config.market_dir)
 
     def select_targets(
         self, business_date: date, side: str
@@ -61,8 +61,13 @@ class LiveTradingOrchestrator:
         raise ValueError("交易方向必须是 BUY 或 SELL")
 
     def _select_afternoon_sell_targets(self, business_date: date) -> dict[str, object]:
-        """卖出所有 T+1 已可卖持仓，实际数量和价格在委托前重算。"""
+        """只卖出跌出保留区的 T+1 可卖持仓。"""
         buy_dates = self._unsettled_buy_dates()
+        candidates = self._prediction_candidates(business_date)
+        ranks = {
+            normalize_instrument(item["instrument"]): int(item["rank"])
+            for item in candidates
+        }
         targets: list[dict[str, object]] = []
         ignored: list[dict[str, object]] = []
         positions = self._broker.get_positions()
@@ -71,6 +76,16 @@ class LiveTradingOrchestrator:
             if position.available_quantity <= 0:
                 ignored.append(
                     {"instrument": instrument, "reason": "NO_AVAILABLE_QUANTITY"}
+                )
+                continue
+            rank = ranks.get(instrument)
+            if rank is not None and rank <= self._config.trading_exit_rank:
+                ignored.append(
+                    {
+                        "instrument": instrument,
+                        "rank": rank,
+                        "reason": "RANK_RETAINED",
+                    }
                 )
                 continue
             buy_date = buy_dates.get(instrument)
@@ -83,24 +98,22 @@ class LiveTradingOrchestrator:
                 {
                     "instrument": instrument,
                     "side": "SELL",
-                    "candidateRank": None,
+                    "candidateRank": rank,
                     "holdingDays": holding_days,
-                    "exitReason": (
-                        "T1_AFTERNOON_EXIT" if holding_days == 1 else "T1_RECOVERY_EXIT"
-                    ),
-                    "modelVersionId": None,
-                    "predictionDate": None,
+                    "exitReason": "RANK_EXIT",
+                    "modelVersionId": int(candidates[0]["model_version_id"]),
+                    "predictionDate": str(candidates[0]["prediction_date"]),
                 }
             )
         LOGGER.info(
-            "下午 T+1 卖出目标选择完成：目标数=%d；忽略数=%d",
+            "上午 T+1 卖出目标选择完成：目标数=%d；忽略数=%d",
             len(targets),
             len(ignored),
         )
         return {
             "businessDate": business_date.isoformat(),
-            "predictionDate": None,
-            "mode": "AFTERNOON_SELL",
+            "predictionDate": candidates[0]["prediction_date"],
+            "mode": "MORNING_SELL",
             "targets": targets,
             "ignored": ignored,
         }
@@ -321,4 +334,4 @@ class LiveTradingOrchestrator:
             "targets": [target] if target else [],
             "rejected": rejected,
         }
-# AI_GENERATE_END-- ----------------------------
+# AI_GENERATE_END--- -----------------------------

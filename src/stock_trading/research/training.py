@@ -1,4 +1,4 @@
-# AI_GENERATE_START---- ---------------------------------
+# AI_GENERATE_START------- ---------------------------------
 from __future__ import annotations
 
 import json
@@ -12,7 +12,7 @@ from stock_trading.config import AppConfig
 from stock_trading.market.quality import audit_research_quality, require_data_quality
 from stock_trading.market.storage import ParquetMarketStore
 from stock_trading.market.sync import research_codes, resolve_completed_trade_date
-from stock_trading.market.providers import preferred_market_provider
+from stock_trading.market.providers import l1_market_provider
 from stock_trading.research.artifacts import (
     model_artifacts_valid,
     replace_model_directory,
@@ -33,11 +33,12 @@ from stock_trading.utils.time_utils import shanghai_now, utc_now
 
 LOGGER = logging.getLogger(__name__)
 EVALUATION_FILE = "evaluation.json"
+MINIMUM_MODEL_DAYS = 63
 
 
 def default_training_range(config: AppConfig) -> tuple[date, date]:
     end_date = resolve_completed_trade_date(
-        ParquetMarketStore(config.data_dir), preferred_market_provider(config), shanghai_now()
+        ParquetMarketStore(config.market_dir), l1_market_provider(config), shanghai_now()
     )
     return end_date - timedelta(days=config.market_history_days), end_date
 
@@ -45,7 +46,7 @@ def default_training_range(config: AppConfig) -> tuple[date, date]:
 def default_training_codes(
     config: AppConfig, start_date: date, end_date: date
 ) -> list[str]:
-    store = ParquetMarketStore(config.data_dir)
+    store = ParquetMarketStore(config.market_dir)
     try:
         stocks = store.read_stock_basics()
     except (OSError, ValueError, KeyError) as error:
@@ -73,7 +74,7 @@ def run_training_pipeline(
     )
     preparation_summary = _preparation_summary(preparation)
     target = model.artifact_dir
-    store = StateStore(config.state_db_path, calendar_dir=config.data_dir / "calendar")
+    store = StateStore(config.state_db_path, calendar_dir=config.market_dir / "raw" / "calendar")
     if not force and complete_model_artifacts_valid(config, spec, target):
         state = (
             None
@@ -96,7 +97,7 @@ def run_training_pipeline(
     segments = automatic_model_segments(
         calendar_path,
         split,
-        spec.training_window_days,
+        None,
         spec.label_horizon,
     )
     staging = staging_model_directory(target)
@@ -136,17 +137,36 @@ def assert_training_data_ready(
     start_date: date,
     end_date: date,
 ) -> dict[str, object]:
-    store = ParquetMarketStore(config.data_dir)
+    store = ParquetMarketStore(config.market_dir)
     stocks = store.read_stock_basics()
-    audit = audit_research_quality(store, stocks, codes, start_date, end_date)
+    audit = (
+        audit_research_quality(store, stocks, codes, start_date, end_date)
+        if spec.feature_frequency == "minute5"
+        else None
+    )
+    daily_ready = store.valid_daily_codes(codes, start_date, end_date)
+    if "basic" in spec.required_fields:
+        basic_ready = set(
+            store.valid_basic_codes(
+                daily_ready, start_date, end_date, MINIMUM_MODEL_DAYS
+            )
+        )
+        daily_ready = [code for code in daily_ready if code in basic_ready]
+    model_codes = store.valid_model_codes(
+        daily_ready,
+        spec.feature_frequency,
+        start_date,
+        end_date,
+        MINIMUM_MODEL_DAYS,
+    )
     raw_quality = require_data_quality(
         "train-raw",
         len(codes),
-        len(audit.model_codes),
+        len(model_codes),
         config.data_quality_min_ratio,
         audit,
     )
-    expected = {normalize_instrument(code) for code in audit.model_codes}
+    expected = {normalize_instrument(code) for code in model_codes}
     model = create_research_model(config, spec)
     qlib_range = model.date_range()
     available = model.available_instruments(end_date)
@@ -171,7 +191,7 @@ def assert_training_data_ready(
         "startDate": start_date.isoformat(),
         "endDate": end_date.isoformat(),
         "codes": sorted(ready),
-        "marketCodes": list(audit.model_codes),
+        "marketCodes": model_codes,
         "dataQuality": {"raw": raw_quality, "qlib": qlib_quality},
     }
 
@@ -225,6 +245,9 @@ def evaluate_candidate(
             "maxDrawdown": abs(float(backtest["maxDrawdown"])),
             "closedTrades": backtest["closedTrades"],
             "averageHoldingDays": backtest["averageHoldingDays"],
+            "winRate": backtest["winRate"],
+            "turnover": backtest["turnover"],
+            "retainedDays": backtest["retainedDays"],
         },
     }
 
@@ -248,6 +271,12 @@ def _write_evaluation(model_dir: Path, evaluation: dict[str, object]) -> None:
     (model_dir / EVALUATION_FILE).write_text(
         json.dumps(evaluation, ensure_ascii=False, indent=2), encoding="utf-8"
     )
+    metrics_path = model_dir / "metrics.json"
+    metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+    metrics["backtest"] = evaluation["backtest"]
+    metrics_path.write_text(
+        json.dumps(metrics, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
 
 
-# AI_GENERATE_END---- ---------------------------------
+# AI_GENERATE_END------- ---------------------------------

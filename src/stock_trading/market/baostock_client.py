@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---------------------
+# AI_GENERATE_START -----------------------
 from __future__ import annotations
 
 import logging
@@ -16,21 +16,14 @@ import baostock.common.context as bs_context
 import baostock.common.contants as bs_constants
 import baostock.util.socketutil as bs_socket
 
-from stock_trading.market.models import (
-    CumulativeAdjustmentFactor,
-    DailyBar,
-    MinuteBar,
-    StockBasic,
-)
-from stock_trading.utils.logging_utils import set_log_context
-
+from stock_trading.market.models import DailyBar, MinuteBar, StockBasic
 DAILY_FIELDS = (
     "date,code,open,high,low,close,preclose,volume,amount,adjustflag,turn,"
     "tradestatus,pctChg,peTTM,pbMRQ,psTTM,pcfNcfTTM,isST"
 )
 MINUTE_FIELDS = "date,time,code,open,high,low,close,volume,amount,adjustflag"
+BAOSTOCK_PAGE_SIZE = 10_000
 LOGGER = logging.getLogger(__name__)
-ROW_PROGRESS_STEPS = 20
 T = TypeVar("T")
 
 
@@ -151,24 +144,10 @@ class BaoStockClient:
             if str(row.get("is_trading_day")) == "1"
         )
 
-    def fetch_adjustment_factors(
-        self, code: str, start_date: date, end_date: date
-    ) -> list[CumulativeAdjustmentFactor]:
-        result = self._request(
-            lambda: bs.query_adjust_factor(
-                code,
-                start_date=start_date.isoformat(),
-                end_date=end_date.isoformat(),
-            )
-        )
-        return [
-            CumulativeAdjustmentFactor.from_baostock(row)
-            for row in self._rows(result, f"复权因子 {code}")
-        ]
-
     def fetch_minutes(
         self, code: str, start_date: date, end_date: date
     ) -> list[MinuteBar]:
+        bs_constants.BAOSTOCK_PER_PAGE_COUNT = BAOSTOCK_PAGE_SIZE
         result = self._request(
             lambda: bs.query_history_k_data_plus(
                 code,
@@ -192,19 +171,12 @@ class BaoStockClient:
             raise BaoStockError(
                 f"BaoStock 查询失败：{result.error_code} {result.error_msg}"
             )
+        server_page_size = int(result.per_page_count or 0)
+        if server_page_size > 0:
+            bs_constants.BAOSTOCK_PER_PAGE_COUNT = server_page_size
         rows: list[dict[str, str]] = []
-        estimated_total = len(result.data)
-        interval = max(1, estimated_total // ROW_PROGRESS_STEPS)
         while result.next():
             rows.append(dict(zip(result.fields, result.get_row_data(), strict=True)))
-            page_remaining = max(0, len(result.data) - int(result.cur_row_num))
-            estimated_total = max(estimated_total, len(rows) + page_remaining)
-            interval = max(1, estimated_total // ROW_PROGRESS_STEPS)
-            if len(rows) == 1 or len(rows) == estimated_total or len(rows) % interval == 0:
-                set_log_context(
-                    progress=f"{len(rows)}/{estimated_total}", target=operation
-                )
-                LOGGER.info("正在接收 BaoStock 数据")
         return rows
 
     def _install_connector(self) -> None:
@@ -277,4 +249,4 @@ class BaoStockClient:
         if self._original_connect is not None:
             bs_socket.SocketUtil.connect = self._original_connect
             self._original_connect = None
-# AI_GENERATE_END ---------------------
+# AI_GENERATE_END ------------------------

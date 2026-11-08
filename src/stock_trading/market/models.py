@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---------
+# AI_GENERATE_START -------------
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
@@ -7,6 +7,10 @@ from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 SHANGHAI = ZoneInfo("Asia/Shanghai")
+STOCK_CONTRACT_BAOSTOCK = "baostock-stock-basic-v1"
+DAILY_CONTRACT_BAOSTOCK = "baostock-daily-v1"
+BASIC_CONTRACT_BAOSTOCK = "baostock-daily-derived-basic-v1"
+FACTOR_CONTRACT_BAOSTOCK = "baostock-daily-derived-adjust-v1"
 
 
 def _decimal(value: str) -> Decimal:
@@ -26,24 +30,7 @@ class StockBasic:
     status: str
     trade_status: str
     snapshot_date: date
-
-    @classmethod
-    def from_tushare(
-        cls, row: dict[str, object], snapshot_date: date
-    ) -> "StockBasic":
-        """转换 TuShare 上市股票基础资料为项目统一结构。"""
-        list_status = str(row.get("list_status") or "")
-        return cls(
-            code=_tushare_code(row.get("ts_code")),
-            code_name=str(row.get("name") or ""),
-            ipo_date=_compact_date(row.get("list_date")),
-            out_date=_compact_date(row.get("delist_date")),
-            security_type="1",
-            market_category=str(row.get("market") or ""),
-            status="1" if list_status == "L" else "0",
-            trade_status="1" if list_status == "L" else "0",
-            snapshot_date=snapshot_date,
-        )
+    source_contract: str
 
     @classmethod
     def from_baostock(
@@ -64,6 +51,7 @@ class StockBasic:
             status=str(basic.get("status") or ""),
             trade_status=str(market.get("tradeStatus") or ""),
             snapshot_date=snapshot_date,
+            source_contract=STOCK_CONTRACT_BAOSTOCK,
         )
 
     def as_record(self) -> dict[str, object]:
@@ -77,25 +65,18 @@ class StockBasic:
 
 @dataclass(frozen=True)
 class DailyBasic:
-    """TuShare 每日基础指标，金额统一保存为元。"""
+    """由 BaoStock 未复权日线确定性派生的 L1 基础指标。"""
 
     trade_date: date
     code: str
     turnover_rate: Decimal | None
     volume_ratio: Decimal | None
-    total_market_value: Decimal | None
     circulating_market_value: Decimal | None
-
-    @classmethod
-    def from_tushare(cls, row: dict[str, object]) -> "DailyBasic":
-        return cls(
-            trade_date=datetime.strptime(str(row["trade_date"]), "%Y%m%d").date(),
-            code=_tushare_code(row.get("ts_code")),
-            turnover_rate=_optional_decimal(row.get("turnover_rate")),
-            volume_ratio=_optional_decimal(row.get("volume_ratio")),
-            total_market_value=_scaled_optional_decimal(row.get("total_mv")),
-            circulating_market_value=_scaled_optional_decimal(row.get("circ_mv")),
-        )
+    pe_ttm: Decimal | None
+    pb_mrq: Decimal | None
+    ps_ttm: Decimal | None
+    pcf_ncf_ttm: Decimal | None
+    source_contract: str
 
     def as_record(self) -> dict[str, object]:
         record = asdict(self)
@@ -103,8 +84,11 @@ class DailyBasic:
         for field in (
             "turnover_rate",
             "volume_ratio",
-            "total_market_value",
             "circulating_market_value",
+            "pe_ttm",
+            "pb_mrq",
+            "ps_ttm",
+            "pcf_ncf_ttm",
         ):
             record[field] = (
                 float(record[field]) if record[field] is not None else None
@@ -123,25 +107,14 @@ class DailyBar:
     preclose: Decimal
     volume: Decimal
     amount: Decimal
+    turnover_rate: Decimal | None
+    pe_ttm: Decimal | None
+    pb_mrq: Decimal | None
+    ps_ttm: Decimal | None
+    pcf_ncf_ttm: Decimal | None
     tradestatus: str
     is_st: str
-
-    @classmethod
-    def from_tushare(cls, row: dict[str, object], is_st: bool) -> "DailyBar":
-        """转换 TuShare 未复权日线，并统一成交量和成交额单位。"""
-        return cls(
-            trade_date=datetime.strptime(str(row["trade_date"]), "%Y%m%d").date(),
-            code=_tushare_code(row.get("ts_code")),
-            open=_decimal(str(row.get("open") or "0")),
-            high=_decimal(str(row.get("high") or "0")),
-            low=_decimal(str(row.get("low") or "0")),
-            close=_decimal(str(row.get("close") or "0")),
-            preclose=_decimal(str(row.get("pre_close") or "0")),
-            volume=_decimal(str(row.get("vol") or "0")) * Decimal("100"),
-            amount=_decimal(str(row.get("amount") or "0")) * Decimal("1000"),
-            tradestatus="1",
-            is_st="1" if is_st else "0",
-        )
+    source_contract: str
 
     @classmethod
     def from_baostock(cls, row: dict[str, str]) -> "DailyBar":
@@ -155,8 +128,14 @@ class DailyBar:
             preclose=_decimal(row.get("preclose", "0")),
             volume=_decimal(row.get("volume", "0")),
             amount=_decimal(row.get("amount", "0")),
+            turnover_rate=_optional_decimal(row.get("turn")),
+            pe_ttm=_optional_decimal(row.get("peTTM")),
+            pb_mrq=_optional_decimal(row.get("pbMRQ")),
+            ps_ttm=_optional_decimal(row.get("psTTM")),
+            pcf_ncf_ttm=_optional_decimal(row.get("pcfNcfTTM")),
             tradestatus=str(row.get("tradestatus") or ""),
             is_st=str(row.get("isST") or ""),
+            source_contract=DAILY_CONTRACT_BAOSTOCK,
         )
 
     def as_record(self) -> dict[str, object]:
@@ -164,6 +143,16 @@ class DailyBar:
         record["trade_date"] = self.trade_date.isoformat()
         for field in ("open", "high", "low", "close", "preclose", "volume", "amount"):
             record[field] = float(record[field])
+        for field in (
+            "turnover_rate",
+            "pe_ttm",
+            "pb_mrq",
+            "ps_ttm",
+            "pcf_ncf_ttm",
+        ):
+            record[field] = (
+                float(record[field]) if record[field] is not None else None
+            )
         return record
 
 
@@ -172,30 +161,14 @@ class CumulativeAdjustmentFactor:
     code: str
     operate_date: date
     cumulative_factor: Decimal
-
-    @classmethod
-    def from_tushare(cls, row: dict[str, object]) -> "CumulativeAdjustmentFactor":
-        return cls(
-            code=_tushare_code(row.get("ts_code")),
-            operate_date=datetime.strptime(str(row["trade_date"]), "%Y%m%d").date(),
-            cumulative_factor=_decimal(str(row.get("adj_factor") or "0")),
-        )
-
-    @classmethod
-    def from_baostock(
-        cls, row: dict[str, str]
-    ) -> "CumulativeAdjustmentFactor":
-        return cls(
-            code=str(row["code"]).lower(),
-            operate_date=date.fromisoformat(row["dividOperateDate"]),
-            cumulative_factor=_decimal(row.get("backAdjustFactor", "0")),
-        )
+    factor_contract: str
 
     def as_record(self) -> dict[str, object]:
         return {
             "code": self.code,
             "operate_date": self.operate_date.isoformat(),
             "cumulative_factor": float(self.cumulative_factor),
+            "factor_contract": self.factor_contract,
         }
 
 
@@ -244,11 +217,6 @@ class MinuteBar:
         return record
 
 
-def _compact_date(value: object) -> date | None:
-    normalized = str(value or "").strip()
-    return datetime.strptime(normalized, "%Y%m%d").date() if normalized else None
-
-
 def _optional_iso_date(value: object) -> date | None:
     normalized = str(value or "").strip()
     return date.fromisoformat(normalized) if normalized else None
@@ -257,16 +225,6 @@ def _optional_iso_date(value: object) -> date | None:
 def _optional_decimal(value: object) -> Decimal | None:
     normalized = str(value or "").strip()
     return Decimal(normalized) if normalized else None
-
-
-def _scaled_optional_decimal(value: object) -> Decimal | None:
-    normalized = _optional_decimal(value)
-    return normalized * Decimal("10000") if normalized is not None else None
-
-
-def _tushare_code(value: object) -> str:
-    symbol, exchange = str(value or "").strip().split(".", maxsplit=1)
-    return f"{exchange.lower()}.{symbol}"
 
 
 def _market_category(code: str) -> str:
@@ -280,4 +238,4 @@ def _market_category(code: str) -> str:
     if code.startswith("bj."):
         return "北交所"
     return ""
-# AI_GENERATE_END ---------
+# AI_GENERATE_END -------------

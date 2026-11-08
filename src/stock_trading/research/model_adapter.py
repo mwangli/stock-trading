@@ -1,4 +1,4 @@
-# AI_GENERATE_START --
+# AI_GENERATE_START- --
 from __future__ import annotations
 
 from datetime import date
@@ -53,11 +53,11 @@ class ConfiguredResearchModel:
 
     def __init__(self, config: AppConfig, spec: ModelSpec) -> None:
         self.spec = spec
-        self.qlib_dir = spec.qlib_dir(config.qlib_dir)
-        self.artifact_dir = spec.artifact_dir(config.artifact_dir)
-        self._calendar_dir = config.data_dir / "calendar"
+        self.qlib_dir = spec.prepared_dir(config.prepared_dir)
+        self.artifact_dir = spec.model_dir(config.model_dir)
+        self._calendar_dir = config.market_dir / "raw" / "calendar"
         self._qlib = QlibBinaryStore(
-            ParquetMarketStore(config.data_dir), self.qlib_dir, spec
+            ParquetMarketStore(config.market_dir), self.qlib_dir, spec
         )
 
     def prepare(
@@ -108,4 +108,4 @@ def create_research_model(
     return ConfiguredResearchModel(config, spec)
 
 
-# AI_GENERATE_END --
+# AI_GENERATE_END- --

@@ -1,4 +1,4 @@
-# AI_GENERATE_START ----------------------------------
+# AI_GENERATE_START- ----------------------------------
 from __future__ import annotations
 
 import base64
@@ -16,6 +16,7 @@ from typing import Any
 from urllib.error import URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+from uuid import uuid4
 
 from stock_trading.broker.models import BrokerMinuteSeries, FiveLevelQuote
 from stock_trading.broker.parser import (
@@ -580,7 +581,7 @@ class ZXBrokerClient:
         self._token_updated_at = updated_at
         self._token_cache_path.parent.mkdir(parents=True, exist_ok=True)
         temporary_path = self._token_cache_path.with_name(
-            f".{self._token_cache_path.name}.{os.getpid()}.tmp"
+            f".{self._token_cache_path.name}.{os.getpid()}.{uuid4().hex}.tmp"
         )
         temporary_path.write_text(
             json.dumps(
@@ -634,4 +635,4 @@ def _parse_five_level_prices(
     if any(price is None or price <= 0 for price in bids + asks):
         raise BrokerProtocolError("券商未返回完整五档行情")
     return bids, asks
-# AI_GENERATE_END ----------------------------------
+# AI_GENERATE_END- ----------------------------------

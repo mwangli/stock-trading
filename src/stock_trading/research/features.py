@@ -1,57 +1,46 @@
-# AI_GENERATE_START ---
+# AI_GENERATE_START ------
 from __future__ import annotations
 
 from qlib.contrib.data.handler import Alpha158
 from qlib.contrib.data.loader import Alpha158DL
 
-from stock_trading.market.minute1_summary import MINUTE1_FEATURE_FIELDS
+from stock_trading.market.minute5_summary import MINUTE5_FEATURE_FIELDS
 
-MORNING_FEATURE_FIELDS = (
-    "morning_return",
-    "morning_range",
-    "morning_close_vwap",
-    "morning_last30_return",
+BASIC_FEATURE_FIELDS = (
+    "turnover_rate",
+    "volume_ratio",
+    "log_circulating_market_value",
 )
 
 
-def morning_alpha158_feature_config() -> tuple[list[str], list[str]]:
-    fields, names = Alpha158DL.get_feature_config(
-        {
-            "kbar": {},
-            "price": {"windows": [0], "feature": ["OPEN", "HIGH", "LOW", "VWAP"]},
-            "rolling": {},
-        }
-    )
-    fields.extend(f"${field}" for field in MORNING_FEATURE_FIELDS)
-    names.extend(field.upper() for field in MORNING_FEATURE_FIELDS)
-    return fields, names
-
-
-class MorningAlpha158(Alpha158):
-    """Alpha158 加上午半日量价特征。"""
+class DailyAlpha158(Alpha158):
+    """消费标准日线和同日已发布基础指标的 Alpha158。"""
 
     def get_feature_config(self):
-        return morning_alpha158_feature_config()
+        fields, names = super().get_feature_config()
+        fields.extend(f"${field}" for field in BASIC_FEATURE_FIELDS)
+        names.extend(field.upper() for field in BASIC_FEATURE_FIELDS)
+        return fields, names
 
 
-class DailyAlpha158(Alpha158):
-    """仅消费 Qlib 标准日级字段的 Alpha158 特征处理器。"""
-
-
-class FullDayMinute1Alpha158(Alpha158):
-    """Alpha158 加完整交易日1分钟压缩量价特征。"""
+class FullDayMinute5Alpha158(Alpha158):
+    """L1 基础指标加完整交易日 5 分钟压缩特征。"""
 
     def get_feature_config(self):
         fields, names = Alpha158DL.get_feature_config(
             {
                 "kbar": {},
-                "price": {"windows": [0], "feature": ["OPEN", "HIGH", "LOW", "VWAP"]},
+                "price": {
+                    "windows": [0],
+                    "feature": ["OPEN", "HIGH", "LOW", "VWAP"],
+                },
                 "rolling": {},
             }
         )
-        fields.extend(f"${field}" for field in MINUTE1_FEATURE_FIELDS)
-        names.extend(field.upper() for field in MINUTE1_FEATURE_FIELDS)
+        extra_fields = BASIC_FEATURE_FIELDS + MINUTE5_FEATURE_FIELDS
+        fields.extend(f"${field}" for field in extra_fields)
+        names.extend(field.upper() for field in extra_fields)
         return fields, names
 
 
-# AI_GENERATE_END ---
+# AI_GENERATE_END ------

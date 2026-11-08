@@ -1,6 +1,7 @@
-# AI_GENERATE_START ------------------------
+# AI_GENERATE_START-- -------------------------
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import re
@@ -22,11 +23,11 @@ from stock_trading.utils.logging_utils import should_log_progress
 LOGGER = logging.getLogger(__name__)
 REMOTE_DATA_ROOT = "stock-trading/data"
 SERVER_ENV_NAMES = ("SERVER_IP", "SERVER_USER", "SERVER_PASS")
-SYNC_SCOPES = ("market", "qlib", "model", "state")
+SYNC_SCOPES = ("market", "prepared", "model", "state")
 DIRECTORY_SCOPES = {
     "market": ("market",),
-    "qlib": ("qlib",),
-    "model": ("artifacts",),
+    "prepared": ("prepared",),
+    "model": ("models",),
 }
 
 
@@ -84,16 +85,25 @@ def sync_data(
     pull: bool,
     push: bool,
     force: bool = False,
+    scope: str | None = None,
 ) -> dict[str, object]:
     """按固定顺序同步数据；单个范围失败不阻断后续范围。"""
     if pull == push:
         raise ValueError("必须且只能指定拉取或推送")
     if force and not push:
         raise ValueError("--force 仅用于推送")
+    if scope is not None and scope not in SYNC_SCOPES:
+        raise ValueError(f"不支持的同步范围：{scope}")
+    if push and scope == "state" and not force:
+        raise ValueError("推送 state 必须显式指定 --force")
+    if force and scope not in {None, "state"}:
+        raise ValueError("指定非 state 范围时不允许 --force")
     server, password = _server_credentials()
-    local_data_root = config.data_dir.parent
+    local_data_root = config.market_dir.parent
     direction = "pull" if pull else "push"
-    scopes = SYNC_SCOPES if pull else SYNC_SCOPES[:3] + (("state",) if force else ())
+    scopes = (scope,) if scope is not None else (
+        SYNC_SCOPES if pull else SYNC_SCOPES[:3] + (("state",) if force else ())
+    )
     operations: list[dict[str, object]] = []
     errors: dict[str, str] = {}
     for scope in scopes:
@@ -101,7 +111,8 @@ def sync_data(
             LOGGER.info("%s 数据同步检查开始：范围=%s", direction, scope)
             local = _local_manifest(local_data_root, scope)
             remote = _remote_manifest(server, password, scope)
-            if local == remote:
+            # Size-only manifests cannot prove equal content for directory uploads.
+            if local == remote and not (push and scope != "state"):
                 operations.append(
                     {"direction": direction, "scope": scope, "status": "SKIPPED"}
                 )
@@ -141,7 +152,7 @@ def _pull_scope(
 ) -> dict[str, object]:
     if scope == "state":
         return _pull_state(config, server, password)
-    local_data_root = config.data_dir.parent
+    local_data_root = config.market_dir.parent
     files = 0
     for directory in DIRECTORY_SCOPES[scope]:
         LOGGER.info("%s 数据正在拉取：目录=%s", scope, directory)
@@ -164,16 +175,20 @@ def _push_scope(
             "警告：正在强制推送 state，服务器 SQLite 状态库将被本地一致快照覆盖"
         )
         return _push_state(config, server, password)
-    local_data_root = config.data_dir.parent
+    local_data_root = config.market_dir.parent
     files = 0
+    backups: list[str] = []
     for directory in DIRECTORY_SCOPES[scope]:
         source = local_data_root / directory
         if not source.is_dir():
             raise ValueError(f"本地同步目录不存在：{source}")
         LOGGER.info("%s 数据正在推送：目录=%s", scope, directory)
-        files += _push_directory_archive(local_data_root, directory, server, password)
+        detail = _push_directory_archive(local_data_root, directory, server, password)
+        files += int(detail["files"])
+        if detail["backup"]:
+            backups.append(str(detail["backup"]))
         LOGGER.info("%s 数据推送完成：目录=%s；文件数=%d", scope, directory, files)
-    return {"files": files}
+    return {"files": files, "backups": backups}
 
 
 def _pull_directory_atomic(
@@ -382,79 +397,75 @@ def _create_sqlite_snapshot(source: Path, target: Path) -> None:
         )
 
 
+def _directory_publish_command(
+    directory: str, transfer_id: str, file_count: int, digest: str
+) -> str:
+    """Verify the uploaded archive and replace under the shared lock; retain rollback data."""
+    if directory not in {"market", "prepared", "models"}:
+        raise ValueError("无效的推送目录")
+    if not re.fullmatch(r"[0-9a-f]{32}", transfer_id):
+        raise ValueError("无效的传输标识")
+    if not re.fullmatch(r"[0-9a-f]{64}", digest) or file_count < 1:
+        raise ValueError("无效的归档校验信息")
+    archive = f"/tmp/stock-sync-{transfer_id}.tar.gz"
+    staging = f"{REMOTE_DATA_ROOT}/.{directory}.sync-{transfer_id}"
+    backup = f"{REMOTE_DATA_ROOT}/.{directory}.previous-{transfer_id}"
+    target = f"{REMOTE_DATA_ROOT}/{directory}"
+    return (
+        "set -e; "
+        f"test -d '{REMOTE_DATA_ROOT}/state'; "
+        f"exec 9>'{REMOTE_DATA_ROOT}/state/scheduler.lock'; "
+        "flock -n 9 || { echo '调度任务正在运行，未切换数据' >&2; exit 75; }; "
+        f"printf '%s  %s\n' '{digest}' '{archive}' | sha256sum -c - >&2; "
+        f"test ! -e '{staging}'; test ! -e '{backup}'; "
+        f"mkdir '{staging}'; tar -xzf '{archive}' -C '{staging}'; "
+        f"test -d '{staging}/{directory}'; "
+        f"count=$(find '{staging}/{directory}' -type f | wc -l); "
+        f"test \"$count\" -eq '{file_count}'; "
+        "restore_on_exit() { status=$?; "
+        f"if [ -d '{backup}' ] && [ ! -e '{target}' ]; then mv '{backup}' '{target}'; fi; "
+        "exit \"$status\"; }; trap restore_on_exit EXIT; "
+        "saved=''; "
+        f"if [ -d '{target}' ]; then mv '{target}' '{backup}'; saved='{backup}'; fi; "
+        f"if mv '{staging}/{directory}' '{target}'; then "
+        "printf '%s\t%s\n' \"$count\" \"$saved\"; "
+        "else status=$?; "
+        f"if [ -d '{backup}' ] && [ ! -e '{target}' ]; then mv '{backup}' '{target}'; fi; "
+        "exit $status; fi; trap - EXIT"
+    )
+
+
 def _push_directory_archive(
     local_data_root: Path,
     directory: str,
     server: str,
     password: str,
-) -> int:
+) -> dict[str, object]:
     transfer_id = uuid4().hex
     remote_archive = f"/tmp/stock-sync-{transfer_id}.tar.gz"
-    staging = f"{REMOTE_DATA_ROOT}/.{directory}.sync-{transfer_id}"
-    backup = f"{REMOTE_DATA_ROOT}/.{directory}.previous-{transfer_id}"
-    target = f"{REMOTE_DATA_ROOT}/{directory}"
     with tempfile.TemporaryDirectory(prefix="stock-sync-archive-") as temporary:
         archive = Path(temporary) / f"{directory}.tar.gz"
-        file_count = _create_push_archive(
-            local_data_root / directory, archive
-        )
-        LOGGER.info(
-            "同步归档生成完成：目录=%s；文件数=%d；大小=%d",
-            directory,
-            file_count,
-            archive.stat().st_size,
-        )
+        file_count = _create_push_archive(local_data_root / directory, archive)
+        with archive.open("rb") as stream:
+            digest = hashlib.file_digest(stream, "sha256").hexdigest()
+        LOGGER.info("同步归档生成完成：目录=%s；文件数=%d；大小=%d", directory, file_count, archive.stat().st_size)
         _run_command(
-            "scp",
-            *_ssh_options(),
-            str(archive),
-            f"{server}:{remote_archive}",
+            "scp", *_ssh_options(), str(archive), f"{server}:{remote_archive}",
+            password=password, show_progress=True,
+        )
+        # An uncertain SSH result must not trigger cleanup or a second replacement.
+        remote = _run_command(
+            "ssh", *_ssh_options(), server,
+            _directory_publish_command(directory, transfer_id, file_count, digest),
             password=password,
-            show_progress=True,
         )
-        LOGGER.info("同步归档上传完成：目录=%s；服务器正在解压并校验", directory)
-        try:
-            remote = _run_command(
-                "ssh",
-                *_ssh_options(),
-                server,
-                (
-                    "set -e; "
-                    f"mkdir -p '{REMOTE_DATA_ROOT}'; "
-                    f"rm -rf '{staging}'; mkdir -p '{staging}'; "
-                    f"tar -xzf '{remote_archive}' -C '{staging}'; "
-                    f"test -d '{staging}/{directory}'; "
-                    f"count=$(find '{staging}/{directory}' -type f | wc -l); "
-                    f"test \"$count\" -eq '{file_count}'; "
-                    f"rm -rf '{backup}'; "
-                    f"if [ -d '{target}' ]; then mv '{target}' '{backup}'; fi; "
-                    f"if mv '{staging}/{directory}' '{target}'; then "
-                    f"rm -rf '{backup}' '{staging}' '{remote_archive}'; "
-                    "else status=$?; "
-                    f"if [ -d '{backup}' ]; then mv '{backup}' '{target}'; fi; "
-                    "exit $status; fi; "
-                    "printf '%s' \"$count\""
-                ),
-                password=password,
-            )
-        except Exception:
-            _run_command(
-                "ssh",
-                *_ssh_options(),
-                server,
-                f"rm -rf '{staging}' '{remote_archive}'",
-                check=False,
-                password=password,
-            )
-            raise
-        LOGGER.info("服务器目录校验与切换完成：目录=%s", directory)
-    remote_count = int(remote.stdout.strip())
+    fields = remote.stdout.strip().split("\t", maxsplit=1)
+    remote_count = int(fields[0])
+    backup = fields[1] if len(fields) == 2 else ""
     if remote_count != file_count:
-        raise RuntimeError(
-            f"远端同步文件数不一致：目录={directory}；"
-            f"本地={file_count}；远端={remote_count}"
-        )
-    return file_count
+        raise RuntimeError(f"远端同步文件数不一致：目录={directory}；本地={file_count}；远端={remote_count}")
+    LOGGER.info("服务器目录校验与切换完成：目录=%s；保留备份=%s；传输归档=%s", directory, backup or "无原目录", remote_archive)
+    return {"files": file_count, "backup": backup}
 
 
 def _create_push_archive(source: Path, archive: Path) -> int:
@@ -611,4 +622,4 @@ def _run_command(
         raise RuntimeError(detail) from error
 
 
-# AI_GENERATE_END ------------------------
+# AI_GENERATE_END-- -------------------------

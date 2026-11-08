@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----
+# AI_GENERATE_START----- ---------
 from __future__ import annotations
 
 import argparse
@@ -136,6 +136,8 @@ def order_command(
 def collect_command(
     date_value: str | None = None,
     codes_value: str | None = None,
+    model_value: str | None = None,
+    collection_type: str | None = None,
 ) -> None:
     from stock_trading.workflows import collect_workflow
 
@@ -144,11 +146,14 @@ def collect_command(
     def run(config: AppConfig) -> dict[str, object]:
         today = shanghai_today()
         start, end = _parse_date_expression(date_value, today, today)
+        spec = _resolve_model(model_value) if model_value else None
         return collect_workflow(
             config,
             start,
             end,
             requested_codes=selected_codes,
+            required_fields=spec.required_fields if spec else None,
+            requested_types=(collection_type,) if collection_type else None,
         )
 
     result = _execute(
@@ -156,6 +161,8 @@ def collect_command(
         {
             "date": date_value,
             "codes": codes_value,
+            "model": model_value,
+            "type": collection_type,
         },
         run,
         result_summary=_summarize_collection,
@@ -178,11 +185,10 @@ def prepare_command(
         model = create_research_model(config, spec)
         existing = model.date_range()
         if date_value is None:
-            start = (
-                existing[0]
-                if existing is not None
-                else latest - timedelta(days=config.market_history_days)
-            )
+            from stock_trading.research.training import default_training_range
+
+            default_start, latest = default_training_range(config)
+            start = existing[0] if existing is not None else default_start
             end = max(latest, existing[1]) if existing is not None else latest
         else:
             start, end = _parse_date_expression(date_value, latest, latest)
@@ -299,6 +305,7 @@ def sync_command(
     pull: bool = False,
     push: bool = False,
     force: bool = False,
+    scope: str | None = None,
 ) -> None:
     from stock_trading.data_sync import sync_data
 
@@ -312,8 +319,9 @@ def sync_command(
             "pull": pull,
             "push": push,
             "force": force,
+            "scope": scope,
         },
-        lambda config: sync_data(config, pull=pull, push=push, force=force),
+        lambda config: sync_data(config, pull=pull, push=push, force=force, scope=scope),
         result_summary=_summarize_sync,
     )
     if result.get("status") == "PARTIAL":
@@ -330,7 +338,7 @@ def _business_date(value: str | None) -> date:
 
 def _resolve_model(value: str | None) -> ModelSpec:
     try:
-        return resolve_model_spec(value, warning=LOGGER.warning)
+        return resolve_model_spec(value)
     except ValueError as error:
         raise CliParameterError(str(error)) from None
 
@@ -422,11 +430,10 @@ def _summarize_order(result: dict[str, object]) -> str:
 
 def _summarize_collection(result: dict[str, object]) -> str:
     type_names = {
-        "basic": "股票基础信息",
+        "stock": "股票清单",
         "daily": "日线数据",
-        "factor": "复权因子",
         "minute5": "5 分钟数据",
-        "minute": "分钟数据",
+        "minute1": "1 分钟数据",
     }
     details = []
     for name, value in dict(result["collection"]).items():
@@ -496,6 +503,7 @@ def _summarize_trading(result: dict[str, object]) -> str:
     mode = {
         "AFTERNOON_BUY": "下午买入",
         "AFTERNOON_SELL": "下午卖出",
+        "MORNING_SELL": "上午卖出",
     }.get(str(result["mode"]), str(result["mode"]))
     return (
         f"交易窗口执行完成：日期 {result['businessDate']}，模型 "
@@ -647,7 +655,7 @@ def _parser(
 
 
 def _add_model_argument(parser: ChineseArgumentParser) -> None:
-    parser.add_argument("--model", help="模型完整 ID、版本前缀或算法前缀。")
+    parser.add_argument("--model", help="模型完整 ID。")
 
 
 def _run(
@@ -664,21 +672,43 @@ def _run(
 def collect_main() -> None:
     parser = _parser(
         "stock-collect",
-        "依次采集基础、复权、日线、5分钟和1分钟行情。",
+        "按数据等级采集股票清单、日线和分钟原始行情。",
         (
-            "固定按 basic、factor、daily、minute5、minute 顺序执行。",
+            "固定按 stock、daily、minute5、minute1 顺序执行。",
+            "L1、L2 固定 BaoStock，L3 固定券商。",
+            "basic、factor 和分钟摘要统一由 stock-prepare 本地派生。",
             "已有完整数据自动跳过，单项失败不阻断后续采集。",
         ),
         (
             "stock-collect",
             "stock-collect --date 2026-11-07",
+            "stock-collect --type minute5 --date 2023-11-06:2026-11-06",
+            "stock-collect --type minute1 --date 2023-11-06:2026-11-06",
             "stock-collect --codes 600000,000001",
+            "stock-collect --model L1_daily_LightGBM --date 2023-11-07:2026-11-06",
         ),
-        ("不准备 Qlib、不训练模型、不生成排名。",),
+        (
+            "指定 --type 时只采集该数据类型。",
+            "--type 与 --model 不能同时使用。",
+            "不准备 Qlib、不训练模型、不生成排名。",
+        ),
     )
     parser.add_argument("--date", help="采集日期或日期范围，默认当天。")
     parser.add_argument("--codes", help="股票代码，逗号分隔，默认全市场。")
-    _run(parser, lambda args: collect_command(args.date, args.codes))
+    parser.add_argument(
+        "--type",
+        choices=("stock", "daily", "minute5", "minute1"),
+        help="只采集一个明确的数据类型。",
+    )
+    _add_model_argument(parser)
+    _run(
+        parser,
+        lambda args: (
+            parser.error("--type 与 --model 不能同时使用")
+            if args.type and args.model
+            else collect_command(args.date, args.codes, args.model, args.type)
+        ),
+    )
 
 
 def prepare_main() -> None:
@@ -688,7 +718,7 @@ def prepare_main() -> None:
         ("只读取本地 Parquet。", "使用 --force 才全量重建。"),
         (
             "stock-prepare",
-            "stock-prepare --model v1.2",
+            "stock-prepare --model L2_minute5_LightGBM",
             "stock-prepare --force",
         ),
         ("数据不完整时终止。", "不下载数据、不训练模型。"),
@@ -708,7 +738,7 @@ def train_main() -> None:
         "使用现有 Qlib 数据训练、评估并回测模型。",
         ("已有完整制品时直接复用。", "使用 --force 才重新训练。"),
         (
-            "stock-train --model v2.1",
+            "stock-train --model L2_minute5_LightGBM",
             "stock-train --force --split 6:3:1",
         ),
         ("默认切分比例为 70:15:15。", "失败或中断不会覆盖当前模型。"),
@@ -725,8 +755,8 @@ def rank_main() -> None:
         "收盘后生成指定特征日的完整排名，供下一交易日买入。",
         ("读取已经准备好的 Qlib 和模型制品。",),
         (
-            "stock-rank --model v2.1",
-            "stock-rank --model v1 --date 2026-11-06",
+            "stock-rank --model L2_minute5_LightGBM",
+            "stock-rank --model L1_daily_XGBoost --date 2026-11-06",
         ),
         ("只生成排名，不提交交易委托。",),
     )
@@ -740,12 +770,12 @@ def settle_main() -> None:
         "stock-settle",
         "在独立下午窗口执行买入或卖出。",
         (
-            "13:00-14:00 卖出，14:00-15:00 买入。",
+            "09:30-11:30 卖出，14:00-15:00 买入。",
             "从排名候选依次检查并尝试交易。",
         ),
         (
-            "stock-settle --sell --model v1.2",
-            "stock-settle --buy --model v2.1",
+            "stock-settle --sell --model L2_minute5_LightGBM",
+            "stock-settle --buy --model L2_minute5_LightGBM",
         ),
         ("必须且只能指定一个方向。", "最终合法性和成交状态由券商判断。"),
     )
@@ -777,7 +807,7 @@ def review_main() -> None:
         "汇总已实现收益并判断模型是否需要重训。",
         ("只计算已完成买卖闭环的真实收益。",),
         (
-            "stock-review --model v2.1",
+            "stock-review --model L2_minute5_LightGBM",
             "stock-review --date 2026-11-07",
         ),
         ("未闭环交易、浮动盈亏和入金出金不参与评估。",),
@@ -802,15 +832,16 @@ def clean_main() -> None:
 def sync_main() -> None:
     parser = _parser(
         "stock-sync",
-        "在本地与服务器之间依次同步全部运行数据。",
+        "在本地与服务器之间同步选定运行数据。",
         (
-            "拉取包含 market、qlib、model、state。",
+            "拉取包含 market、prepared、model、state。",
             "推送默认不含 state，使用 --force 才覆盖服务器状态库。",
-            "单项失败不阻断后续范围，未变化数据自动跳过。",
+            "使用 --scope market 仅同步行情，不覆盖 Qlib、模型或状态库。",
+            "目录推送校验 SHA-256，并保留服务器原目录供恢复。",
         ),
         (
             "stock-sync --pull",
-            "stock-sync --push",
+            "stock-sync --push --scope market",
             "stock-sync --push --force",
         ),
         ("必须且只能指定一个方向。", "环境文件、Token 和调度锁不会同步。"),
@@ -823,10 +854,11 @@ def sync_main() -> None:
         action="store_true",
         help="推送时同时覆盖服务器 state。",
     )
+    parser.add_argument("--scope", choices=("market", "prepared", "model", "state"), help="只同步一个范围，省略时沿用默认范围。")
     _run(
         parser,
-        lambda args: sync_command(args.pull, args.push, args.force),
+        lambda args: sync_command(args.pull, args.push, args.force, args.scope),
     )
 
 
-# AI_GENERATE_END -----
+# AI_GENERATE_END----- ---------

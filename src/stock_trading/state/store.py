@@ -1310,8 +1310,8 @@ class StateStore(SQLiteStateDatabase):
         model_path = model_dir / "model.pkl"
         if artifact_hash is None:
             artifact_hash = hashlib.sha256(model_path.read_bytes()).hexdigest()
-        configured_model_id = str(metrics.get("modelId") or "legacy")
-        default_status = "READY" if configured_model_id != "legacy" else "LEGACY"
+        configured_model_id = str(metrics["modelId"])
+        default_status = "READY"
         existing = connection.execute(
             "SELECT id, status FROM model_version WHERE artifact_hash = ?",
             (artifact_hash,),
