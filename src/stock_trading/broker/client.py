@@ -1,4 +1,4 @@
-# AI_GENERATE_START- ----------------------------------
+# AI_GENERATE_START----- ----------------------------------
 from __future__ import annotations
 
 import base64
@@ -71,6 +71,9 @@ class ZXBrokerClient:
         self._config = config
         self._transport = transport or _post_form
         self._captcha_solver = captcha_solver
+        self._token_lock = threading.RLock()
+        self._reqno_lock = threading.Lock()
+        self._last_reqno = 0
         self._token = config.broker_token
         self._token_expire_at = (
             time.monotonic() + config.broker_token_expire_minutes * 60
@@ -90,6 +93,9 @@ class ZXBrokerClient:
 
     def build_params(self, values: dict[str, object] | None = None) -> dict[str, object]:
         params = dict(values or {})
+        with self._reqno_lock:
+            reqno = max(int(time.time() * 1000), self._last_reqno + 1)
+            self._last_reqno = reqno
         params.update(
             {
                 "cfrom": "H5",
@@ -97,7 +103,7 @@ class ZXBrokerClient:
                 "newindex": "1",
                 "MobileCode": self._config.broker_mobile_code,
                 "intacttoserver": self._config.broker_intact_to_server,
-                "reqno": int(time.time() * 1000),
+                "reqno": reqno,
             }
         )
         return params
@@ -349,16 +355,74 @@ class ZXBrokerClient:
         )
         order_id = response.get("ANSWERNO")
         if not order_id:
-            error_message = (
-                response.get("ERRORMESSAGE")
-                or response.get("ERRORINFO")
-                or response.get("ERROR_INFO_ALL")
-            )
+            error_message = _order_error_message(response)
             raise BrokerRejectedError(
                 f"券商拒绝委托，错误码={response.get('ERRORNO')}，原因={error_message}"
             )
         LOGGER.info("券商已接受委托：股票=%s；方向=%s；券商委托号=%s", stock_code, direction.upper(), order_id)
         return str(order_id)
+
+    def probe_buy_permission(self, stock_code: str) -> dict[str, object]:
+        """以不可成交高价和合法数量调用买入接口，采集权限校验事实。"""
+        code = stock_code.strip()
+        if len(code) != 6 or not code.isdigit():
+            raise ValueError(f"股票代码必须是六位数字: {stock_code}")
+        shareholder_account, account_type = self._permission_probe_account(code)
+        response = self._request(
+            self.build_params(
+                {
+                    "action": ACTION_SUBMIT_ORDER,
+                    "isformat": 1,
+                    "PriceType": 0,
+                    "Direction": "B",
+                    "StockCode": code,
+                    "Price": 10000,
+                    "Volume": 10000,
+                    "WTAccount": shareholder_account,
+                    "WTAccountType": account_type,
+                    "ProPrice": "",
+                    "token": self._require_token(),
+                }
+            )
+        )
+        order_id = str(response.get("ANSWERNO") or "")
+        cancel_accepted = False
+        if order_id:
+            cancel_accepted = self.cancel_order(order_id)
+            if not cancel_accepted:
+                raise BrokerSafetyError("权限探测委托被受理但立即撤单失败")
+        return {
+            "stockCode": code,
+            "accepted": bool(order_id),
+            "cancelAccepted": cancel_accepted,
+            "errorNo": str(response.get("ERRORNO") or ""),
+            "errorMessage": _order_error_message(response),
+        }
+
+    def prepare_permission_probe(self) -> None:
+        """在进入并发探测前串行加载沪深股东账号。"""
+        self._load_shareholder_accounts("上海")
+        self._load_shareholder_accounts("深圳")
+
+    def invalidate_token(self) -> None:
+        """认证异常后清理内存及本地 Token，下一次请求重新登录。"""
+        with self._token_lock:
+            self._token = None
+            self._token_expire_at = 0.0
+            self._token_updated_at = 0.0
+            self._remove_cached_token()
+
+    def _permission_probe_account(self, stock_code: str) -> tuple[str, str]:
+        if stock_code.startswith("6"):
+            market, account_type = "上海", "SHACCOUNT"
+        elif stock_code.startswith("0"):
+            market, account_type = "深圳", "SZACCOUNT"
+        else:
+            raise ValueError(f"权限探测不支持该股票代码: {stock_code}")
+        account = self._load_shareholder_accounts(market).get(market)
+        if not account:
+            raise BrokerProtocolError(f"历史委托中没有{market}股东账号")
+        return account, account_type
 
     def _resolve_order_account(self, stock_code: str) -> tuple[str, str]:
         response = self._request(
@@ -500,8 +564,11 @@ class ZXBrokerClient:
         return rows
 
     def _require_token(self) -> str:
-        self._load_cached_token()
-        return self._token if self._valid_token() else self.login()
+        with self._token_lock:
+            self._load_cached_token()
+            if self._valid_token():
+                return str(self._token)
+        return self.login()
 
     def _request(self, params: dict[str, object]) -> dict[str, Any]:
         action = params.get("action")
@@ -515,8 +582,7 @@ class ZXBrokerClient:
         token = response.get("TOKEN")
         if token:
             refreshed_token = str(token)
-            token_changed = refreshed_token != self._token
-            self._cache_token(refreshed_token)
+            token_changed = self._cache_token(refreshed_token)
             if token_changed:
                 LOGGER.info("券商响应 Token 已同步：action=%s", action)
         LOGGER.debug(
@@ -528,83 +594,89 @@ class ZXBrokerClient:
         return response
 
     def _valid_token(self) -> bool:
-        if self._token and time.monotonic() < self._token_expire_at:
-            return True
-        self._token = None
-        self._token_expire_at = 0.0
-        return False
+        with self._token_lock:
+            if self._token and time.monotonic() < self._token_expire_at:
+                return True
+            self._token = None
+            self._token_expire_at = 0.0
+            return False
 
     def _load_cached_token(self) -> None:
-        if not self._token_cache_path.exists():
-            return
-        try:
-            cached = json.loads(self._token_cache_path.read_text(encoding="utf-8"))
-            token = cached["token"]
-            expires_at = float(cached["expiresAt"])
-            scope = str(cached["scope"])
-            updated_at = float(
-                cached.get(
-                    "updatedAt",
-                    expires_at - self._config.broker_token_expire_minutes * 60,
+        with self._token_lock:
+            if not self._token_cache_path.exists():
+                return
+            try:
+                cached = json.loads(self._token_cache_path.read_text(encoding="utf-8"))
+                token = cached["token"]
+                expires_at = float(cached["expiresAt"])
+                scope = str(cached["scope"])
+                updated_at = float(
+                    cached.get(
+                        "updatedAt",
+                        expires_at - self._config.broker_token_expire_minutes * 60,
+                    )
                 )
-            )
-        except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
-            LOGGER.warning("券商 Token 本地缓存无效，已清理")
-            self._remove_cached_token()
-            return
-        remaining = expires_at - time.time()
-        if scope != self._token_cache_scope:
-            return
-        if not isinstance(token, str) or not token or remaining <= 0:
-            LOGGER.info("券商 Token 本地缓存已过期，已清理")
-            self._remove_cached_token()
-            return
-        if self._token and updated_at <= self._token_updated_at:
-            return
-        token_changed = token != self._token
-        self._token = token
-        self._token_expire_at = time.monotonic() + remaining
-        self._token_updated_at = updated_at
-        if token_changed:
-            LOGGER.info(
-                "券商 Token 本地缓存已同步：剩余有效期约%d分钟",
-                max(1, int(remaining / 60)),
-            )
+            except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+                LOGGER.warning("券商 Token 本地缓存无效，已清理")
+                self._remove_cached_token()
+                return
+            remaining = expires_at - time.time()
+            if scope != self._token_cache_scope:
+                return
+            if not isinstance(token, str) or not token or remaining <= 0:
+                LOGGER.info("券商 Token 本地缓存已过期，已清理")
+                self._remove_cached_token()
+                return
+            if self._token and updated_at <= self._token_updated_at:
+                return
+            token_changed = token != self._token
+            self._token = token
+            self._token_expire_at = time.monotonic() + remaining
+            self._token_updated_at = updated_at
+            if token_changed:
+                LOGGER.info(
+                    "券商 Token 本地缓存已同步：剩余有效期约%d分钟",
+                    max(1, int(remaining / 60)),
+                )
 
-    def _cache_token(self, token: str) -> None:
-        updated_at = time.time()
-        expires_at = updated_at + self._config.broker_token_expire_minutes * 60
-        self._token = token
-        self._token_expire_at = (
-            time.monotonic() + self._config.broker_token_expire_minutes * 60
-        )
-        self._token_updated_at = updated_at
-        self._token_cache_path.parent.mkdir(parents=True, exist_ok=True)
-        temporary_path = self._token_cache_path.with_name(
-            f".{self._token_cache_path.name}.{os.getpid()}.{uuid4().hex}.tmp"
-        )
-        temporary_path.write_text(
-            json.dumps(
-                {
-                    "scope": self._token_cache_scope,
-                    "token": token,
-                    "expiresAt": expires_at,
-                    "updatedAt": updated_at,
-                },
-                ensure_ascii=True,
-                separators=(",", ":"),
-            ),
-            encoding="utf-8",
-        )
-        if os.name != "nt":
-            temporary_path.chmod(0o600)
-        temporary_path.replace(self._token_cache_path)
+    def _cache_token(self, token: str) -> bool:
+        with self._token_lock:
+            token_changed = token != self._token
+            updated_at = time.time()
+            expires_at = updated_at + self._config.broker_token_expire_minutes * 60
+            self._token = token
+            self._token_expire_at = (
+                time.monotonic() + self._config.broker_token_expire_minutes * 60
+            )
+            self._token_updated_at = updated_at
+            self._token_cache_path.parent.mkdir(parents=True, exist_ok=True)
+            temporary_path = self._token_cache_path.with_name(
+                f".{self._token_cache_path.name}.{os.getpid()}.{uuid4().hex}.tmp"
+            )
+            temporary_path.write_text(
+                json.dumps(
+                    {
+                        "scope": self._token_cache_scope,
+                        "token": token,
+                        "expiresAt": expires_at,
+                        "updatedAt": updated_at,
+                    },
+                    ensure_ascii=True,
+                    separators=(",", ":"),
+                ),
+                encoding="utf-8",
+            )
+            if os.name != "nt":
+                temporary_path.chmod(0o600)
+            temporary_path.replace(self._token_cache_path)
+            return token_changed
 
     def _remove_cached_token(self) -> None:
-        try:
-            self._token_cache_path.unlink(missing_ok=True)
-        except OSError as error:
-            LOGGER.warning("券商 Token 本地缓存清理失败：%s", error)
+        with self._token_lock:
+            try:
+                self._token_cache_path.unlink(missing_ok=True)
+            except OSError as error:
+                LOGGER.warning("券商 Token 本地缓存清理失败：%s", error)
 
 
 def _post_form(url: str, params: dict[str, object], timeout: float) -> dict[str, Any]:
@@ -617,6 +689,15 @@ def _post_form(url: str, params: dict[str, object], timeout: float) -> dict[str,
     if not isinstance(result, dict):
         raise BrokerProtocolError("券商响应不是 JSON 对象")
     return result
+
+
+def _order_error_message(response: dict[str, Any]) -> str:
+    return str(
+        response.get("ERRORMESSAGE")
+        or response.get("ERRORINFO")
+        or response.get("ERROR_INFO_ALL")
+        or ""
+    ).strip()
 
 
 def _parse_five_level_prices(
@@ -635,4 +716,4 @@ def _parse_five_level_prices(
     if any(price is None or price <= 0 for price in bids + asks):
         raise BrokerProtocolError("券商未返回完整五档行情")
     return bids, asks
-# AI_GENERATE_END- ----------------------------------
+# AI_GENERATE_END----- ----------------------------------

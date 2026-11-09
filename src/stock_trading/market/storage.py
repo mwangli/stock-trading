@@ -1,9 +1,10 @@
-# AI_GENERATE_START-------------------------- -----------------------------------------------------------------
+# AI_GENERATE_START------------------------------ -----------------------------------------------------------------
 from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, timedelta
+import json
 import logging
 from pathlib import Path
 from uuid import uuid4
@@ -11,7 +12,10 @@ from uuid import uuid4
 import pandas as pd
 import pyarrow.parquet as pq
 
-from stock_trading.market.minute5_summary import summarize_trading_windows
+from stock_trading.market.minute5_summary import (
+    MINUTE5_FEATURE_FIELDS,
+    summarize_trading_windows,
+)
 from stock_trading.contracts import WINDOW_CONTRACT
 from stock_trading.market.minute1_summary import (
     EXPECTED_MINUTE1_BARS,
@@ -32,6 +36,7 @@ from stock_trading.utils.logging_utils import set_log_context, should_log_progre
 
 LOGGER = logging.getLogger(__name__)
 MINUTE_HISTORY_RETENTION_DAYS = 366 * 5
+MINUTE_HISTORY_MIN_COMPLETE_RATIO = 0.99
 
 
 @dataclass(frozen=True)
@@ -93,7 +98,6 @@ class ParquetMarketStore:
             not required.issubset(frame.columns)
             or len(frame) < 100
             or not frame["code"].astype(str).str.match(r"^(sh|sz)\.\d{6}$").all()
-            or frame["trade_status"].fillna("").astype(str).eq("1").sum() < 100
         ):
             return False
         return (
@@ -247,15 +251,66 @@ class ParquetMarketStore:
         return self._merge_history(target, records, "operate_date")
 
     def write_minute_history(
-        self, code: str, bars: list[MinuteBar], reference_date: date
+        self,
+        code: str,
+        bars: list[MinuteBar],
+        reference_date: date,
+        required_start_date: date | None = None,
+        required_end_date: date | None = None,
     ) -> dict[str, object]:
         if not bars:
             raise ValueError(f"Refusing to write empty minute history: {code}")
         incoming = pd.DataFrame.from_records([bar.as_record() for bar in bars])
+        if (
+            required_start_date is not None
+            and required_end_date is not None
+            and not self._minute_frame_valid(
+                incoming,
+                required_start_date,
+                required_end_date,
+            )
+        ):
+            raise ValueError(f"5分钟响应字段或日期范围无效：{code}")
         existing = self.read_minutes(code)
         frames = [value for value in (existing, incoming) if not value.empty]
-        return self._store_minute_raw(
+        result = self._store_minute_raw(
             code, pd.concat(frames, ignore_index=True), reference_date
+        )
+        if required_start_date is not None and required_end_date is not None:
+            coverage_path = self._write_minute_coverage(
+                code, required_start_date, required_end_date
+            )
+            result["coveragePath"] = str(coverage_path)
+        return result
+
+    @staticmethod
+    def _minute_frame_valid(
+        frame: pd.DataFrame,
+        start_date: date,
+        end_date: date,
+    ) -> bool:
+        required = {
+            "trade_date",
+            "bar_start",
+            "bar_end",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "amount",
+        }
+        if frame.empty or not required.issubset(frame.columns):
+            return False
+        try:
+            response_dates = pd.to_datetime(
+                frame["trade_date"], errors="raise"
+            ).dt.date
+        except (ValueError, KeyError, AttributeError):
+            return False
+        return bool(
+            response_dates.notna().all()
+            and response_dates.between(start_date, end_date).all()
         )
 
     def write_minute1_history(self, code: str, bars: list[MinuteBar]) -> Path:
@@ -394,12 +449,22 @@ class ParquetMarketStore:
         codes: list[str],
         start_date: date,
         end_date: date,
+        force: bool = False,
     ) -> dict[str, object]:
-        """从本地原始5分钟数据显式重建指定范围的窗口摘要。"""
+        """旧合同或覆盖不足时，从原始5分钟数据重建窗口摘要。"""
         rebuilt_codes = 0
         rebuilt_rows = 0
+        reused_codes = 0
         missing_codes: list[str] = []
         for code in codes:
+            if not force and self.minute_summaries_valid(
+                code,
+                start_date,
+                end_date,
+                require_full_end=True,
+            ):
+                reused_codes += 1
+                continue
             raw = self.read_minutes(code, start_date, end_date)
             if raw.empty:
                 missing_codes.append(code)
@@ -412,7 +477,14 @@ class ParquetMarketStore:
             existing = self._read_minute_summary_frame(code)
             generated_dates = set(generated["trade_date"])
             if not existing.empty:
-                existing = existing[~existing["trade_date"].isin(generated_dates)]
+                if "window_contract" not in existing:
+                    existing = existing.iloc[0:0]
+                else:
+                    existing = existing[
+                        existing["window_contract"].eq(WINDOW_CONTRACT)
+                        & ~existing["trade_date"].isin(generated_dates)
+                    ]
+                existing = existing.reindex(columns=generated.columns)
             merged = pd.concat(
                 [frame for frame in (existing, generated) if not frame.empty],
                 ignore_index=True,
@@ -429,6 +501,7 @@ class ParquetMarketStore:
             "requestedCodes": len(codes),
             "rebuiltCodes": rebuilt_codes,
             "rebuiltRows": rebuilt_rows,
+            "reusedCodes": reused_codes,
             "missingRawCodes": len(missing_codes),
             "missingRawSamples": missing_codes[:20],
         }
@@ -546,6 +619,7 @@ class ParquetMarketStore:
             "full_vwap",
             "sell_vwap",
             "buy_vwap",
+            *MINUTE5_FEATURE_FIELDS,
         }
         if not required.issubset(summaries.columns) or summaries.empty:
             return False
@@ -573,7 +647,7 @@ class ParquetMarketStore:
         start_date: date,
         end_date: date,
     ) -> bool:
-        """检查原始5分钟行情覆盖研究窗口内全部可交易日。"""
+        """检查原始5分钟行情的完整交易日覆盖率是否达到模型门槛。"""
         try:
             minutes = self.read_minutes(code, start_date, end_date)
             daily = self._eligible_daily_rows(self.read_daily_history(code))
@@ -610,7 +684,50 @@ class ParquetMarketStore:
             & summaries["sell_complete"].fillna(False).astype(bool)
         ]
         complete_dates = set(complete["trade_date"].dt.date)
-        return expected_dates.issubset(complete_dates)
+        return (
+            len(complete_dates & expected_dates) / len(expected_dates)
+            >= MINUTE_HISTORY_MIN_COMPLETE_RATIO
+        )
+
+    def minute_collection_ready(
+        self,
+        code: str,
+        start_date: date,
+        end_date: date,
+    ) -> bool:
+        """用已生成的日级摘要轻量判断原始5分钟数据是否需要补采。"""
+        raw_path = self._root / "minute5" / f"code={code}" / "bars.parquet"
+        if not raw_path.is_file():
+            return False
+        if self._minute_coverage_valid(code, start_date, end_date):
+            return True
+        try:
+            raw_dates = pd.to_datetime(
+                pq.ParquetFile(raw_path).read(columns=["trade_date"])[
+                    "trade_date"
+                ].to_pandas(),
+                errors="raise",
+            ).dt.date
+            daily = self._eligible_daily_rows(self.read_daily_history(code))
+            expected_dates = set(
+                pd.to_datetime(daily["trade_date"], errors="raise")
+                .dt.date.loc[
+                    lambda values: values.between(start_date, end_date)
+                ]
+            )
+        except (OSError, ValueError, KeyError, AttributeError):
+            return False
+        if not expected_dates:
+            return True
+        if (
+            len(set(raw_dates) & expected_dates) / len(expected_dates)
+            < MINUTE_HISTORY_MIN_COMPLETE_RATIO
+        ):
+            return False
+        valid = self.minute_history_valid(code, start_date, end_date)
+        if valid:
+            self._write_minute_coverage(code, start_date, end_date)
+        return valid
 
     def minute_data_valid(
         self,
@@ -650,8 +767,14 @@ class ParquetMarketStore:
             & history["buy_complete"].fillna(False).astype(bool)
             & history["sell_complete"].fillna(False).astype(bool)
         ]
+        expected = expected_history or set()
+        if not expected:
+            return True
         complete_dates = set(complete_history["trade_date"].dt.date)
-        return bool((expected_history or set()).issubset(complete_dates))
+        return (
+            len(complete_dates & expected) / len(expected)
+            >= MINUTE_HISTORY_MIN_COMPLETE_RATIO
+        )
 
     @staticmethod
     def _factor_frame_valid(
@@ -1135,6 +1258,57 @@ class ParquetMarketStore:
     def _minute_summary_path(self, code: str) -> Path:
         return self._derived_root / "minute5_summary" / f"code={code}" / "windows.parquet"
 
+    def _minute_coverage_path(self, code: str) -> Path:
+        return self._root / "minute5" / f"code={code}" / "coverage.json"
+
+    def _minute_coverage_valid(
+        self,
+        code: str,
+        start_date: date,
+        end_date: date,
+    ) -> bool:
+        raw_path = self._root / "minute5" / f"code={code}" / "bars.parquet"
+        coverage_path = self._minute_coverage_path(code)
+        try:
+            coverage = json.loads(coverage_path.read_text(encoding="utf-8"))
+            stat = raw_path.stat()
+            return (
+                coverage.get("contract") == WINDOW_CONTRACT
+                and date.fromisoformat(str(coverage["startDate"])) <= start_date
+                and date.fromisoformat(str(coverage["endDate"])) >= end_date
+                and int(coverage["rawSize"]) == stat.st_size
+                and int(coverage["rawMtimeNs"]) == stat.st_mtime_ns
+            )
+        except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+            return False
+
+    def _write_minute_coverage(
+        self,
+        code: str,
+        start_date: date,
+        end_date: date,
+    ) -> Path:
+        raw_path = self._root / "minute5" / f"code={code}" / "bars.parquet"
+        stat = raw_path.stat()
+        target = self._minute_coverage_path(code)
+        temporary = target.with_name(f".{target.name}.{uuid4().hex}.tmp")
+        payload = {
+            "contract": WINDOW_CONTRACT,
+            "startDate": start_date.isoformat(),
+            "endDate": end_date.isoformat(),
+            "rawSize": stat.st_size,
+            "rawMtimeNs": stat.st_mtime_ns,
+        }
+        try:
+            temporary.write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            temporary.replace(target)
+        finally:
+            temporary.unlink(missing_ok=True)
+        return target
+
     def _minute1_partition_path(self, code: str, month: str) -> Path:
         return (
             self._root
@@ -1214,4 +1388,4 @@ def _normalize_minute1_frame(frame: pd.DataFrame, code: str) -> pd.DataFrame:
     )
 
 
-# AI_GENERATE_END--------------------------- -----------------------------------------------------------------
+# AI_GENERATE_END------------------------------- -----------------------------------------------------------------

@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------------------------
+# AI_GENERATE_START --------------------------
 from __future__ import annotations
 
 import logging
@@ -35,6 +35,22 @@ class BaoStockError(RuntimeError):
 
 class BaoStockConcurrentAccessError(BaoStockError):
     """另一个进程已经占用 BaoStock 连接。"""
+
+
+class _ClosedAwareSocket:
+    """把服务端正常关闭转换成 BaoStock 能处理的网络异常。"""
+
+    def __init__(self, connection: socket.socket) -> None:
+        self._connection = connection
+
+    def recv(self, buffer_size: int, flags: int = 0) -> bytes:
+        chunk = self._connection.recv(buffer_size, flags)
+        if not chunk:
+            raise ConnectionError("BaoStock 服务端已关闭连接")
+        return chunk
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._connection, name)
 
 
 class BaoStockProcessLock:
@@ -136,12 +152,12 @@ class BaoStockClient:
         exc_value: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
+        del exc_type, exc_value, traceback
         try:
-            if exc_type is None and self._logged_in:
-                self._request(bs.logout)
+            # BaoStock 0.9.4 在服务端先关闭连接时，logout 会无限读取空字节。
+            self._close_connection()
         finally:
             self._logged_in = False
-            self._close_connection()
             self._restore_connector()
             if self._process_lock is not None:
                 self._process_lock.release()
@@ -273,7 +289,11 @@ class BaoStockClient:
                     (target_host, bs_constants.BAOSTOCK_SERVER_PORT), timeout=timeout
                 )
                 connection.settimeout(timeout)
-                setattr(bs_context, "default_socket", connection)
+                setattr(
+                    bs_context,
+                    "default_socket",
+                    _ClosedAwareSocket(connection),
+                )
                 return
             connection = socket.create_connection(
                 (proxy.hostname, proxy.port), timeout=timeout
@@ -295,7 +315,11 @@ class BaoStockClient:
                 connection.close()
                 raise BaoStockError("BaoStock 代理隧道建立失败")
             connection.settimeout(timeout)
-            setattr(bs_context, "default_socket", connection)
+            setattr(
+                bs_context,
+                "default_socket",
+                _ClosedAwareSocket(connection),
+            )
 
         bs_socket.SocketUtil.connect = connect_with_timeout
 
@@ -321,4 +345,4 @@ class BaoStockClient:
         if self._original_connect is not None:
             bs_socket.SocketUtil.connect = self._original_connect
             self._original_connect = None
-# AI_GENERATE_END -------------------------
+# AI_GENERATE_END ---------------------------

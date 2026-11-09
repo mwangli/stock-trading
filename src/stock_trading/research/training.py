@@ -1,4 +1,4 @@
-# AI_GENERATE_START---------- ---------------------------------
+# AI_GENERATE_START-------------- ---------------------------------
 from __future__ import annotations
 
 import json
@@ -55,7 +55,7 @@ def default_training_codes(
         stocks = store.read_stock_basics()
     except (OSError, ValueError, KeyError) as error:
         raise ValueError(
-            "未找到股票基础信息；请先执行 stock-collect"
+            "未找到股票基础信息；请先执行 stock-data"
         ) from error
     codes = research_codes(stocks, start_date, end_date)
     if not codes:
@@ -203,7 +203,7 @@ def assert_training_data_ready(
         or available is None
     ):
         raise ValueError(
-            f"模型 {spec.model_id} 的 Qlib 数据未覆盖训练范围；请先执行 stock-prepare"
+            f"模型 {spec.model_id} 的 Qlib 数据未覆盖训练范围；请先执行 stock-model --prepare"
         )
     ready = expected & available
     qlib_quality = require_data_quality(
@@ -258,6 +258,7 @@ def evaluate_candidate(
     if not backtest_artifact_valid(
         backtest_directory(model_dir),
         initial_cash=config.backtest_capital,
+        max_holding_days=config.trading_max_holding_days,
     ):
         raise ValueError("模型回测制品不完整")
     return {
@@ -270,10 +271,13 @@ def evaluate_candidate(
             "grossReturn": backtest["grossReturnBeforeFees"],
             "maxDrawdown": abs(float(backtest["maxDrawdown"])),
             "closedTrades": backtest["closedTrades"],
+            "maxHoldingDays": config.trading_max_holding_days,
             "averageHoldingDays": backtest["averageHoldingDays"],
             "winRate": backtest["winRate"],
             "turnover": backtest["turnover"],
             "retainedDays": backtest["retainedDays"],
+            "monthlyPerformance": backtest["monthlyPerformance"],
+            "monthlyReturnStability": backtest["monthlyReturnStability"],
         },
     }
 
@@ -286,6 +290,7 @@ def complete_model_artifacts_valid(
     return backtest_artifact_valid(
         backtest_directory(model_dir),
         initial_cash=config.backtest_capital,
+        max_holding_days=config.trading_max_holding_days,
     )
 
 
@@ -305,4 +310,4 @@ def _write_evaluation(model_dir: Path, evaluation: dict[str, object]) -> None:
     )
 
 
-# AI_GENERATE_END---------- ---------------------------------
+# AI_GENERATE_END-------------- ---------------------------------

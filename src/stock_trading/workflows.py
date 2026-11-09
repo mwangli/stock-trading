@@ -1,4 +1,4 @@
-# AI_GENERATE_START---------------------------------------- -------------------------------------
+# AI_GENERATE_START---------------------------------------------- -------------------------------------
 from __future__ import annotations
 
 import json
@@ -51,10 +51,10 @@ from stock_trading.trading.post_trade import BrokerOrderSyncService
 from stock_trading.trading.execution import OrderExecutionOrchestrator
 from stock_trading.trading.orchestrator import LiveTradingOrchestrator
 from stock_trading.trading.post_trade import (
+    BrokerPermissionSyncService,
     ModelReviewService,
     RealizedProfitService,
 )
-from stock_trading.trading.post_trade import refresh_permissions
 from stock_trading.utils.time_utils import shanghai_now, shanghai_today
 from stock_trading.market.trade_calendar import shift_trade_date
 
@@ -285,17 +285,20 @@ def _collect_minute5(
     fetched_rows = 0
     fetched_codes = 0
     failed_codes = 0
+    usable_codes: set[str] = set()
     for index, batch in enumerate(batches, start=1):
         batch_start, batch_end = batch[0], batch[-1]
         with log_context(
             progress=f"{index}/{len(batches)}",
             target=f"{batch_start}:{batch_end}",
         ):
-            pending = [
+            ready = {
                 code
                 for code in codes
-                if not store.minute_history_valid(code, batch_start, batch_end)
-            ]
+                if store.minute_collection_ready(code, batch_start, batch_end)
+            }
+            usable_codes.update(ready)
+            pending = [code for code in codes if code not in ready]
             LOGGER.info(
                 "5分钟线日期批次开始：日期=%s 至 %s；交易日=%d；待采股票=%d",
                 batch_start,
@@ -313,6 +316,8 @@ def _collect_minute5(
             fetched_rows += int(fetched.get("rows", 0))
             fetched_codes += int(fetched.get("codes", 0))
             failed_codes += int(fetched.get("failedCodes", 0))
+            completed_codes = fetched.pop("completedCodes", [])
+            usable_codes.update(str(code) for code in completed_codes)
             batch_results.append(
                 {
                     "startDate": batch_start.isoformat(),
@@ -329,10 +334,7 @@ def _collect_minute5(
                 int(fetched.get("codes", 0)),
                 int(fetched.get("failedCodes", 0)),
             )
-    usable = sum(
-        store.minute_history_valid(code, start_date, end_date)
-        for code in codes
-    )
+    usable = len(usable_codes)
     quality = require_data_quality(
         "collect-minute5",
         len(codes),
@@ -347,7 +349,7 @@ def _collect_minute5(
         "researchCodes": len(codes),
         "result": {
             "progressUnit": "date-range",
-            "batchUnit": "calendar-year",
+            "batchUnit": "full-date-range",
             "batches": len(batches),
             "fetchedRows": fetched_rows,
             "fetchedCodes": fetched_codes,
@@ -386,18 +388,18 @@ def _local_stock_basics(store: ParquetMarketStore) -> pd.DataFrame:
         stocks = store.read_stock_basics()
     except (OSError, ValueError, KeyError) as error:
         raise ValueError(
-            "未找到本地股票基础信息；请先执行 stock-collect"
+            "未找到本地股票基础信息；请先执行 stock-data"
         ) from error
     if stocks.empty or "snapshot_date" not in stocks:
         raise ValueError(
-            "本地股票基础信息无效；请先执行 stock-collect"
+            "本地股票基础信息无效；请先执行 stock-data"
         )
     snapshot_dates = pd.to_datetime(
         stocks["snapshot_date"], errors="coerce"
     ).dropna()
     if snapshot_dates.empty:
         raise ValueError(
-            "本地股票基础信息缺少快照日期；请先执行 stock-collect"
+            "本地股票基础信息缺少快照日期；请先执行 stock-data"
         )
     snapshot_date = snapshot_dates.max().date()
     today = shanghai_today()
@@ -457,7 +459,7 @@ def prepare_workflow(
         stocks = store.read_stock_basics()
     except (OSError, ValueError, KeyError) as error:
         raise ValueError(
-            "未找到股票基础信息；请先执行 stock-collect"
+            "未找到股票基础信息；请先执行 stock-data"
         ) from error
     codes = research_codes(stocks, start_date, end_date)
     if not codes:
@@ -526,7 +528,10 @@ def prepare_workflow(
         daily_ready = [code for code in daily_ready if code in factor_ready]
     if spec.feature_frequency == "minute5":
         derived["minute5"] = store.rebuild_minute_summaries(
-            daily_ready, start_date, end_date
+            daily_ready,
+            start_date,
+            end_date,
+            force=force,
         )
     elif spec.feature_frequency == "minute1":
         derived["minute1"] = store.rebuild_minute1_summaries(
@@ -623,7 +628,7 @@ def sync_order_workflow(
     end_date: date,
     broker: ZXBrokerClient | None = None,
 ) -> dict[str, object]:
-    """同步券商已成交事实、费用和权限，并完成可闭环的 FIFO 收益。"""
+    """同步券商已成交事实和费用，并完成可闭环的 FIFO 收益。"""
     LOGGER.info("开始同步券商历史订单：日期=%s 至 %s", start_date, end_date)
     store = StateStore(config.state_db_path, calendar_dir=config.market_dir / "raw" / "calendar")
     active_broker = broker or _build_broker(config)
@@ -644,15 +649,48 @@ def sync_order_workflow(
             start_date, end_date
         )
         result["accountSnapshot"] = account_snapshot
-        result["permissions"] = refresh_permissions(
-            store, store.broker_orders(), end_date
-        )
     LOGGER.info(
         "券商历史订单同步完成：日期=%s 至 %s；有效订单=%s；新增闭环=%s",
         start_date,
         end_date,
         result["validOrders"],
         result["settlement"]["realizedTrades"],
+    )
+    return result
+
+
+def sync_permission_workflow(
+    config: AppConfig,
+    broker: ZXBrokerClient | None = None,
+) -> dict[str, object]:
+    """对当前全部有效主板股票执行高价合法数量权限探测并逐股落库。"""
+    business_date = shanghai_today()
+    market_store = ParquetMarketStore(config.market_dir)
+    instruments = [
+        normalize_instrument(code)
+        for code in live_codes(market_store.read_stock_basics(), business_date)
+    ]
+    if not instruments:
+        raise ValueError("股票基础信息中没有可执行权限探测的有效股票")
+    store = StateStore(
+        config.state_db_path,
+        calendar_dir=config.market_dir / "raw" / "calendar",
+    )
+    active_broker = broker or _build_broker(config)
+    observed_at = shanghai_now().isoformat(timespec="seconds")
+    with _record_task(store, "PERMISSION", business_date):
+        result = BrokerPermissionSyncService(
+            config, store, active_broker
+        ).sync(instruments, observed_at)
+        if result["failures"]:
+            raise RuntimeError(
+                f"仍有 {len(result['failures'])} 只股票权限探测网络失败，请续跑补齐"
+            )
+    LOGGER.info(
+        "逐股券商权限同步完成：总数=%d；允许=%d；拒绝=%d",
+        result["total"],
+        result["allowed"],
+        result["denied"],
     )
     return result
 
@@ -694,7 +732,7 @@ def rank_workflow(
     if available_instruments is None:
         raise ValueError(
             f"Qlib 未覆盖目标日期：{prediction_date.isoformat()}；"
-            "请先执行 stock-prepare"
+            "请先执行 stock-model --prepare"
         )
     ready_instruments = expected_instruments & available_instruments
     quality = require_data_quality(
@@ -706,7 +744,7 @@ def rank_workflow(
     model_dir = model_directory(config.model_dir, spec)
     if not model_artifacts_valid(model_dir, spec):
         raise ValueError(
-            f"模型制品不存在或不完整：{spec.model_id}；请先执行 stock-train"
+            f"模型制品不存在或不完整：{spec.model_id}；请先执行 stock-model --train"
         )
     prediction_path = prediction_artifact_path(model_dir, prediction_date)
     existing = _existing_prediction_summary(
@@ -905,4 +943,4 @@ def _build_broker(config: AppConfig) -> ZXBrokerClient:
     return ZXBrokerClient(config, captcha_solver=BaiduCaptchaSolver(config).solve)
 
 
-# AI_GENERATE_END----------------------------------------- -------------------------------------
+# AI_GENERATE_END----------------------------------------------- -------------------------------------

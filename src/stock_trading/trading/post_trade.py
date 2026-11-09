@@ -1,17 +1,23 @@
-# AI_GENERATE_START ----------
+# AI_GENERATE_START----- ----------
 from __future__ import annotations
 
 import logging
+import time
 from collections import deque
 from dataclasses import replace
 from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
-from stock_trading.broker.client import ZXBrokerClient
+from stock_trading.broker.client import (
+    BrokerProtocolError,
+    BrokerSafetyError,
+    ZXBrokerClient,
+)
 from stock_trading.broker.models import BrokerFeeBreakdown, BrokerOrder
 from stock_trading.config import AppConfig
 from stock_trading.state.store import StateStore
 from stock_trading.trading.strategy import permission_scope
+from stock_trading.utils.instruments import normalize_instrument
 from stock_trading.utils.logging_utils import set_log_context
 
 LOGGER = logging.getLogger(__name__)
@@ -398,57 +404,223 @@ def _max_drawdown(returns: list[float]) -> float:
     return drawdown
 
 
-def refresh_permissions(
-    store: StateStore,
-    orders: list[dict[str, object]],
-    observed_date: date,
-) -> list[dict[str, object]]:
-    """根据历史已受理委托刷新主板交易权限证据。"""
-    existing = {
-        str(item["scope"]): {
-            "scope": str(item["scope"]),
-            "status": str(item["status"]),
-            "evidenceType": str(item["evidence_type"]),
-            "evidenceDetail": str(item["evidence_detail"] or ""),
-            "observedAt": str(item["observed_at"]),
+class BrokerPermissionSyncService:
+    """串行执行高价合法数量买入探测并逐股保存权限事实。"""
+
+    def __init__(
+        self,
+        config: AppConfig,
+        store: StateStore,
+        broker: ZXBrokerClient,
+    ) -> None:
+        self._config = config
+        self._store = store
+        self._broker = broker
+
+    def sync(
+        self,
+        instruments: list[str],
+        observed_at: str,
+    ) -> dict[str, object]:
+        normalized = sorted({normalize_instrument(item) for item in instruments})
+        normalized_set = set(normalized)
+        observation_date = observed_at[:10]
+        completed = {
+            str(item["instrument"]): str(item["status"])
+            for item in self._store.broker_stock_permissions()
+            if str(item["observed_at"]).startswith(observation_date)
+            and str(item["instrument"]) in normalized_set
         }
-        for item in store.broker_permissions()
-    }
-    records: dict[str, dict[str, str]] = {
-        scope: existing.get(scope, _unknown_permission(scope, observed_date))
-        for scope in ("SH_MAIN", "SZ_MAIN")
-    }
-    for order in orders:
-        if str(order["status"]) in {"REJECTED", "UNKNOWN"}:
-            continue
-        scope = permission_scope(order["instrument"])
+        pending = [item for item in normalized if item not in completed]
+        allowed = sum(status == "ALLOWED" for status in completed.values())
+        denied = sum(status == "DENIED" for status in completed.values())
+        failures: list[str] = []
+        total = len(normalized)
+        skipped = total - len(pending)
+        if pending:
+            self._broker.prepare_permission_probe()
+        workers = 1
+        LOGGER.info("券商 Token 按响应串行轮换，权限探测固定使用单 worker")
+        remaining = list(pending)
+        checked = 0
+        while remaining:
+            batch = remaining[:100]
+            remaining = remaining[100:]
+            LOGGER.info(
+                "逐股权限同步批次开始：worker=%d；批次数量=%d；剩余=%d",
+                workers,
+                len(batch),
+                len(remaining),
+            )
+            outcomes = self._sync_batch(batch, observed_at, workers)
+            retry_instruments: list[str] = []
+            auth_failure = False
+            for outcome in outcomes:
+                instrument = str(outcome["instrument"])
+                status = str(outcome.get("status") or "")
+                if not status:
+                    retry_instruments.append(instrument)
+                    auth_failure = auth_failure or outcome.get("failureType") == "AUTH"
+                    continue
+                checked += 1
+                allowed += status == "ALLOWED"
+                denied += status == "DENIED"
+                index = skipped + checked
+                if status == "DENIED" or index == total or index % 100 == 0:
+                    LOGGER.info(
+                        "逐股权限同步进度：%d/%d；股票=%s；状态=%s；允许=%d；拒绝=%d",
+                        index,
+                        total,
+                        instrument,
+                        status,
+                        allowed,
+                        denied,
+                    )
+            if retry_instruments and workers > 1:
+                if auth_failure:
+                    self._broker.invalidate_token()
+                LOGGER.warning(
+                    "并发权限探测批次不稳定，降为单线程补测：原worker=%d；待补=%d；认证异常=%s",
+                    workers,
+                    len(retry_instruments),
+                    auth_failure,
+                )
+                workers = 1
+                remaining = retry_instruments + remaining
+                continue
+            if retry_instruments:
+                failures.extend(retry_instruments)
+        return {
+            "total": total,
+            "checked": checked,
+            "skipped": skipped,
+            "allowed": allowed,
+            "denied": denied,
+            "failures": failures,
+            "observedAt": observed_at,
+        }
+
+    def _sync_batch(
+        self,
+        instruments: list[str],
+        observed_at: str,
+        workers: int,
+    ) -> list[dict[str, object]]:
+        if workers != 1:
+            raise ValueError("券商权限探测只允许单 worker")
+        return [self._probe_one(instrument, observed_at) for instrument in instruments]
+
+    def _probe_one(
+        self,
+        instrument: str,
+        observed_at: str,
+    ) -> dict[str, object]:
+        set_log_context(target=instrument)
+        scope = permission_scope(instrument)
         if scope is None:
-            continue
-        observed = (
-            str(order["order_time"] or observed_date.isoformat())
+            return self._failure(instrument, "PROTOCOL", "不支持该股票范围")
+        result: dict[str, object] | None = None
+        for attempt in range(1, 4):
+            try:
+                result = self._broker.probe_buy_permission(instrument[-6:])
+                break
+            except (OSError, TimeoutError, ConnectionError) as error:
+                if attempt < 3:
+                    LOGGER.warning(
+                        "逐股权限探测网络异常，等待重试：股票=%s；尝试=%d/3；原因=%s",
+                        instrument,
+                        attempt,
+                        error,
+                    )
+                    time.sleep(attempt)
+                    continue
+                return self._failure(instrument, "NETWORK", str(error))
+            except (BrokerProtocolError, BrokerSafetyError) as error:
+                return self._failure(instrument, "PROTOCOL", str(error))
+        if result is None:
+            return self._failure(instrument, "PROTOCOL", "券商响应为空")
+        message = str(result.get("errorMessage") or "")
+        if _is_auth_failure(message):
+            return self._failure(instrument, "AUTH", message)
+        if _is_permission_denial(message):
+            status = "DENIED"
+        elif bool(result.get("accepted")) or _is_permission_allowed_evidence(message):
+            status = "ALLOWED"
+        else:
+            return self._failure(instrument, "BUSINESS", message)
+        detail = (
+            f"code={instrument[-6:]};errorNo={result.get('errorNo') or ''};"
+            f"message={message}"
+        )[:300]
+        self._store.save_broker_stock_permission(
+            {
+                "instrument": instrument,
+                "stockCode": instrument[-6:],
+                "scope": scope,
+                "status": status,
+                "evidenceType": "HIGH_PRICE_PERMISSION_PROBE",
+                "errorNo": str(result.get("errorNo") or ""),
+                "evidenceDetail": detail,
+                "observedAt": observed_at,
+            }
         )
-        records[scope] = {
-            "scope": scope,
-            "status": "ALLOWED",
-            "evidenceType": "HISTORICAL_ORDER",
-            "evidenceDetail": f"历史委托号={order['broker_order_id'] or 'UNKNOWN'}",
-            "observedAt": observed,
+        return {"instrument": instrument, "status": status}
+
+    @staticmethod
+    def _failure(
+        instrument: str,
+        failure_type: str,
+        detail: str,
+    ) -> dict[str, object]:
+        LOGGER.error(
+            "逐股权限探测未形成权限结论：股票=%s；类型=%s；原因=%s",
+            instrument,
+            failure_type,
+            detail,
+        )
+        return {
+            "instrument": instrument,
+            "failureType": failure_type,
         }
-    saved = store.save_broker_permissions(list(records.values()))
-    LOGGER.info(
-        "券商权限刷新完成：%s",
-        ",".join(f"{row['scope']}={row['status']}" for row in saved),
+
+
+def _is_permission_denial(message: str) -> bool:
+    normalized = message.replace(" ", "")
+    return any(
+        keyword in normalized
+        for keyword in ("无权限", "没有权限", "未开通", "禁止交易", "不允许交易")
     )
-    return saved
 
 
-def _unknown_permission(scope: str, observed_date: date) -> dict[str, str]:
-    return {
-        "scope": scope,
-        "status": "UNKNOWN",
-        "evidenceType": "NO_CONFIRMED_ORDER",
-        "evidenceDetail": "没有找到可确认权限的历史成功委托",
-        "observedAt": observed_date.isoformat(),
-    }
+def _is_auth_failure(message: str) -> bool:
+    normalized = message.replace(" ", "").lower()
+    return any(
+        keyword in normalized
+        for keyword in (
+            "token",
+            "未登录",
+            "请登录",
+            "重新登录",
+            "登录超时",
+            "会话失效",
+            "会话过期",
+            "身份认证",
+        )
+    )
 
-# AI_GENERATE_END ----------
+
+def _is_permission_allowed_evidence(message: str) -> bool:
+    normalized = message.replace(" ", "")
+    return any(
+        keyword in normalized
+        for keyword in (
+            "委托价格",
+            "价格超出",
+            "价格超过",
+            "价格高于",
+            "涨停价",
+            "涨跌停",
+        )
+    )
+
+# AI_GENERATE_END----- ----------

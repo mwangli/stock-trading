@@ -1,4 +1,4 @@
-# AI_GENERATE_START -------------------------------------------
+# AI_GENERATE_START --------------------------------------------
 from __future__ import annotations
 
 import json
@@ -128,12 +128,15 @@ def train_configured_model(
 
 
 def _configured_handler(spec: ModelSpec):
-    from stock_trading.research.features import DailyAlpha158, FullDayMinute5Alpha158
+    from stock_trading.research.features import (
+        DailyAlpha158,
+        DailyMinute5PathAlpha158,
+    )
 
     if spec.data_level == "L1":
         return DailyAlpha158
     if spec.data_level == "L2":
-        return FullDayMinute5Alpha158
+        return DailyMinute5PathAlpha158
     raise ValueError(f"当前阶段不支持的数据等级：{spec.data_level}")
 
 
@@ -409,4 +412,4 @@ def automatic_model_segments(
     )
 
 
-# AI_GENERATE_END -------------------------------------------
+# AI_GENERATE_END --------------------------------------------

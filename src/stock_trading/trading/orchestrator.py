@@ -1,4 +1,4 @@
-# AI_GENERATE_START--- -----------------------------
+# AI_GENERATE_START-------- -----------------------------
 from __future__ import annotations
 
 import logging
@@ -7,7 +7,12 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Protocol
 
-from stock_trading.broker.models import BrokerAccount, BrokerPosition, FiveLevelQuote
+from stock_trading.broker.models import (
+    BrokerAccount,
+    BrokerOrder,
+    BrokerPosition,
+    FiveLevelQuote,
+)
 from stock_trading.config import AppConfig
 from stock_trading.market.rules import recent_limit_down_count
 from stock_trading.market.storage import ParquetMarketStore
@@ -30,6 +35,10 @@ class BrokerReader(Protocol):
 
     def get_five_level_quote(self, stock_code: str) -> FiveLevelQuote:
         """用途：读取证券五档行情；输入：六位证券代码；输出：五档行情。"""
+        ...
+
+    def get_today_orders(self) -> tuple[BrokerOrder, ...]:
+        """用途：读取当日委托事实；输入：无；输出：券商订单元组。"""
         ...
 
 
@@ -79,7 +88,21 @@ class LiveTradingOrchestrator:
                 )
                 continue
             rank = ranks.get(instrument)
-            if rank is not None and rank <= self._config.trading_exit_rank:
+            buy_date = buy_dates.get(instrument)
+            holding_days = (
+                self._holding_trade_days(buy_date, business_date)
+                if buy_date is not None
+                else None
+            )
+            max_holding_reached = (
+                holding_days is not None
+                and holding_days >= self._config.trading_max_holding_days
+            )
+            if (
+                not max_holding_reached
+                and rank is not None
+                and rank <= self._config.trading_exit_rank
+            ):
                 ignored.append(
                     {
                         "instrument": instrument,
@@ -88,19 +111,17 @@ class LiveTradingOrchestrator:
                     }
                 )
                 continue
-            buy_date = buy_dates.get(instrument)
-            holding_days = (
-                self._holding_trade_days(buy_date, business_date)
-                if buy_date is not None
-                else None
-            )
             targets.append(
                 {
                     "instrument": instrument,
                     "side": "SELL",
                     "candidateRank": rank,
                     "holdingDays": holding_days,
-                    "exitReason": "RANK_EXIT",
+                    "exitReason": (
+                        "MAX_HOLDING_DAYS"
+                        if max_holding_reached
+                        else "RANK_EXIT"
+                    ),
                     "modelVersionId": int(candidates[0]["model_version_id"]),
                     "predictionDate": str(candidates[0]["prediction_date"]),
                 }
@@ -140,26 +161,33 @@ class LiveTradingOrchestrator:
     def _select_afternoon_buy_target(self, business_date: date) -> dict[str, object]:
         """从完整横截面排名选择最高分可买目标，不保存五档价格和委托数量。"""
         candidates = self._prediction_candidates(business_date)
+        sold_instruments = self._sold_instruments_today(business_date)
+        rejected: list[dict[str, object]] = []
 
         existing_target = self._existing_buy_target(
             business_date, int(candidates[0]["model_version_id"])
         )
         if existing_target is not None:
-            candidate = next(
-                (
-                    item
-                    for item in candidates
-                    if normalize_instrument(item["instrument"]) == existing_target
-                ),
-                None,
-            )
-            LOGGER.info("恢复当日实时买入目标：股票=%s", existing_target)
-            return self._buy_result(
-                business_date,
-                candidates,
-                self._target(existing_target, candidate),
-                [],
-            )
+            if existing_target in sold_instruments:
+                rejected.append(
+                    {"instrument": existing_target, "reason": "SOLD_SAME_DAY"}
+                )
+            else:
+                candidate = next(
+                    (
+                        item
+                        for item in candidates
+                        if normalize_instrument(item["instrument"]) == existing_target
+                    ),
+                    None,
+                )
+                LOGGER.info("恢复当日实时买入目标：股票=%s", existing_target)
+                return self._buy_result(
+                    business_date,
+                    candidates,
+                    self._target(existing_target, candidate),
+                    [],
+                )
 
         positions = tuple(
             position
@@ -186,15 +214,26 @@ class LiveTradingOrchestrator:
             str(item["scope"]): str(item["status"])
             for item in self._state_store.broker_permissions()
         }
+        stock_permission_status = {
+            str(item["instrument"]): str(item["status"])
+            for item in self._state_store.broker_stock_permissions()
+        }
         account = self._broker.get_account()
         prediction_date = date.fromisoformat(str(candidates[0]["prediction_date"]))
-        rejected: list[dict[str, object]] = []
         for candidate in candidates:
             instrument = normalize_instrument(candidate["instrument"])
             rank = int(candidate["rank"])
             score = float(candidate["score"])
-            if rank > self._config.trading_entry_rank:
-                break
+            if instrument in sold_instruments:
+                rejected.append(
+                    {
+                        "instrument": instrument,
+                        "rank": rank,
+                        "score": score,
+                        "reason": "SOLD_SAME_DAY",
+                    }
+                )
+                continue
             if self._config.trading_allowed_prefixes and not instrument.startswith(
                 self._config.trading_allowed_prefixes
             ):
@@ -208,7 +247,12 @@ class LiveTradingOrchestrator:
                 )
                 continue
             scope = permission_scope(instrument)
-            if scope and permission_status.get(scope) == "DENIED":
+            stock_status = stock_permission_status.get(instrument)
+            if stock_status == "DENIED" or (
+                stock_status is None
+                and scope
+                and permission_status.get(scope) == "DENIED"
+            ):
                 rejected.append(
                     {
                         "instrument": instrument,
@@ -277,6 +321,17 @@ class LiveTradingOrchestrator:
         LOGGER.info("下午买入目标选择完成：没有可交易候选")
         return self._buy_result(business_date, candidates, None, rejected)
 
+    def _sold_instruments_today(self, business_date: date) -> set[str]:
+        return {
+            normalize_instrument(order.stock_code, order.market)
+            for order in self._broker.get_today_orders()
+            if order.order_time is not None
+            and order.order_time.date() == business_date
+            and order.direction == "SELL"
+            and int(order.filled_quantity or 0) > 0
+            and order.stock_code
+        }
+
     def _prediction_candidates(
         self, business_date: date
     ) -> list[dict[str, object]]:
@@ -287,7 +342,7 @@ class LiveTradingOrchestrator:
             raise ValueError("目标交易日没有匹配前一交易日特征和当前时间合同的横截面预测")
         if len(candidates) <= self._config.trading_entry_rank:
             raise ValueError(
-                "最近预测不是完整横截面排名，请先重新执行 stock-rank"
+                "最近预测不是完整横截面排名，请先重新执行 stock-model --rank"
             )
         return candidates
 
@@ -334,4 +389,4 @@ class LiveTradingOrchestrator:
             "targets": [target] if target else [],
             "rejected": rejected,
         }
-# AI_GENERATE_END--- -----------------------------
+# AI_GENERATE_END-------- -----------------------------

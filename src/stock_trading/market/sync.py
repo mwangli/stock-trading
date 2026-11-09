@@ -77,7 +77,7 @@ def live_codes(stocks: pd.DataFrame, snapshot_date: date) -> list[str]:
             continue
         if out_date and out_date <= snapshot_date + timedelta(days=30):
             continue
-        if str(row.status) not in {"", "1"} or str(row.trade_status) != "1":
+        if str(row.status) not in {"", "1"} or str(row.trade_status) not in {"", "1"}:
             continue
         codes.append(code)
     return sorted(set(codes))

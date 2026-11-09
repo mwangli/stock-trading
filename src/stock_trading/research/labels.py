@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------------
+# AI_GENERATE_START -------------
 from __future__ import annotations
 
 import pandas as pd
@@ -25,7 +25,9 @@ def _daily_vwap_labels(observation: pd.DataFrame, calendar: pd.DatetimeIndex) ->
     daily_vwap = amount / volume.where(volume.gt(0))
     buy_vwap = daily_vwap.shift(-1)
     sell_vwap = daily_vwap.shift(-2)
-    labels = (sell_vwap / buy_vwap - 1.0).where(buy_vwap.gt(0) & sell_vwap.gt(0))
+    labels = (sell_vwap / buy_vwap - 1.0).where(
+        daily_vwap.gt(0) & buy_vwap.gt(0) & sell_vwap.gt(0)
+    )
     return labels.astype("float32").rename("label")
 
 
@@ -45,4 +47,4 @@ def _minute5_window_labels(observation: pd.DataFrame, calendar: pd.DatetimeIndex
     return labels.astype("float32").rename("label")
 
 
-# AI_GENERATE_END ------------
+# AI_GENERATE_END -------------

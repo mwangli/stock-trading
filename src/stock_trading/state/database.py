@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------
+# AI_GENERATE_START --------
 from __future__ import annotations
 
 import sqlite3
@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Iterator
 
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 _MODEL_ID_MIGRATION = """
 ALTER TABLE model_version ADD COLUMN model_id TEXT NOT NULL DEFAULT 'legacy';
 ALTER TABLE model_evaluation ADD COLUMN model_id TEXT NOT NULL DEFAULT 'legacy';
@@ -38,6 +38,23 @@ SCHEMA_MIGRATIONS = {
     for version, migration in SCHEMA_MIGRATIONS.items()
 }
 SCHEMA_MIGRATIONS[7] = _PREDICTION_TIME_MIGRATION
+
+_STOCK_PERMISSION_SCHEMA = """
+CREATE TABLE IF NOT EXISTS broker_stock_permission (
+    instrument TEXT PRIMARY KEY,
+    stock_code TEXT NOT NULL,
+    scope TEXT NOT NULL,
+    status TEXT NOT NULL,
+    evidence_type TEXT NOT NULL,
+    error_no TEXT,
+    evidence_detail TEXT,
+    observed_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_broker_stock_permission_status
+ON broker_stock_permission(status, instrument);
+"""
+SCHEMA_MIGRATIONS[8] = _STOCK_PERMISSION_SCHEMA
 
 SCHEMA = """
 -- 任务运行记录：保存可恢复、可幂等任务的执行状态。
@@ -240,6 +257,22 @@ CREATE TABLE IF NOT EXISTS broker_permission (
     updated_at TEXT NOT NULL -- 本地最后更新时间。
 );
 
+-- 券商逐股交易权限事实：保存零价格、零数量真实买入接口的逐股响应结论。
+CREATE TABLE IF NOT EXISTS broker_stock_permission (
+    instrument TEXT PRIMARY KEY, -- Qlib 标准证券代码，例如 SH600000。
+    stock_code TEXT NOT NULL, -- 券商六位证券代码。
+    scope TEXT NOT NULL, -- 兼容板块范围，例如 SH_MAIN 或 SZ_MAIN。
+    status TEXT NOT NULL, -- ALLOWED 或 DENIED。
+    evidence_type TEXT NOT NULL, -- 固定为 HIGH_PRICE_PERMISSION_PROBE。
+    error_no TEXT, -- 券商业务错误码；接口受理时可为空。
+    evidence_detail TEXT, -- 不含账号、Token 和委托号的券商响应摘要。
+    observed_at TEXT NOT NULL, -- 权限探测发生时间。
+    updated_at TEXT NOT NULL -- 本地最后更新时间。
+);
+
+CREATE INDEX IF NOT EXISTS idx_broker_stock_permission_status
+ON broker_stock_permission(status, instrument);
+
 -- 账户快照：固定主键保证全库只保留最近一次主动同步的券商账户资金事实。
 CREATE TABLE IF NOT EXISTS account_snapshot (
     id INTEGER PRIMARY KEY CHECK(id = 1),
@@ -348,4 +381,4 @@ class SQLiteStateDatabase:
         finally:
             connection.close()
 
-# AI_GENERATE_END ------
+# AI_GENERATE_END --------

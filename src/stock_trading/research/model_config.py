@@ -1,4 +1,4 @@
-# AI_GENERATE_START-- ----------
+# AI_GENERATE_START--- ----------
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -138,7 +138,7 @@ MODEL_SPECS = (
     *_models_for_level(
         "L2",
         "minute5",
-        "FullDayMinute5Alpha158Basic",
+        "DailyAlpha158BasicMinute5Path",
         ("daily", "basic", "factor", "minute5"),
         L2_STRATEGY,
     ),
@@ -163,4 +163,4 @@ def resolve_model_spec(value: str | None) -> ModelSpec:
         ) from None
 
 
-# AI_GENERATE_END-- ----------
+# AI_GENERATE_END--- ----------

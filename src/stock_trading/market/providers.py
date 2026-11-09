@@ -1,4 +1,4 @@
-# AI_GENERATE_START--------------------- --------
+# AI_GENERATE_START---------------------- --------
 from __future__ import annotations
 
 import logging
@@ -7,7 +7,7 @@ from collections import defaultdict
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
-from datetime import date, time as datetime_time
+from datetime import date, time as datetime_time, timedelta
 from decimal import Decimal
 from pathlib import Path
 from threading import Lock
@@ -38,6 +38,7 @@ from stock_trading.utils.time_utils import shanghai_today
 LOGGER = logging.getLogger(__name__)
 BAOSTOCK_SESSION_REQUEST_LIMIT = 500
 BAOSTOCK_CODE_MAX_ATTEMPTS = 3
+BAOSTOCK_MINUTE5_BATCH_DAYS = 365
 
 
 def market_provider(config: AppConfig, name: str) -> MarketDataProvider:
@@ -101,19 +102,125 @@ class BaoStockMarketProvider:
         start_date: date,
         end_date: date,
     ) -> dict[str, object]:
-        def collect(client: BaoStockClient, code: str) -> int:
-            values = client.fetch_minutes(code, start_date, end_date)
-            if not values:
-                raise ValueError("5分钟线为空")
-            store.write_minute_history(code, values, end_date)
-            return len(values)
+        batches: list[tuple[date, date]] = []
+        cursor = start_date
+        while cursor <= end_date:
+            batch_end = min(
+                end_date,
+                cursor + timedelta(days=BAOSTOCK_MINUTE5_BATCH_DAYS - 1),
+            )
+            batches.append((cursor, batch_end))
+            cursor = batch_end + timedelta(days=1)
 
-        return self._sync_serial_codes(
-            codes,
-            "5分钟线",
-            collect,
-            date_range=(start_date, end_date),
-        )
+        rows = 0
+        skipped_code_batches = 0
+        attempted_code_batches = 0
+        failure_samples: dict[str, str] = {}
+        batch_details: list[dict[str, object]] = []
+        for batch_index, (batch_start, batch_end) in enumerate(batches, start=1):
+            pending_codes = [
+                code
+                for code in codes
+                if not store.minute_history_valid(code, batch_start, batch_end)
+            ]
+            skipped = len(codes) - len(pending_codes)
+            skipped_code_batches += skipped
+            attempted_code_batches += len(pending_codes)
+            set_log_context(
+                progress=f"{batch_index}/{len(batches)}",
+                target=f"{batch_start}:{batch_end}",
+            )
+            LOGGER.info(
+                "5分钟线时间批次开始：批次=%d/%d；日期=%s 至 %s；"
+                "目标股票=%d；断点复用=%d；待采=%d",
+                batch_index,
+                len(batches),
+                batch_start,
+                batch_end,
+                len(codes),
+                skipped,
+                len(pending_codes),
+            )
+            if not pending_codes:
+                batch_details.append(
+                    {
+                        "startDate": batch_start.isoformat(),
+                        "endDate": batch_end.isoformat(),
+                        "requestedCodes": 0,
+                        "completedCodes": 0,
+                        "failedCodes": 0,
+                    }
+                )
+                continue
+
+            def collect(client: BaoStockClient, code: str) -> int:
+                values = client.fetch_minutes(code, batch_start, batch_end)
+                if not values:
+                    raise ValueError("5分钟线为空")
+                store.write_minute_history(
+                    code,
+                    values,
+                    end_date,
+                    required_start_date=batch_start,
+                    required_end_date=batch_end,
+                )
+                return len(values)
+
+            result = self._sync_serial_codes(
+                pending_codes,
+                "5分钟线",
+                collect,
+                date_range=(batch_start, batch_end),
+            )
+            rows += int(result["rows"])
+            for code, reason in dict(result["failureSamples"]).items():
+                failure_samples[
+                    f"{code}@{batch_start.isoformat()}:{batch_end.isoformat()}"
+                ] = str(reason)
+            batch_details.append(
+                {
+                    "startDate": batch_start.isoformat(),
+                    "endDate": batch_end.isoformat(),
+                    "requestedCodes": len(pending_codes),
+                    "completedCodes": int(result["codes"]),
+                    "failedCodes": int(result["failedCodes"]),
+                }
+            )
+            set_log_context(
+                progress=f"{batch_index}/{len(batches)}",
+                target=f"{batch_start}:{batch_end}",
+            )
+            LOGGER.info(
+                "5分钟线时间批次完成：批次=%d/%d；日期=%s 至 %s；"
+                "成功=%d；失败=%d",
+                batch_index,
+                len(batches),
+                batch_start,
+                batch_end,
+                int(result["codes"]),
+                int(result["failedCodes"]),
+            )
+
+        completed_codes = [
+            code
+            for code in codes
+            if store.minute_collection_ready(code, start_date, end_date)
+        ]
+        return {
+            "provider": self.name,
+            "execution": "single-process-serial",
+            "progressUnit": "date-range",
+            "batchDays": BAOSTOCK_MINUTE5_BATCH_DAYS,
+            "dateBatches": len(batches),
+            "rows": rows,
+            "codes": len(completed_codes),
+            "completedCodes": completed_codes,
+            "failedCodes": len(codes) - len(completed_codes),
+            "attemptedCodeBatches": attempted_code_batches,
+            "skippedCodeBatches": skipped_code_batches,
+            "batchDetails": batch_details,
+            "failureSamples": dict(list(failure_samples.items())[:20]),
+        }
 
     def sync_minute(
         self,
@@ -133,6 +240,7 @@ class BaoStockMarketProvider:
         date_range: tuple[date, date] | None = None,
     ) -> dict[str, object]:
         completed = 0
+        completed_codes: list[str] = []
         rows = 0
         failures: dict[str, str] = {}
         attempts: dict[str, int] = defaultdict(int)
@@ -195,6 +303,7 @@ class BaoStockMarketProvider:
                         index += 1
                     else:
                         completed += 1
+                        completed_codes.append(code)
                         rows += written_rows
                         index += 1
             if reconnect:
@@ -204,6 +313,7 @@ class BaoStockMarketProvider:
             "execution": "single-process-serial",
             "rows": rows,
             "codes": completed,
+            "completedCodes": completed_codes,
             "failedCodes": len(failures),
             "failureSamples": dict(list(failures.items())[:20]),
         }
@@ -211,7 +321,9 @@ class BaoStockMarketProvider:
     @contextmanager
     def _client(self):
         active: BaoStockClient | None = None
-        for attempt in range(1, 4):
+        attempt = 0
+        while active is None:
+            attempt += 1
             client = BaoStockClient(
                 self._proxy_url,
                 process_lock_path=self._process_lock_path,
@@ -223,18 +335,14 @@ class BaoStockMarketProvider:
                     raise
                 if "10001011" in str(error):
                     raise BaoStockError(f"BaoStock IP 已进入黑名单：{error}") from error
-                if attempt == 3:
-                    raise
+                wait_seconds = min(attempt * 3, 60)
                 LOGGER.warning(
-                    "BaoStock 连接失败，稍后重试：尝试=%d/3；原因=%s",
+                    "BaoStock 连接失败，%d秒后继续串行重试：尝试=%d；原因=%s",
+                    wait_seconds,
                     attempt,
                     error,
                 )
-                time.sleep(attempt * 3)
-            else:
-                break
-        if active is None:
-            raise RuntimeError("BaoStock 连接重试意外结束")
+                time.sleep(wait_seconds)
         try:
             yield active
         finally:
@@ -525,4 +633,4 @@ def _to_minute_bars(
         )
         for point in regular
     ]
-# AI_GENERATE_END--------------------- --------
+# AI_GENERATE_END---------------------- --------

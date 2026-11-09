@@ -19,15 +19,10 @@ dependencies = [
 ]
 
 [project.scripts]
-stock-collect = "stock_trading.commands:collect_main"
-stock-prepare = "stock_trading.commands:prepare_main"
-stock-train = "stock_trading.commands:train_main"
-stock-rank = "stock_trading.commands:rank_main"
-stock-settle = "stock_trading.commands:settle_main"
-stock-order = "stock_trading.commands:order_main"
-stock-review = "stock_trading.commands:review_main"
-stock-clean = "stock_trading.commands:clean_main"
-stock-sync = "stock_trading.commands:sync_main"
+stock-data = "stock_trading.commands:collect_main"
+stock-broker = "stock_trading.commands:broker_main"
+stock-model = "stock_trading.commands:model_main"
+stock-utils = "stock_trading.commands:utils_main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

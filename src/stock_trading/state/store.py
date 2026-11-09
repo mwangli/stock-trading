@@ -1,4 +1,4 @@
-# AI_GENERATE_START--------- ------------------------------------------------------------------------------
+# AI_GENERATE_START---------- ------------------------------------------------------------------------------
 from __future__ import annotations
 
 import hashlib
@@ -466,6 +466,57 @@ class StateStore(SQLiteStateDatabase):
         with self._connect() as connection:
             rows = connection.execute(
                 "SELECT * FROM broker_permission ORDER BY scope"
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def save_broker_stock_permission(
+        self, permission: dict[str, str]
+    ) -> dict[str, Any]:
+        """逐股幂等保存一次真实券商权限探测结果。"""
+        self.initialize()
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO broker_stock_permission(
+                    instrument, stock_code, scope, status, evidence_type,
+                    error_no, evidence_detail, observed_at, updated_at
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(instrument) DO UPDATE SET
+                    stock_code = excluded.stock_code,
+                    scope = excluded.scope,
+                    status = excluded.status,
+                    evidence_type = excluded.evidence_type,
+                    error_no = excluded.error_no,
+                    evidence_detail = excluded.evidence_detail,
+                    observed_at = excluded.observed_at,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    permission["instrument"],
+                    permission["stockCode"],
+                    permission["scope"],
+                    permission["status"],
+                    permission["evidenceType"],
+                    permission.get("errorNo"),
+                    permission.get("evidenceDetail"),
+                    permission["observedAt"],
+                    _now(),
+                ),
+            )
+            row = connection.execute(
+                "SELECT * FROM broker_stock_permission WHERE instrument = ?",
+                (permission["instrument"],),
+            ).fetchone()
+        if row is None:
+            raise RuntimeError("逐股券商权限写入后读取失败")
+        return dict(row)
+
+    def broker_stock_permissions(self) -> list[dict[str, Any]]:
+        """读取全部逐股券商权限事实。"""
+        self.initialize()
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM broker_stock_permission ORDER BY instrument"
             ).fetchall()
         return [dict(row) for row in rows]
 
@@ -1430,4 +1481,4 @@ def _broker_order_matches_intent(order: BrokerOrder, intent: sqlite3.Row) -> boo
         and order.order_quantity == int(intent["quantity"])
         and order.order_price == Decimal(str(intent["price"]))
     )
-# AI_GENERATE_END--------- ------------------------------------------------------------------------------
+# AI_GENERATE_END---------- ------------------------------------------------------------------------------

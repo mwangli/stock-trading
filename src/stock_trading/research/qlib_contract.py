@@ -1,4 +1,4 @@
-# AI_GENERATE_START-------- ------
+# AI_GENERATE_START------------ ------
 from __future__ import annotations
 
 import hashlib
@@ -7,7 +7,7 @@ import json
 from stock_trading.contracts import TRADING_TIME_CONTRACT
 from stock_trading.research.model_config import ModelSpec
 
-QLIB_CONTRACT_VERSION = "15"
+QLIB_CONTRACT_VERSION = "18"
 MIN_QLIB_TRADING_DAYS = 63
 
 
@@ -45,4 +45,4 @@ def expected_qlib_contract(spec: ModelSpec) -> str:
     return f"{QLIB_CONTRACT_VERSION}:{spec.dataset_id}:{strategy_contract_hash(spec)}"
 
 
-# AI_GENERATE_END-------- ------
+# AI_GENERATE_END------------ ------

@@ -1,4 +1,4 @@
-# AI_GENERATE_START------- ----------------------------------------
+# AI_GENERATE_START----------- ----------------------------------------
 from __future__ import annotations
 
 import logging
@@ -12,7 +12,10 @@ import pandas as pd
 from stock_trading.utils.instruments import normalize_instrument
 from stock_trading.market.storage import ParquetMarketStore
 from stock_trading.market.trade_calendar import trade_dates
-from stock_trading.market.minute5_summary import require_window_contract
+from stock_trading.market.minute5_summary import (
+    MINUTE5_FEATURE_FIELDS,
+    require_window_contract,
+)
 from stock_trading.utils.logging_utils import set_log_context, should_log_progress
 from stock_trading.research.labels import build_labels
 from stock_trading.research.features import BASIC_FEATURE_FIELDS
@@ -24,9 +27,11 @@ QLIB_BASE_FIELDS = (
     "open", "high", "low", "close", "volume", "amount", "vwap", "factor",
 )
 DAILY_QLIB_FIELDS = QLIB_BASE_FIELDS + BASIC_FEATURE_FIELDS + ("label",)
-MINUTE5_QLIB_FIELDS = QLIB_BASE_FIELDS + BASIC_FEATURE_FIELDS + (
-    "full_return", "full_range", "full_close_vwap",
-    "full_last30_return", "label",
+MINUTE5_QLIB_FIELDS = (
+    QLIB_BASE_FIELDS
+    + BASIC_FEATURE_FIELDS
+    + MINUTE5_FEATURE_FIELDS
+    + ("label",)
 )
 
 
@@ -311,16 +316,16 @@ class QlibBinaryStore:
     def _adjusted_daily(
         self, code: str, start_date: date, end_date: date
     ) -> pd.DataFrame:
+        daily = self._market_store.read_daily_history(code).set_index("trade_date")
+        daily = daily[
+            (daily.index.date >= start_date)
+            & (daily.index.date <= end_date)
+            & daily["tradestatus"].astype(str).eq("1")
+            & ~daily["is_st"].astype(str).eq("1")
+        ]
+        factors = self._market_store.read_factors(code).set_index("operate_date")
+        adjusted = self._same_day_daily_features(daily, factors)
         if self._feature_frequency == "daily":
-            daily = self._market_store.read_daily_history(code).set_index("trade_date")
-            daily = daily[
-                (daily.index.date >= start_date)
-                & (daily.index.date <= end_date)
-                & daily["tradestatus"].astype(str).eq("1")
-                & ~daily["is_st"].astype(str).eq("1")
-            ]
-            factors = self._market_store.read_factors(code).set_index("operate_date")
-            adjusted = self._same_day_daily_features(daily, factors)
             return self._attach_basic_features(code, adjusted)
 
         if self._feature_frequency == "minute5":
@@ -329,25 +334,14 @@ class QlibBinaryStore:
             ).set_index("trade_date")
             require_window_contract(source)
             source = source[source["full_complete"].fillna(False).astype(bool)]
-            factors = self._market_store.read_factors(code).set_index("operate_date")
-            factor = self._adjustment_factor(factors, source.index, code)
-            adjusted = pd.DataFrame(index=source.index)
-            for field in ("open", "high", "low", "close"):
-                adjusted[field] = source[f"full_{field}"].astype(float) * factor
-            adjusted["volume"] = source["full_volume"].astype(float) / factor
-            adjusted["amount"] = source["full_amount"].astype(float)
-            adjusted["vwap"] = adjusted["amount"] / adjusted["volume"].replace(0, np.nan)
-            adjusted["factor"] = factor
-            for field in (
-                "full_return",
-                "full_range",
-                "full_close_vwap",
-                "full_last30_return",
-            ):
+            source = source[source.index.isin(adjusted.index)]
+            adjusted = adjusted.reindex(source.index)
+            for field in MINUTE5_FEATURE_FIELDS:
                 adjusted[field] = source[field].astype(float)
         else:
             raise ValueError(f"当前阶段不支持的数据频率：{self._feature_frequency}")
 
+        factor = adjusted["factor"]
         adjusted["full_complete"] = True
         adjusted["buy_complete"] = source["buy_complete"].fillna(False).astype(bool)
         adjusted["sell_complete"] = source["sell_complete"].fillna(False).astype(bool)
@@ -415,6 +409,14 @@ class QlibBinaryStore:
         adjusted["log_circulating_market_value"] = np.log1p(
             circulating.where(circulating.gt(0))
         )
+        for source_field, feature_field in (
+            ("pe_ttm", "signed_log_pe_ttm"),
+            ("pb_mrq", "signed_log_pb_mrq"),
+            ("ps_ttm", "signed_log_ps_ttm"),
+            ("pcf_ncf_ttm", "signed_log_pcf_ncf_ttm"),
+        ):
+            values = pd.to_numeric(aligned[source_field], errors="coerce")
+            adjusted[feature_field] = np.sign(values) * np.log1p(values.abs())
         return adjusted
 
     @staticmethod
@@ -649,4 +651,4 @@ class QlibBinaryStore:
             raise
         shutil.rmtree(backup, ignore_errors=True)
 
-# AI_GENERATE_END-------- ----------------------------------------
+# AI_GENERATE_END------------ ----------------------------------------

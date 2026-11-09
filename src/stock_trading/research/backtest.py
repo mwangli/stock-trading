@@ -1,4 +1,4 @@
-# AI_GENERATE_START--- -------------------------------
+# AI_GENERATE_START------ -------------------------------
 from __future__ import annotations
 
 import json
@@ -37,6 +37,7 @@ class BacktestConfig:
     allowed_prefixes: tuple[str, ...] = ()
     entry_rank: int = 5
     exit_rank: int = 15
+    max_holding_days: int = 3
     limit_down_lookback_days: int = 10
     max_recent_limit_downs: int = 2
 
@@ -47,6 +48,8 @@ class BacktestConfig:
             raise ValueError("lot size and order slices must be positive")
         if self.entry_rank <= 0 or self.exit_rank < self.entry_rank:
             raise ValueError("entry and exit ranks must be positive and ordered")
+        if self.max_holding_days <= 0:
+            raise ValueError("max holding days must be positive")
         if self.limit_down_lookback_days <= 0 or self.max_recent_limit_downs < 0:
             raise ValueError("limit-down lookback must be positive and threshold non-negative")
 
@@ -125,6 +128,7 @@ class PortfolioBacktester:
             trade_date = timestamp.date()
             prediction_timestamp = self._previous_calendar_day(timestamp)
             candidates = ranked.get(prediction_timestamp)
+            sold_instruments: set[str] = set()
             if position is not None and trade_date > position.buy_date:
                 holding_days = self._holding_trade_days(
                     position.buy_date, trade_date
@@ -134,7 +138,14 @@ class PortfolioBacktester:
                     if candidates is not None
                     else None
                 )
-                if exit_rank is not None and exit_rank <= self._config.exit_rank:
+                max_holding_reached = (
+                    holding_days >= self._config.max_holding_days
+                )
+                if (
+                    not max_holding_reached
+                    and exit_rank is not None
+                    and exit_rank <= self._config.exit_rank
+                ):
                     retained_days += 1
                 else:
                     sale, sell_reject_reason = self._try_sell(position, trade_date)
@@ -142,10 +153,22 @@ class PortfolioBacktester:
                         rejects.append(_reject_record(trade_date, position.instrument, sell_reject_reason or "SELL_UNAVAILABLE"))
                     else:
                         cash += sale["sellNotional"]
-                        trade = _trade_record(position, sale, exit_rank, holding_days, "RANK_EXIT")
+                        exit_reason = (
+                            "MAX_HOLDING_DAYS"
+                            if max_holding_reached
+                            else "RANK_EXIT"
+                        )
+                        trade = _trade_record(
+                            position,
+                            sale,
+                            exit_rank,
+                            holding_days,
+                            exit_reason,
+                        )
                         trades.append(trade)
                         realized_gross_profit += float(trade["grossPnl"])
                         realized_net_profit += float(trade["netPnl"])
+                        sold_instruments.add(position.instrument)
                         position = None
 
             if (
@@ -155,7 +178,11 @@ class PortfolioBacktester:
                 and candidates is not None
             ):
                 purchase, candidate_rejects = self._try_buy(
-                    candidates, prediction_timestamp.date(), trade_date, cash
+                    candidates,
+                    prediction_timestamp.date(),
+                    trade_date,
+                    cash,
+                    sold_instruments,
                 )
                 rejects.extend(candidate_rejects)
                 if purchase is not None:
@@ -191,10 +218,12 @@ class PortfolioBacktester:
         set_log_context(step="3/4", progress="-/-", target="收益汇总")
         LOGGER.info("开始汇总收益、费用和回撤")
         mark_to_market_equity = equity_rows[-1]["equity"] if equity_rows else cash
+        monthly_performance = self._monthly_performance(trades, equity_rows)
         summary = self._summary(
             trades,
             rejects,
             equity_rows,
+            monthly_performance,
             mark_to_market_equity,
             position,
             retained_days,
@@ -206,6 +235,9 @@ class PortfolioBacktester:
         pd.DataFrame.from_records(rejects).to_parquet(artifact_dir / "rejects.parquet", index=False)
         pd.DataFrame.from_records(equity_rows).to_parquet(
             artifact_dir / "daily_equity.parquet", index=False
+        )
+        pd.DataFrame.from_records(monthly_performance).to_parquet(
+            artifact_dir / "monthly_returns.parquet", index=False
         )
         (artifact_dir / "summary.json").write_text(
             json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -235,10 +267,16 @@ class PortfolioBacktester:
         prediction_date: date,
         buy_date: date,
         cash: float,
+        excluded_instruments: set[str],
     ) -> tuple[tuple[Position, float] | None, list[dict[str, object]]]:
         rejects: list[dict[str, object]] = []
         for rank, row in enumerate(candidates.itertuples(index=False), start=1):
             instrument = normalize_instrument(row.instrument)
+            if instrument in excluded_instruments:
+                rejects.append(
+                    _reject_record(buy_date, instrument, "SOLD_SAME_DAY", rank)
+                )
+                continue
             code = to_market_code(instrument)
             reason = self._buy_reject_reason(
                 instrument, code, prediction_date, buy_date
@@ -414,6 +452,7 @@ class PortfolioBacktester:
         trades: list[dict[str, object]],
         rejects: list[dict[str, object]],
         equity_rows: list[dict[str, object]],
+        monthly_performance: list[dict[str, object]],
         mark_to_market_equity: float,
         open_position: Position | None,
         retained_days: int,
@@ -454,6 +493,8 @@ class PortfolioBacktester:
             "timeContractVersion": TRADING_TIME_CONTRACT,
             "timeContract": trading_time_contract(self._model_spec),
             "simulationType": "window-vwap-benchmark",
+            "sameDayRebuyAllowed": False,
+            "buyCandidateSelection": "FULL_RANKING_FIRST_TRADABLE",
             "executionLimitations": (
                 "窗口VWAP基准，并非逐分钟成交回放；不模拟盘口排队、部分成交和撤单。"
             ),
@@ -482,9 +523,59 @@ class PortfolioBacktester:
             "totalBuyNotional": _money(total_buy_notional),
             "totalSellNotional": _money(total_sell_notional),
             "turnover": (total_buy_notional + total_sell_notional) / self._config.initial_cash,
+            "monthlyPerformance": monthly_performance,
+            "monthlyReturnStability": _monthly_return_stability(monthly_performance),
             "openPosition": _position_record(open_position),
             "rejectCounts": reject_counts,
         }
+
+    def _monthly_performance(
+        self,
+        trades: list[dict[str, object]],
+        equity_rows: list[dict[str, object]],
+    ) -> list[dict[str, object]]:
+        if not equity_rows:
+            return []
+        trade_frame = pd.DataFrame.from_records(trades)
+        if not trade_frame.empty:
+            trade_frame["month"] = pd.to_datetime(trade_frame["sellDate"]).dt.to_period("M")
+        first_month = pd.Timestamp(equity_rows[0]["tradeDate"]).to_period("M")
+        last_month = pd.Timestamp(equity_rows[-1]["tradeDate"]).to_period("M")
+        gross_start_equity = self._config.initial_cash
+        net_start_equity = self._config.initial_cash
+        rows: list[dict[str, object]] = []
+        for month in pd.period_range(first_month, last_month, freq="M"):
+            month_trades = (
+                trade_frame.loc[trade_frame["month"] == month]
+                if not trade_frame.empty
+                else trade_frame
+            )
+            gross_profit = float(month_trades["grossPnl"].sum()) if not month_trades.empty else 0.0
+            net_profit = float(month_trades["netPnl"].sum()) if not month_trades.empty else 0.0
+            closed_trades = len(month_trades)
+            wins = (
+                int((pd.to_numeric(month_trades["grossPnl"]) > 0).sum())
+                if closed_trades
+                else 0
+            )
+            rows.append(
+                {
+                    "month": str(month),
+                    "startGrossEquity": _money(gross_start_equity),
+                    "grossProfit": _money(gross_profit),
+                    "grossReturn": gross_profit / gross_start_equity,
+                    "endGrossEquity": _money(gross_start_equity + gross_profit),
+                    "startNetEquity": _money(net_start_equity),
+                    "netProfit": _money(net_profit),
+                    "netReturn": net_profit / net_start_equity,
+                    "endNetEquity": _money(net_start_equity + net_profit),
+                    "closedTrades": closed_trades,
+                    "winRate": wins / closed_trades if closed_trades else 0.0,
+                }
+            )
+            gross_start_equity += gross_profit
+            net_start_equity += net_profit
+        return rows
 
 
 def run_portfolio_backtest(
@@ -503,6 +594,7 @@ def run_portfolio_backtest(
         allowed_prefixes=config.trading_allowed_prefixes,
         entry_rank=config.trading_entry_rank,
         exit_rank=config.trading_exit_rank,
+        max_holding_days=config.trading_max_holding_days,
         limit_down_lookback_days=config.trading_limit_down_lookback_days,
         max_recent_limit_downs=config.trading_max_recent_limit_downs,
     )
@@ -585,12 +677,52 @@ def _money(value: float) -> float:
     return float(Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
+def _monthly_return_stability(
+    monthly_performance: list[dict[str, object]],
+) -> dict[str, object]:
+    returns = pd.Series(
+        [float(row["grossReturn"]) for row in monthly_performance],
+        dtype="float64",
+    )
+    if returns.empty:
+        return {
+            "score": 0.0,
+            "averageMonthlyReturn": 0.0,
+            "monthlyReturnVolatility": 0.0,
+            "positiveMonthRate": 0.0,
+            "maxConsecutiveLossMonths": 0,
+            "bestMonth": None,
+            "worstMonth": None,
+            "definition": "平均月毛收益率 / 月毛收益率总体标准差",
+        }
+    average_return = float(returns.mean())
+    volatility = float(returns.std(ddof=0))
+    loss_streak = 0
+    max_loss_streak = 0
+    for value in returns:
+        loss_streak = loss_streak + 1 if value < 0 else 0
+        max_loss_streak = max(max_loss_streak, loss_streak)
+    best_index = int(returns.idxmax())
+    worst_index = int(returns.idxmin())
+    return {
+        "score": average_return / volatility if volatility > 0 else 0.0,
+        "averageMonthlyReturn": average_return,
+        "monthlyReturnVolatility": volatility,
+        "positiveMonthRate": float((returns > 0).mean()),
+        "maxConsecutiveLossMonths": max_loss_streak,
+        "bestMonth": monthly_performance[best_index]["month"],
+        "worstMonth": monthly_performance[worst_index]["month"],
+        "definition": "平均月毛收益率 / 月毛收益率总体标准差",
+    }
+
+
 def backtest_artifact_valid(
     directory: Path,
     *,
     initial_cash: float | None = None,
     entry_rank: int | None = None,
     exit_rank: int | None = None,
+    max_holding_days: int | None = None,
     limit_down_lookback_days: int | None = None,
     max_recent_limit_downs: int | None = None,
 ) -> bool:
@@ -600,6 +732,7 @@ def backtest_artifact_valid(
         directory / "trades.parquet",
         directory / "rejects.parquet",
         directory / "daily_equity.parquet",
+        directory / "monthly_returns.parquet",
     )
     if not all(path.is_file() for path in required):
         return False
@@ -615,12 +748,19 @@ def backtest_artifact_valid(
         "retainedDays",
         "averageHoldingDays",
         "netMaxDrawdown",
+        "monthlyPerformance",
+        "monthlyReturnStability",
+        "sameDayRebuyAllowed",
+        "buyCandidateSelection",
     }
     required_equity = {"realizedGrossEquity", "realizedNetEquity"}
     config = summary.get("config")
     if (
         summary.get("timeContractVersion") != TRADING_TIME_CONTRACT
         or summary.get("simulationType") != "window-vwap-benchmark"
+        or summary.get("sameDayRebuyAllowed") is not False
+        or summary.get("buyCandidateSelection")
+        != "FULL_RANKING_FIRST_TRADABLE"
         or not required_summary.issubset(summary)
         or not required_equity.issubset(equity.columns)
         or not isinstance(config, dict)
@@ -634,6 +774,11 @@ def backtest_artifact_valid(
     if entry_rank is not None and int(config.get("entry_rank", 0)) != entry_rank:
         return False
     if exit_rank is not None and int(config.get("exit_rank", 0)) != exit_rank:
+        return False
+    if (
+        max_holding_days is not None
+        and int(config.get("max_holding_days", 0)) != max_holding_days
+    ):
         return False
     if (
         limit_down_lookback_days is not None
@@ -654,4 +799,4 @@ def read_backtest_summary(directory: Path) -> dict[str, object]:
     """读取模型回测摘要。"""
     return json.loads((directory / "summary.json").read_text(encoding="utf-8"))
 
-# AI_GENERATE_END--- -------------------------------
+# AI_GENERATE_END------ -------------------------------

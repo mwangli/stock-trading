@@ -1,4 +1,4 @@
-# AI_GENERATE_START------- ---------------------------------------------------------
+# AI_GENERATE_START-------- ---------------------------------------------------------
 from __future__ import annotations
 
 import logging
@@ -14,6 +14,7 @@ TRADING_MAX_PRICE = 1_000_000.0
 TRADING_ORDER_FEE = 5.0
 TRADING_ENTRY_RANK = 5
 TRADING_EXIT_RANK = 15
+TRADING_MAX_HOLDING_DAYS = 3
 TRADING_LIMIT_DOWN_LOOKBACK_DAYS = 10
 TRADING_MAX_RECENT_LIMIT_DOWNS = 2
 EXECUTION_WINDOW_SECONDS = 60 * 60
@@ -77,6 +78,7 @@ class AppConfig:
     trading_order_fee: float
     trading_entry_rank: int
     trading_exit_rank: int
+    trading_max_holding_days: int
     trading_limit_down_lookback_days: int
     trading_max_recent_limit_downs: int
     trading_allowed_prefixes: tuple[str, ...]
@@ -178,6 +180,7 @@ class AppConfig:
             trading_order_fee=TRADING_ORDER_FEE,
             trading_entry_rank=TRADING_ENTRY_RANK,
             trading_exit_rank=TRADING_EXIT_RANK,
+            trading_max_holding_days=TRADING_MAX_HOLDING_DAYS,
             trading_limit_down_lookback_days=TRADING_LIMIT_DOWN_LOOKBACK_DAYS,
             trading_max_recent_limit_downs=TRADING_MAX_RECENT_LIMIT_DOWNS,
             trading_allowed_prefixes=tuple(
@@ -298,4 +301,4 @@ def _env_float(name: str, default: float) -> float:
         return float(value)
     except ValueError:
         raise ValueError(f"环境变量 {name} 必须是数字") from None
-# AI_GENERATE_END------- ---------------------------------------------------------
+# AI_GENERATE_END-------- ---------------------------------------------------------

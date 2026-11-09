@@ -1,4 +1,4 @@
-# AI_GENERATE_START -------
+# AI_GENERATE_START --------
 from __future__ import annotations
 
 import json
@@ -28,7 +28,7 @@ def trade_dates(year: int, calendar_dir: Path | None = None) -> tuple[date, ...]
         cache = calendar_dir / f"trade_dates_{year}.json" if calendar_dir else None
         if cache is None or not cache.is_file():
             raise MissingTradeCalendarError(
-                f"缺少 {year} 年交易日历；请通过 stock-prepare/stock-rank 获取数据源完整年度日历"
+                f"缺少 {year} 年交易日历；请通过 stock-model --prepare/--rank 获取数据源完整年度日历"
             ) from None
         payload = json.loads(cache.read_text(encoding="utf-8"))
         if (
@@ -109,4 +109,4 @@ def count_holding_trade_days(
         for value in trade_dates(year)
     )
     return sum(buy_date < value <= end_date for value in values)
-# AI_GENERATE_END -------
+# AI_GENERATE_END --------

@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------
+# AI_GENERATE_START --------
 from __future__ import annotations
 
 from qlib.contrib.data.handler import Alpha158
@@ -10,6 +10,10 @@ BASIC_FEATURE_FIELDS = (
     "turnover_rate",
     "volume_ratio",
     "log_circulating_market_value",
+    "signed_log_pe_ttm",
+    "signed_log_pb_mrq",
+    "signed_log_ps_ttm",
+    "signed_log_pcf_ncf_ttm",
 )
 
 
@@ -23,8 +27,8 @@ class DailyAlpha158(Alpha158):
         return fields, names
 
 
-class FullDayMinute5Alpha158(Alpha158):
-    """L1 基础指标加完整交易日 5 分钟压缩特征。"""
+class DailyMinute5PathAlpha158(Alpha158):
+    """权威日线 Alpha158 和 basic 加 5 分钟路径特征。"""
 
     def get_feature_config(self):
         fields, names = Alpha158DL.get_feature_config(
@@ -43,4 +47,4 @@ class FullDayMinute5Alpha158(Alpha158):
         return fields, names
 
 
-# AI_GENERATE_END ------
+# AI_GENERATE_END --------
