@@ -384,18 +384,18 @@ def _local_stock_basics(store: ParquetMarketStore) -> pd.DataFrame:
         stocks = store.read_stock_basics()
     except (OSError, ValueError, KeyError) as error:
         raise ValueError(
-            "未找到本地股票基础信息；请先执行 stock-data"
+            "未找到本地股票基础信息；请先执行 stock collect"
         ) from error
     if stocks.empty or "snapshot_date" not in stocks:
         raise ValueError(
-            "本地股票基础信息无效；请先执行 stock-data"
+            "本地股票基础信息无效；请先执行 stock collect"
         )
     snapshot_dates = pd.to_datetime(
         stocks["snapshot_date"], errors="coerce"
     ).dropna()
     if snapshot_dates.empty:
         raise ValueError(
-            "本地股票基础信息缺少快照日期；请先执行 stock-data"
+            "本地股票基础信息缺少快照日期；请先执行 stock collect"
         )
     snapshot_date = snapshot_dates.max().date()
     today = shanghai_today()
@@ -455,7 +455,7 @@ def prepare_workflow(
         stocks = store.read_stock_basics()
     except (OSError, ValueError, KeyError) as error:
         raise ValueError(
-            "未找到股票基础信息；请先执行 stock-data"
+            "未找到股票基础信息；请先执行 stock collect"
         ) from error
     codes = research_codes(stocks, start_date, end_date)
     if not codes:
@@ -728,7 +728,7 @@ def rank_workflow(
     if available_instruments is None:
         raise ValueError(
             f"Qlib 未覆盖目标日期：{prediction_date.isoformat()}；"
-            "请先执行 stock-model --prepare"
+            "请先执行 stock prepare"
         )
     ready_instruments = expected_instruments & available_instruments
     quality = require_data_quality(
@@ -740,7 +740,7 @@ def rank_workflow(
     model_dir = model_directory(config.model_dir, spec)
     if not model_artifacts_valid(model_dir, spec):
         raise ValueError(
-            f"模型制品不存在或不完整：{spec.model_id}；请先执行 stock-model --train"
+            f"模型制品不存在或不完整：{spec.model_id}；请先执行 stock train"
         )
     prediction_path = prediction_artifact_path(model_dir, prediction_date)
     existing = _existing_prediction_summary(

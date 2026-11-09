@@ -18,7 +18,7 @@ logs_dir="$project_dir/logs"
 config_dir="$project_dir/config"
 bootstrap_script="$release_dir/script/bootstrap-server.sh"
 scheduler_script="$release_dir/script/scheduler.sh"
-commands="stock-collect stock-prepare stock-train stock-rank stock-settle stock-order stock-review stock-clean stock-sync"
+commands="stock"
 system_path="$HOME/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 for required_file in \

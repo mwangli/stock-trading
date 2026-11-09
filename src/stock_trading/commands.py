@@ -642,18 +642,10 @@ class ChineseArgumentParser(argparse.ArgumentParser):
         )
 
     def error(self, message: str) -> None:
-        translations = {
-            "one of the arguments --buy --sell is required": "必须指定 --buy 或 --sell",
-            "one of the arguments --pull --push is required": "必须指定 --pull 或 --push",
-            "argument --sell: not allowed with argument --buy": "--buy 与 --sell 不能同时使用",
-            "argument --push: not allowed with argument --pull": "--pull 与 --push 不能同时使用",
-        }
         if message.startswith("unrecognized arguments:"):
             message = "不支持的参数：" + message.removeprefix(
                 "unrecognized arguments:"
             ).strip()
-        else:
-            message = translations.get(message, message)
         self.print_usage()
         self.exit(2, f"{self.prog}: 参数错误：{message}\n")
 
@@ -691,206 +683,125 @@ def _add_model_argument(parser: ChineseArgumentParser) -> None:
     parser.add_argument("--model", help="模型完整 ID。")
 
 
-def _run(
-    parser: ChineseArgumentParser,
-    action: Callable[[argparse.Namespace], None],
-) -> None:
-    arguments = parser.parse_args()
-    try:
-        action(arguments)
-    except CliParameterError as error:
-        parser.error(str(error))
+def _dispatch_collect(args: argparse.Namespace) -> None:
+    if args.type and args.model:
+        raise CliParameterError("--type 与 --model 不能同时使用")
+    collect_command(args.date, args.codes, args.model, args.type)
 
 
-def collect_main() -> None:
+def _add_action_parser(
+    subparsers: argparse._SubParsersAction,
+    name: str,
+    help_text: str,
+) -> ChineseArgumentParser:
+    return subparsers.add_parser(
+        name,
+        help=help_text,
+        description=help_text,
+        formatter_class=ColoredHelpFormatter,
+    )
+
+
+def main() -> None:
     parser = _parser(
-        "stock-data",
-        "按数据等级采集股票清单、日线和分钟原始行情。",
+        "stock",
+        "A 股 T+1 数据、研究、交易和运行维护命令。",
         (
-            "固定按 stock、daily、minute5、minute1 顺序执行。",
-            "L1、L2 固定 BaoStock，L3 固定券商。",
-            "basic、factor 和分钟摘要统一由 stock-model --prepare 本地派生。",
-            "已有完整数据自动跳过，单项失败不阻断后续采集。",
+            "所有业务使用一级动作命令，避免记忆多个入口。",
+            "collect 采集原始行情，prepare/train/rank/review 管理研究链路。",
+            "buy/sell/permission/order 管理券商交易链路。",
+            "clean/pull/push 管理本地数据和服务器同步。",
         ),
         (
-            "stock-data",
-            "stock-data --date 2026-11-07",
-            "stock-data --type minute5 --date 2023-11-06:2026-11-06",
-            "stock-data --type minute1 --date 2023-11-06:2026-11-06",
-            "stock-data --codes 600000,000001",
-            "stock-data --model L1_daily_LightGBM --date 2023-11-07:2026-11-06",
+            "stock collect --type daily",
+            "stock prepare --model L2_minute5_LightGBM",
+            "stock train --model L2_minute5_LightGBM --split 6:3:1",
+            "stock rank --model L2_minute5_LightGBM",
+            "stock permission",
+            "stock buy --model L2_minute5_LightGBM",
         ),
         (
-            "指定 --type 时只采集该数据类型。",
-            "--type 与 --model 不能同时使用。",
-            "不准备 Qlib、不训练模型、不生成排名。",
+            "每次只能执行一个一级动作。",
+            "最终交易合法性和成交状态由券商判断。",
         ),
     )
-    parser.add_argument("--date", help="采集日期或日期范围，默认当天。")
-    parser.add_argument("--codes", help="股票代码，逗号分隔，默认全市场。")
-    parser.add_argument(
+    actions = parser.add_subparsers(dest="action", required=True, title="动作")
+
+    collect = _add_action_parser(actions, "collect", "采集股票清单、日线和分钟原始行情。")
+    collect.add_argument("--date", help="采集日期或日期范围，默认当天。")
+    collect.add_argument("--codes", help="股票代码，逗号分隔，默认全市场。")
+    collect.add_argument(
         "--type",
         choices=("stock", "daily", "minute5", "minute1"),
         help="只采集一个明确的数据类型。",
     )
-    _add_model_argument(parser)
-    _run(
-        parser,
-        lambda args: (
-            parser.error("--type 与 --model 不能同时使用")
-            if args.type and args.model
-            else collect_command(args.date, args.codes, args.model, args.type)
-        ),
-    )
+    _add_model_argument(collect)
+    collect.set_defaults(handler=_dispatch_collect)
 
+    prepare = _add_action_parser(actions, "prepare", "从本地 Parquet 准备 Qlib。")
+    prepare.add_argument("--date", help="准备日期或日期范围。")
+    prepare.add_argument("--force", action="store_true", help="强制准备。")
+    _add_model_argument(prepare)
+    prepare.set_defaults(handler=lambda args: prepare_command(args.date, args.force, args.model))
 
-def model_main() -> None:
-    parser = _parser(
-        "stock-model",
-        "统一执行模型数据准备、训练、排名和复盘。",
-        (
-            "--prepare 从本地 Parquet 准备 Qlib。",
-            "--train 训练、评估并回测模型。",
-            "--rank 生成完整横截面排名。",
-            "--review 汇总已实现收益并判断是否重训。",
-        ),
-        (
-            "stock-model --prepare --model L2_minute5_LightGBM",
-            "stock-model --train --model L2_minute5_LightGBM --split 6:3:1",
-            "stock-model --rank --model L2_minute5_LightGBM --date 2026-11-06",
-            "stock-model --review --model L2_minute5_LightGBM",
-        ),
-        (
-            "必须且只能选择一个模型操作。",
-            "--split 仅用于 --train，--force 仅用于 --prepare 或 --train。",
-        ),
-    )
-    operation = parser.add_mutually_exclusive_group(required=True)
-    operation.add_argument("--prepare", action="store_true", help="准备 Qlib。")
-    operation.add_argument("--train", action="store_true", help="训练模型。")
-    operation.add_argument("--rank", action="store_true", help="生成排名。")
-    operation.add_argument("--review", action="store_true", help="复盘模型。")
-    parser.add_argument("--date", help="准备、排名或复盘日期。")
-    parser.add_argument("--split", help="训练、验证、测试比例，例如 6:3:1。")
-    parser.add_argument("--force", action="store_true", help="强制准备或训练。")
-    _add_model_argument(parser)
-    _run(parser, _dispatch_model)
+    train = _add_action_parser(actions, "train", "训练、评估并回测模型。")
+    train.add_argument("--split", help="训练、验证、测试比例，例如 6:3:1。")
+    train.add_argument("--force", action="store_true", help="强制训练。")
+    _add_model_argument(train)
+    train.set_defaults(handler=lambda args: train_command(args.split, args.force, args.model))
 
+    rank = _add_action_parser(actions, "rank", "生成完整横截面排名。")
+    rank.add_argument("--date", help="排名日期。")
+    _add_model_argument(rank)
+    rank.set_defaults(handler=lambda args: rank_command(args.date, args.model))
 
-def _dispatch_model(args: argparse.Namespace) -> None:
-    if args.prepare:
-        if args.split:
-            raise CliParameterError("--split 仅用于 --train")
-        prepare_command(args.date, args.force, args.model)
-        return
-    if args.train:
-        if args.date:
-            raise CliParameterError("--date 不用于 --train")
-        train_command(args.split, args.force, args.model)
-        return
-    if args.force or args.split:
-        raise CliParameterError("--force 和 --split 不用于 --rank 或 --review")
-    if args.rank:
-        rank_command(args.date, args.model)
-    else:
-        review_command(args.date, args.model)
+    review = _add_action_parser(actions, "review", "汇总已实现收益并判断是否重训。")
+    review.add_argument("--date", help="复盘日期，默认当天。")
+    _add_model_argument(review)
+    review.set_defaults(handler=lambda args: review_command(args.date, args.model))
 
+    for name, side, help_text in (
+        ("buy", "B", "执行买入。"),
+        ("sell", "S", "执行卖出。"),
+    ):
+        trade = _add_action_parser(actions, name, help_text)
+        _add_model_argument(trade)
+        trade.set_defaults(handler=lambda args, side=side: settle_command(side, args.model))
 
-def broker_main() -> None:
-    parser = _parser(
-        "stock-broker",
-        "统一执行券商买入、卖出、权限检查和订单同步。",
-        (
-            "--buy 与 --sell 提交实时交易。",
-            "--permission 逐股同步交易权限。",
-            "--order 同步账户快照和历史成交。",
-        ),
-        (
-            "stock-broker --sell --model L2_minute5_LightGBM",
-            "stock-broker --buy --model L2_minute5_LightGBM",
-            "stock-broker --permission",
-            "stock-broker --order --date 2026-11-07",
-        ),
-        (
-            "必须且只能选择一个券商操作。",
-            "最终合法性和成交状态由券商判断。",
-        ),
-    )
-    operation = parser.add_mutually_exclusive_group(required=True)
-    operation.add_argument("--buy", action="store_true", help="执行买入。")
-    operation.add_argument("--sell", action="store_true", help="执行卖出。")
-    operation.add_argument("--permission", action="store_true", help="同步权限。")
-    operation.add_argument("--order", action="store_true", help="同步订单。")
-    parser.add_argument("--date", help="订单同步日期或日期范围。")
-    _add_model_argument(parser)
-    _run(parser, _dispatch_broker)
+    permission = _add_action_parser(actions, "permission", "同步逐股交易权限。")
+    permission.set_defaults(handler=lambda args: permission_command())
 
+    order = _add_action_parser(actions, "order", "同步账户快照和历史成交。")
+    order.add_argument("--date", help="订单同步日期或日期范围。")
+    order.set_defaults(handler=lambda args: order_command(args.date))
 
-def _dispatch_broker(args: argparse.Namespace) -> None:
-    if args.buy or args.sell:
-        if args.date:
-            raise CliParameterError("--date 仅用于 --order")
-        settle_command("B" if args.buy else "S", args.model)
-        return
-    if args.model:
-        raise CliParameterError("--model 仅用于 --buy 或 --sell")
-    if args.permission:
-        if args.date:
-            raise CliParameterError("--date 仅用于 --order")
-        permission_command()
-    else:
-        order_command(args.date)
+    clean = _add_action_parser(actions, "clean", "清理超过保留期的数据和已终结状态。")
+    clean.add_argument("--date", help="清理基准日期，默认当天。")
+    clean.set_defaults(handler=lambda args: clean_command(args.date))
 
+    for name, pull, push, help_text in (
+        ("pull", True, False, "从服务器拉取运行数据。"),
+        ("push", False, True, "向服务器推送运行数据。"),
+    ):
+        sync = _add_action_parser(actions, name, help_text)
+        sync.add_argument(
+            "--scope",
+            choices=("market", "prepared", "model", "state"),
+            help="只同步一个范围，省略时沿用默认范围。",
+        )
+        if push:
+            sync.add_argument("--force", action="store_true", help="同时覆盖服务器 state。")
+        sync.set_defaults(
+            handler=lambda args, pull=pull, push=push: sync_command(
+                pull, push, getattr(args, "force", False), args.scope
+            )
+        )
 
-def utils_main() -> None:
-    parser = _parser(
-        "stock-utils",
-        "统一执行数据清理和本地服务器同步。",
-        (
-            "--clean 清理超过保留期的数据和已终结状态。",
-            "--pull 从服务器拉取运行数据。",
-            "--push 向服务器推送运行数据。",
-            "拉取包含 market、prepared、model、state。",
-            "推送默认不含 state，使用 --force 才覆盖服务器状态库。",
-        ),
-        (
-            "stock-utils --clean",
-            "stock-utils --clean --date 2026-11-07",
-            "stock-utils --pull",
-            "stock-utils --push --scope market",
-            "stock-utils --push --force",
-        ),
-        (
-            "必须且只能选择 --clean、--pull 或 --push。",
-        ),
-    )
-    operation = parser.add_mutually_exclusive_group(required=True)
-    operation.add_argument("--clean", action="store_true", help="清理历史数据。")
-    operation.add_argument("--pull", action="store_true", help="拉取数据。")
-    operation.add_argument("--push", action="store_true", help="推送数据。")
-    parser.add_argument("--date", help="清理基准日期，默认当天。")
-    parser.add_argument(
-        "--force",
-        action="store_true",
-        help="推送时同时覆盖服务器 state。",
-    )
-    parser.add_argument(
-        "--scope",
-        choices=("market", "prepared", "model", "state"),
-        help="只同步一个范围，省略时沿用默认范围。",
-    )
-    _run(parser, _dispatch_utils)
-
-
-def _dispatch_utils(args: argparse.Namespace) -> None:
-    if args.clean:
-        if args.force or args.scope:
-            raise CliParameterError("--force 和 --scope 仅用于 --pull 或 --push")
-        clean_command(args.date)
-        return
-    if args.date:
-        raise CliParameterError("--date 仅用于 --clean")
-    sync_command(args.pull, args.push, args.force, args.scope)
+    arguments = parser.parse_args()
+    try:
+        arguments.handler(arguments)
+    except CliParameterError as error:
+        parser.error(str(error))
 
 
 # AI_GENERATE_END------------ ---------

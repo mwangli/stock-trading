@@ -342,7 +342,7 @@ class LiveTradingOrchestrator:
             raise ValueError("目标交易日没有匹配前一交易日特征和当前时间合同的横截面预测")
         if len(candidates) <= self._config.trading_entry_rank:
             raise ValueError(
-                "最近预测不是完整横截面排名，请先重新执行 stock-model --rank"
+                "最近预测不是完整横截面排名，请先重新执行 stock rank"
             )
         return candidates
 

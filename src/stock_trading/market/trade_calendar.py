@@ -28,7 +28,7 @@ def trade_dates(year: int, calendar_dir: Path | None = None) -> tuple[date, ...]
         cache = calendar_dir / f"trade_dates_{year}.json" if calendar_dir else None
         if cache is None or not cache.is_file():
             raise MissingTradeCalendarError(
-                f"缺少 {year} 年交易日历；请通过 stock-model --prepare/--rank 获取数据源完整年度日历"
+                f"缺少 {year} 年交易日历；请通过 stock prepare 或 stock rank 获取数据源完整年度日历"
             ) from None
         payload = json.loads(cache.read_text(encoding="utf-8"))
         if (

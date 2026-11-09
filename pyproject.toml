@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "stock-trading"
-version = "0.1.62"
+version = "0.1.63"
 description = "Minimal A-share T+1 model research and trading application"
 requires-python = ">=3.11,<=3.12"
 dependencies = [
@@ -19,10 +19,7 @@ dependencies = [
 ]
 
 [project.scripts]
-stock-data = "stock_trading.commands:collect_main"
-stock-broker = "stock_trading.commands:broker_main"
-stock-model = "stock_trading.commands:model_main"
-stock-utils = "stock_trading.commands:utils_main"
+stock = "stock_trading.commands:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
