@@ -30,10 +30,6 @@ from stock_trading.market.sync import (
     resolve_completed_trade_date,
     live_codes,
     research_codes,
-    sync_daily,
-    sync_minute,
-    sync_minute5,
-    sync_stock_basics,
     trading_dates_between,
 )
 from stock_trading.utils.notifications import push_execution_result
@@ -199,7 +195,7 @@ def _collect_stock(
             "snapshotDate": snapshot_date.isoformat(),
         }
     else:
-        result = sync_stock_basics(store, provider, snapshot_date)
+        result = provider.sync_stock_basics(store, snapshot_date)
     quality = _stock_quality(store, snapshot_date)
     if not quality["valid"]:
         raise ValueError("股票清单快照检查失败")
@@ -243,7 +239,7 @@ def _collect_daily(
         )
     ]
     if pending_codes:
-        result = sync_daily(store, provider, stocks, pending_codes, dates)
+        result = provider.sync_daily(store, stocks, pending_codes, dates)
     else:
         result = {"skipped": True, "reason": "daily 数据已完整"}
     usable_codes = sum(
@@ -307,8 +303,8 @@ def _collect_minute5(
                 len(pending),
             )
             fetched = (
-                sync_minute5(
-                    store, provider, pending, batch_start, batch_end
+                provider.sync_minute5(
+                    store, pending, batch_start, batch_end
                 )
                 if pending
                 else {"skipped": True, "reason": "该日期批次已完整"}
@@ -368,7 +364,7 @@ def _collect_minute(
     end_date: date,
 ) -> dict[str, object]:
     provider = market_provider(config, "zxbroker")
-    result = sync_minute(store, provider, codes, start_date, end_date)
+    result = provider.sync_minute(store, codes, start_date, end_date)
     quality = require_data_quality(
         "collect-minute",
         len(codes),

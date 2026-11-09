@@ -10,6 +10,7 @@
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+outputs
 
 
 # Runtime data and artifacts

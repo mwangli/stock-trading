@@ -112,42 +112,4 @@ def _read_trade_dates(path: Path) -> list[date]:
     return sorted(date.fromisoformat(value) for value in lines if value.strip())
 
 
-def sync_stock_basics(
-    store: ParquetMarketStore,
-    provider: MarketDataProvider,
-    snapshot_date: date,
-) -> dict[str, object]:
-    return provider.sync_stock_basics(store, snapshot_date)
-
-
-def sync_daily(
-    store: ParquetMarketStore,
-    provider: MarketDataProvider,
-    stocks: pd.DataFrame,
-    codes: list[str],
-    dates: list[date],
-) -> dict[str, object]:
-    return provider.sync_daily(store, stocks, codes, dates)
-
-
-def sync_minute5(
-    store: ParquetMarketStore,
-    provider: MarketDataProvider,
-    codes: list[str],
-    start_date: date,
-    end_date: date,
-) -> dict[str, object]:
-    return provider.sync_minute5(store, codes, start_date, end_date)
-
-
-def sync_minute(
-    store: ParquetMarketStore,
-    provider: MarketDataProvider,
-    codes: list[str],
-    start_date: date,
-    end_date: date,
-) -> dict[str, object]:
-    return provider.sync_minute(store, codes, start_date, end_date)
-
-
 # AI_GENERATE_END----- ------------------------------------------------------

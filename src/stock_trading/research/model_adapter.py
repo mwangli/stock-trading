@@ -3,8 +3,6 @@ from __future__ import annotations
 
 from datetime import date
 from pathlib import Path
-from typing import Protocol
-
 from stock_trading.config import AppConfig
 from stock_trading.market.storage import ParquetMarketStore
 from stock_trading.research.model import (
@@ -14,38 +12,6 @@ from stock_trading.research.model import (
 )
 from stock_trading.research.model_config import ModelSpec
 from stock_trading.research.qlib_store import QlibBinaryStore
-
-
-class ResearchModel(Protocol):
-    """下游命令只依赖的统一研究模型接口。"""
-
-    spec: ModelSpec
-    qlib_dir: Path
-    artifact_dir: Path
-
-    def prepare(
-        self,
-        codes: list[str],
-        start_date: date,
-        end_date: date,
-        force: bool = False,
-    ) -> dict[str, object]: ...
-
-    def train(
-        self,
-        destination: Path,
-        segments: ModelSegments,
-    ) -> dict[str, object]: ...
-
-    def rank(
-        self,
-        prediction_date: date,
-        eligible_instruments: set[str] | None = None,
-    ) -> dict[str, object]: ...
-
-    def date_range(self) -> tuple[date, date] | None: ...
-
-    def available_instruments(self, target_date: date) -> set[str] | None: ...
 
 
 class ConfiguredResearchModel:
