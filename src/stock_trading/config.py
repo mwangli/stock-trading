@@ -99,6 +99,11 @@ class AppConfig:
     data_quality_min_ratio: float
     model_feature_batch_days: int = 60
 
+    @property
+    def data_dir(self) -> Path:
+        """兼容旧调用方，返回市场原始数据根目录。"""
+        return self.market_dir
+
     @classmethod
     def from_env(cls, *, project_dir: Path | None = None) -> "AppConfig":
         """Read configuration, optionally reusing an already loaded project environment."""
