@@ -16,6 +16,7 @@ uv_cache_dir="$project_dir/.uv-cache"
 data_dir="$project_dir/data"
 logs_dir="$project_dir/logs"
 config_dir="$project_dir/config"
+completion_dir="$config_dir/completion"
 bootstrap_script="$release_dir/script/bootstrap-server.sh"
 scheduler_script="$release_dir/script/scheduler.sh"
 commands="stock"
@@ -24,6 +25,8 @@ system_path="$HOME/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:
 for required_file in \
   "$bootstrap_script" \
   "$scheduler_script" \
+  "$release_dir/script/stock-completion.bash" \
+  "$release_dir/script/stock-completion.ps1" \
   "$release_dir/config/stock-trading.cron" \
   "$release_dir/config/stock-trading.logrotate"; do
   if [ ! -f "$required_file" ]; then
@@ -45,7 +48,28 @@ if [ "$#" -ne 1 ] || [ ! -f "$1" ]; then
 fi
 wheel="$1"
 
-mkdir -p "$python_dir" "$uv_cache_dir" "$data_dir"/{market,qlib,artifacts,state} "$config_dir" "$logs_dir"
+mkdir -p "$python_dir" "$uv_cache_dir" "$data_dir"/{market,qlib,artifacts,state} \
+  "$completion_dir" "$config_dir" "$logs_dir"
+
+install -m 0644 \
+  "$release_dir/script/stock-completion.bash" \
+  "$completion_dir/stock-completion.bash"
+install -m 0644 \
+  "$release_dir/script/stock-completion.ps1" \
+  "$completion_dir/stock-completion.ps1"
+
+bashrc="$HOME/.bashrc"
+completion_begin="# STOCK_TRADING_COMPLETION_BEGIN"
+completion_end="# STOCK_TRADING_COMPLETION_END"
+touch "$bashrc"
+if ! grep -Fqx "$completion_begin" "$bashrc"; then
+  {
+    printf '\n%s\n' "$completion_begin"
+    printf 'if [ -f "%s" ]; then\n' "$completion_dir/stock-completion.bash"
+    printf '  source "%s"\n' "$completion_dir/stock-completion.bash"
+    printf 'fi\n%s\n' "$completion_end"
+  } >> "$bashrc"
+fi
 
 shopt -s nullglob
 env_files=("$project_dir"/*.env)

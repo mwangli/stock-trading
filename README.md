@@ -21,19 +21,28 @@
 - **订单闭环**：同步券商成交事实，结算已完成交易并汇总真实已实现收益。
 - **复盘维护**：依据月度表现判断模型状态，配套数据清理和本地/服务器同步能力。
 
-## 命令总览
+## 命令
 
-| 分组 | 命令 | 作用 |
-| --- | --- | --- |
-| 数据与模型 | `stock-collect` | 依次采集基础、复权、日线、5 分钟和 1 分钟行情 |
-| 数据与模型 | `stock-prepare` | 增量、幂等准备 Qlib 数据 |
-| 数据与模型 | `stock-train` | 训练、评估并回测模型 |
-| 排名与交易 | `stock-rank` | 生成指定交易日的完整横截面排名 |
-| 排名与交易 | `stock-settle --buy / --sell` | 在独立窗口执行买入或卖出 |
-| 排名与交易 | `stock-order` | 同步券商事实并结算交易闭环 |
-| 排名与交易 | `stock-review` | 汇总已实现收益并判断模型状态 |
-| 运维与帮助 | `stock-sync --pull / --push` | 在本地与服务器之间同步运行数据 |
-| 运维与帮助 | `stock-clean` | 清理超过保留期的数据和业务状态 |
+所有能力使用同一个入口：
+
+```text
+stock <action> [options]
+```
+
+| 类型 | 动作 |
+| --- | --- |
+| 数据 | `collect` |
+| 模型 | `prepare`、`train`、`rank`、`review` |
+| 券商 | `buy`、`sell`、`check`、`order` |
+| 运维 | `clean`、`pull`、`push` |
+
+查看完整参数：
+
+```bash
+stock --help
+stock collect --help
+stock buy --help
+```
 
 ## 完整交易闭环
 
@@ -52,24 +61,38 @@
 
 项目支持 Python `3.11-3.12`，推荐使用 Python 3.12。
 
-```cmd
+```powershell
 uv python install 3.12
 uv venv --python 3.12 .venv
 uv pip install --python .venv\Scripts\python.exe -e .
 .venv\Scripts\activate
-stock-collect -h
+stock --help
 ```
 
-每个命令都独立支持 `-h`：
+Ubuntu 使用同一个入口：
 
 ```bash
-stock-collect -h
-stock-prepare -h
-stock-settle -h
-stock-sync -h
+uv venv --python 3.12 .venv
+uv pip install --python .venv/bin/python -e .
+source .venv/bin/activate
+stock --help
 ```
 
-Linux 部署使用虚拟环境中的同名命令。项目可通过 Cron 串行调度数据更新、排名、交易、订单同步、复盘和清理任务，也可以按需手动执行。
+项目可通过 Cron 串行调度数据更新、排名、交易、订单同步、复盘和清理任务，也可以按需手动执行。
+
+## 自动补全
+
+补全不是 `stock` 的业务动作，而是部署脚本提供的 Shell 配置。
+
+- Windows PowerShell 7：点源 `.github/script/stock-completion.ps1`，或将点源命令加入 `$PROFILE`。
+- Ubuntu：发布安装脚本会复制 Bash 补全并自动加入当前用户的 `~/.bashrc`。
+- PowerShell 已将 Tab 设置为候选菜单，输入 `stock train --` 后可直接看到全部参数。
+
+服务器部署完成后重新登录，或执行：
+
+```bash
+source ~/.bashrc
+```
 
 ## 技术概览
 

@@ -27,6 +27,7 @@ NORMAL_FRACTION = 0.85
 DEFAULT_BROKER_BASE_URL = "https://weixin.citicsinfo.com/reqxml"
 BACKTEST_CAPITAL = 2_000
 MODEL_MIN_POSITIVE_MONTH_RATIO = 0.60
+MODEL_TRAIN_SPLIT = (70, 15, 15)
 LOGGER = logging.getLogger(__name__)
 ENV_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 REQUIRED_ENV_NAMES = (

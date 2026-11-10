@@ -6,7 +6,7 @@ import os
 import sys
 from contextlib import contextmanager
 from contextvars import ContextVar
-from logging.handlers import RotatingFileHandler, WatchedFileHandler
+from logging.handlers import WatchedFileHandler
 from pathlib import Path
 from typing import Iterator
 
@@ -152,15 +152,10 @@ def configure_logging() -> None:
     if os.getenv("STOCK_TRADING_FILE_LOG", "1") != "0":
         log_path = _default_log_path()
         log_path.parent.mkdir(parents=True, exist_ok=True)
-        if os.name == "nt":
-            file_handler = RotatingFileHandler(
-                log_path,
-                maxBytes=20 * 1024 * 1024,
-                backupCount=14,
-                encoding="utf-8",
-            )
-        else:
-            file_handler = WatchedFileHandler(log_path, encoding="utf-8")
+        # Multiple collector processes share the project log on Windows.
+        # In-process rotation can race across those processes while renaming
+        # the same file, producing WinError 32 and noisy logging failures.
+        file_handler = WatchedFileHandler(log_path, encoding="utf-8")
         file_handler.addFilter(_ContextFilter())
         file_handler.setFormatter(_ColorFormatter(use_color=False))
         logger.addHandler(file_handler)

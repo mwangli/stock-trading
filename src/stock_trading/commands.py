@@ -9,7 +9,6 @@ import re
 import sys
 from collections.abc import Callable
 from datetime import date, timedelta
-from decimal import Decimal, InvalidOperation
 from time import perf_counter
 from typing import TextIO, TypeVar
 
@@ -217,7 +216,6 @@ def prepare_command(
 
 
 def train_command(
-    split: str | None = None,
     force: bool = False,
     model_value: str | None = None,
 ) -> None:
@@ -225,11 +223,10 @@ def train_command(
 
     _execute(
         "train",
-        {"split": split, "force": force, "model": model_value},
+        {"force": force, "model": model_value},
         lambda config: run_training_pipeline(
             config,
             _resolve_model(model_value),
-            _parse_model_split(split) if split else None,
             force=force,
         ),
         result_summary=_summarize_training,
@@ -410,19 +407,6 @@ def _parse_stock_codes(value: str) -> list[str]:
     if not raw_codes:
         raise CliParameterError("股票代码列表不能为空")
     return list(dict.fromkeys(_parse_stock_code(code) for code in raw_codes))
-
-
-def _parse_model_split(value: str) -> tuple[Decimal, Decimal, Decimal]:
-    parts = value.split(":")
-    if len(parts) != 3:
-        raise CliParameterError("训练比例格式错误；请使用 训练:验证:测试，例如 6:3:1")
-    try:
-        ratios = tuple(Decimal(part) for part in parts)
-    except InvalidOperation:
-        raise CliParameterError("训练比例必须是数字；例如 6:3:1") from None
-    if any(not ratio.is_finite() or ratio <= 0 for ratio in ratios):
-        raise CliParameterError("训练、验证和测试比例必须全部大于 0")
-    return ratios[0], ratios[1], ratios[2]
 
 
 def _summarize_order(result: dict[str, object]) -> str:
@@ -709,15 +693,15 @@ def main() -> None:
         (
             "所有业务使用一级动作命令，避免记忆多个入口。",
             "collect 采集原始行情，prepare/train/rank/review 管理研究链路。",
-            "buy/sell/permission/order 管理券商交易链路。",
+            "buy/sell/check/order 管理券商交易链路。",
             "clean/pull/push 管理本地数据和服务器同步。",
         ),
         (
             "stock collect --type daily",
             "stock prepare --model L2_minute5_LightGBM",
-            "stock train --model L2_minute5_LightGBM --split 6:3:1",
+            "stock train --model L2_minute5_LightGBM",
             "stock rank --model L2_minute5_LightGBM",
-            "stock permission",
+            "stock check",
             "stock buy --model L2_minute5_LightGBM",
         ),
         (
@@ -745,10 +729,9 @@ def main() -> None:
     prepare.set_defaults(handler=lambda args: prepare_command(args.date, args.force, args.model))
 
     train = _add_action_parser(actions, "train", "训练、评估并回测模型。")
-    train.add_argument("--split", help="训练、验证、测试比例，例如 6:3:1。")
     train.add_argument("--force", action="store_true", help="强制训练。")
     _add_model_argument(train)
-    train.set_defaults(handler=lambda args: train_command(args.split, args.force, args.model))
+    train.set_defaults(handler=lambda args: train_command(args.force, args.model))
 
     rank = _add_action_parser(actions, "rank", "生成完整横截面排名。")
     rank.add_argument("--date", help="排名日期。")
@@ -768,8 +751,8 @@ def main() -> None:
         _add_model_argument(trade)
         trade.set_defaults(handler=lambda args, side=side: settle_command(side, args.model))
 
-    permission = _add_action_parser(actions, "permission", "同步逐股交易权限。")
-    permission.set_defaults(handler=lambda args: permission_command())
+    check = _add_action_parser(actions, "check", "同步逐股交易权限。")
+    check.set_defaults(handler=lambda args: permission_command())
 
     order = _add_action_parser(actions, "order", "同步账户快照和历史成交。")
     order.add_argument("--date", help="订单同步日期或日期范围。")

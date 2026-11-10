@@ -5,7 +5,6 @@ import json
 import logging
 import shutil
 from datetime import date, timedelta
-from decimal import Decimal
 from pathlib import Path
 
 from stock_trading.config import AppConfig
@@ -66,7 +65,6 @@ def default_training_codes(
 def run_training_pipeline(
     config: AppConfig,
     spec: ModelSpec,
-    split: tuple[Decimal, Decimal, Decimal] | None,
     force: bool = False,
 ) -> dict[str, object]:
     """训练、回测和评估一个模型 ID，成功后再原子替换当前制品。"""
@@ -100,7 +98,6 @@ def run_training_pipeline(
         raise ValueError("模型 Qlib 数据不存在，无法训练")
     segments = automatic_model_segments(
         calendar_path,
-        split,
         None,
         spec.label_horizon,
     )

@@ -12,6 +12,7 @@ from pathlib import Path
 import pandas as pd
 
 from stock_trading.contracts import TRADING_TIME_CONTRACT
+from stock_trading.config import MODEL_TRAIN_SPLIT
 from stock_trading.market.trade_calendar import shift_trade_date
 from stock_trading.research.model_config import ModelSpec
 from stock_trading.research.qlib_contract import (
@@ -382,7 +383,6 @@ def _lightgbm_progress_callback():
 
 def automatic_model_segments(
     calendar_path: Path,
-    split: tuple[Decimal, Decimal, Decimal] | None = None,
     maximum_days: int | None = None,
     label_horizon: int = 1,
 ) -> ModelSegments:
@@ -393,7 +393,7 @@ def automatic_model_segments(
         calendar = calendar[-maximum_days:]
     if len(calendar) < MIN_QLIB_TRADING_DAYS:
         raise ValueError(f"自动切分至少需要 {MIN_QLIB_TRADING_DAYS} 个交易日，当前={len(calendar)}")
-    ratios = split or (Decimal("70"), Decimal("15"), Decimal("15"))
+    ratios = tuple(Decimal(str(value)) for value in MODEL_TRAIN_SPLIT)
     if any(not ratio.is_finite() or ratio <= 0 for ratio in ratios):
         raise ValueError("训练、验证和测试比例必须全部大于 0")
     total = sum(ratios, Decimal("0"))
