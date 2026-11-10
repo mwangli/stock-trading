@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Iterator
 
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 _MODEL_ID_MIGRATION = """
 ALTER TABLE model_version ADD COLUMN model_id TEXT NOT NULL DEFAULT 'legacy';
 ALTER TABLE model_evaluation ADD COLUMN model_id TEXT NOT NULL DEFAULT 'legacy';
@@ -48,6 +48,8 @@ CREATE TABLE IF NOT EXISTS broker_stock_permission (
     evidence_type TEXT NOT NULL,
     error_no TEXT,
     evidence_detail TEXT,
+    response_json TEXT,
+    response_msg TEXT,
     observed_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -55,6 +57,10 @@ CREATE INDEX IF NOT EXISTS idx_broker_stock_permission_status
 ON broker_stock_permission(status, instrument);
 """
 SCHEMA_MIGRATIONS[8] = _STOCK_PERMISSION_SCHEMA
+SCHEMA_MIGRATIONS[9] = """
+ALTER TABLE broker_stock_permission ADD COLUMN response_json TEXT;
+ALTER TABLE broker_stock_permission ADD COLUMN response_msg TEXT;
+"""
 
 SCHEMA = """
 -- 任务运行记录：保存可恢复、可幂等任务的执行状态。
@@ -266,6 +272,8 @@ CREATE TABLE IF NOT EXISTS broker_stock_permission (
     evidence_type TEXT NOT NULL, -- 固定为 HIGH_PRICE_PERMISSION_PROBE。
     error_no TEXT, -- 券商业务错误码；接口受理时可为空。
     evidence_detail TEXT, -- 不含账号、Token 和委托号的券商响应摘要。
+    response_json TEXT, -- 券商买入接口返回的完整原始 JSON。
+    response_msg TEXT, -- 券商原始中文消息，便于后续分析。
     observed_at TEXT NOT NULL, -- 权限探测发生时间。
     updated_at TEXT NOT NULL -- 本地最后更新时间。
 );

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "stock-trading"
-version = "0.1.64"
+version = "0.1.65"
 description = "Minimal A-share T+1 model research and trading application"
 requires-python = ">=3.11,<=3.12"
 dependencies = [
@@ -16,6 +16,7 @@ dependencies = [
     "lightgbm>=4.5,<5",
     "xgboost>=2.1,<4",
     "pyqlib==0.9.7",
+    "typer>=0.16,<1",
 ]
 
 [project.scripts]

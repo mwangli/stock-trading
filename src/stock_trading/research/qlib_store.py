@@ -147,7 +147,7 @@ class QlibBinaryStore:
             if should_log_progress(index, total_codes):
                 set_log_context(progress=f"{index}/{total_codes}", target=code)
                 LOGGER.info("Qlib 日线处理完成")
-        calendar = _official_calendar(start_date, end_date, self._market_store.root / "calendar")
+        calendar = _official_calendar(start_date, end_date, self._market_store.calendar_dir)
         if len(calendar) < MIN_QLIB_TRADING_DAYS:
             raise ValueError(f"Qlib calendar requires at least {MIN_QLIB_TRADING_DAYS} trading days for Alpha158")
 
@@ -464,7 +464,7 @@ class QlibBinaryStore:
             code: self._adjusted_daily(code, new_start, end_date)
             for code in codes
         }
-        new_calendar = _official_calendar(new_start, end_date, self._market_store.root / "calendar")
+        new_calendar = _official_calendar(new_start, end_date, self._market_store.calendar_dir)
         new_instruments = {
             normalize_instrument(code) for code in codes
         } - existing_instruments

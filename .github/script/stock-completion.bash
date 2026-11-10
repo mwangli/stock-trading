@@ -1,16 +1,15 @@
 _stock_completion() {
-    local current previous action
+    local current previous command candidates
     current="${COMP_WORDS[COMP_CWORD]}"
     previous="${COMP_WORDS[COMP_CWORD-1]}"
-    action=""
+    command=""
 
-    local actions="collect prepare train rank review buy sell check order clean pull push"
-    local candidates=""
+    local commands="data-collect data-generate model-prepare model-train model-rank model-evaluate trade-buy trade-sell broker-check broker-sync system-pull system-push system-clean -h --help"
 
     for word in "${COMP_WORDS[@]}"; do
         case "$word" in
-            collect|prepare|train|rank|review|buy|sell|check|order|clean|pull|push)
-                action="$word"
+            data-collect|data-generate|model-prepare|model-train|model-rank|model-evaluate|trade-buy|trade-sell|broker-check|broker-sync|system-pull|system-push|system-clean)
+                command="$word"
                 ;;
         esac
     done
@@ -23,20 +22,20 @@ _stock_completion() {
             candidates="market prepared model state"
             ;;
         *)
-            if [[ -z "$action" ]]; then
-                candidates="$actions"
-            else
-                case "$action" in
-                    collect) candidates="--date --codes --type --model" ;;
-                    prepare) candidates="--date --force --model" ;;
-                    train) candidates="--force --model" ;;
-                    rank|review) candidates="--date --model" ;;
-                    buy|sell) candidates="--model" ;;
-                    order|clean) candidates="--date" ;;
-                    pull) candidates="--scope" ;;
-                    push) candidates="--scope --force" ;;
-                esac
-            fi
+            case "$command" in
+                data-collect) candidates="--date --codes --type -h --help" ;;
+                data-generate) candidates="--date -h --help" ;;
+                model-prepare) candidates="--date --force -h --help" ;;
+                model-train) candidates="--force -h --help" ;;
+                model-rank|model-evaluate) candidates="--date -h --help" ;;
+                trade-buy|trade-sell) candidates="-h --help" ;;
+                broker-check) candidates="--force --resume -h --help" ;;
+                broker-sync) candidates="--date -h --help" ;;
+                system-pull) candidates="--scope -h --help" ;;
+                system-push) candidates="--scope --force -h --help" ;;
+                system-clean) candidates="--date -h --help" ;;
+                *) candidates="$commands" ;;
+            esac
             ;;
     esac
 

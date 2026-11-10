@@ -13,17 +13,17 @@ LOGROTATE=__PROJECT_DIR__/config/stock-trading.logrotate
 LOGROTATE_STATE=__PROJECT_DIR__/data/state/logrotate.status
 
 # Sell during 09:30-11:30 continuous trading, then buy during 14:00-15:00
-30 9 * * 1-5 "$SCHEDULER" run "stock sell"
-0 14 * * 1-5 "$SCHEDULER" run "stock buy"
+30 9 * * 1-5 "$SCHEDULER" run "stock trade-sell"
+0 14 * * 1-5 "$SCHEDULER" run "stock trade-buy"
 
 # After-close data readiness checks precede next-trading-day ranking.
 # If a provider is late, report failure; never reuse a stale execution-date signal.
-10 16 * * 1-5 "$SCHEDULER" run "stock collect" "stock prepare" "stock rank"
+10 16 * * 1-5 "$SCHEDULER" run "stock data-collect" "stock data-generate" "stock model-prepare" "stock model-rank"
 
 # Historical orders and model review
-20 20 * * 1-5 "$SCHEDULER" run "stock order" "stock review"
+20 20 * * 1-5 "$SCHEDULER" run "stock broker-sync" "stock model-evaluate"
 
 # Weekly cleanup and daily log rotation
-0 3 * * 0 "$SCHEDULER" run "stock clean"
+0 3 * * 0 "$SCHEDULER" run "stock system-clean"
 30 3 * * * logrotate -s "$LOGROTATE_STATE" "$LOGROTATE"
 # STOCK_TRADING_CRON_END

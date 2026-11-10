@@ -1,6 +1,7 @@
 # AI_GENERATE_START----- ----------
 from __future__ import annotations
 
+import json
 import logging
 import time
 from collections import deque
@@ -23,6 +24,7 @@ from stock_trading.utils.logging_utils import set_log_context
 LOGGER = logging.getLogger(__name__)
 MONEY_QUANT = Decimal("0.0001")
 RATE_QUANT = Decimal("0.00000001")
+NON_TRADING_HOURS = "NON_TRADING_HOURS"
 
 
 class BrokerOrderSyncService:
@@ -421,11 +423,12 @@ class BrokerPermissionSyncService:
         self,
         instruments: list[str],
         observed_at: str,
+        force: bool = False,
     ) -> dict[str, object]:
-        normalized = sorted({normalize_instrument(item) for item in instruments})
+        normalized = list(dict.fromkeys(normalize_instrument(item) for item in instruments))
         normalized_set = set(normalized)
         observation_date = observed_at[:10]
-        completed = {
+        completed = {} if force else {
             str(item["instrument"]): str(item["status"])
             for item in self._store.broker_stock_permissions()
             if str(item["observed_at"]).startswith(observation_date)
@@ -459,6 +462,10 @@ class BrokerPermissionSyncService:
                 instrument = str(outcome["instrument"])
                 status = str(outcome.get("status") or "")
                 if not status:
+                    if outcome.get("failureType") == NON_TRADING_HOURS:
+                        raise RuntimeError(
+                            f"权限检查终止：券商返回非交易时间，首个股票={instrument}"
+                        )
                     retry_instruments.append(instrument)
                     auth_failure = auth_failure or outcome.get("failureType") == "AUTH"
                     continue
@@ -508,7 +515,13 @@ class BrokerPermissionSyncService:
     ) -> list[dict[str, object]]:
         if workers != 1:
             raise ValueError("券商权限探测只允许单 worker")
-        return [self._probe_one(instrument, observed_at) for instrument in instruments]
+        outcomes: list[dict[str, object]] = []
+        for instrument in instruments:
+            outcome = self._probe_one(instrument, observed_at)
+            outcomes.append(outcome)
+            if outcome.get("failureType") == NON_TRADING_HOURS:
+                break
+        return outcomes
 
     def _probe_one(
         self,
@@ -540,14 +553,16 @@ class BrokerPermissionSyncService:
         if result is None:
             return self._failure(instrument, "PROTOCOL", "券商响应为空")
         message = str(result.get("errorMessage") or "")
+        if _is_non_trading_hours(message):
+            return self._failure(instrument, NON_TRADING_HOURS, message)
         if _is_auth_failure(message):
             return self._failure(instrument, "AUTH", message)
-        if _is_permission_denial(message):
+        if _is_permission_denial(str(result.get("errorNo") or ""), message):
             status = "DENIED"
-        elif bool(result.get("accepted")) or _is_permission_allowed_evidence(message):
-            status = "ALLOWED"
         else:
-            return self._failure(instrument, "BUSINESS", message)
+            # 权限拒绝优先级最高；其他券商业务拒绝（例如资金不足）
+            # 说明请求已进入业务校验链路，按“非权限拒绝即有权限”落库。
+            status = "ALLOWED"
         detail = (
             f"code={instrument[-6:]};errorNo={result.get('errorNo') or ''};"
             f"message={message}"
@@ -561,6 +576,13 @@ class BrokerPermissionSyncService:
                 "evidenceType": "HIGH_PRICE_PERMISSION_PROBE",
                 "errorNo": str(result.get("errorNo") or ""),
                 "evidenceDetail": detail,
+                "responseJson": json.dumps(
+                    result.get("rawResponse") or {},
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    default=str,
+                ),
+                "responseMsg": str(result.get("responseMsg") or message or ""),
                 "observedAt": observed_at,
             }
         )
@@ -584,11 +606,36 @@ class BrokerPermissionSyncService:
         }
 
 
-def _is_permission_denial(message: str) -> bool:
+def _is_permission_denial(error_no: str, message: str) -> bool:
+    if error_no.strip() not in {"-410011", "410011"}:
+        return False
     normalized = message.replace(" ", "")
     return any(
         keyword in normalized
-        for keyword in ("无权限", "没有权限", "未开通", "禁止交易", "不允许交易")
+        for keyword in (
+            "无权限",
+            "没有权限",
+            "无相关的交易权限",
+            "没有交易权限",
+            "未开通",
+            "禁止交易",
+            "不允许交易",
+        )
+    )
+
+
+def _is_non_trading_hours(message: str) -> bool:
+    normalized = message.replace(" ", "")
+    return any(
+        keyword in normalized
+        for keyword in (
+            "非交易时间",
+            "不在交易时间",
+            "当前时间不允许交易",
+            "闭市",
+            "休市",
+            "未开市",
+        )
     )
 
 

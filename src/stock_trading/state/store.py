@@ -479,8 +479,9 @@ class StateStore(SQLiteStateDatabase):
                 """
                 INSERT INTO broker_stock_permission(
                     instrument, stock_code, scope, status, evidence_type,
-                    error_no, evidence_detail, observed_at, updated_at
-                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    error_no, evidence_detail, response_json, response_msg,
+                    observed_at, updated_at
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(instrument) DO UPDATE SET
                     stock_code = excluded.stock_code,
                     scope = excluded.scope,
@@ -488,6 +489,8 @@ class StateStore(SQLiteStateDatabase):
                     evidence_type = excluded.evidence_type,
                     error_no = excluded.error_no,
                     evidence_detail = excluded.evidence_detail,
+                    response_json = excluded.response_json,
+                    response_msg = excluded.response_msg,
                     observed_at = excluded.observed_at,
                     updated_at = excluded.updated_at
                 """,
@@ -499,6 +502,8 @@ class StateStore(SQLiteStateDatabase):
                     permission["evidenceType"],
                     permission.get("errorNo"),
                     permission.get("evidenceDetail"),
+                    permission.get("responseJson"),
+                    permission.get("responseMsg"),
                     permission["observedAt"],
                     _now(),
                 ),

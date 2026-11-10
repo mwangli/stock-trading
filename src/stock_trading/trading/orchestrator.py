@@ -155,7 +155,7 @@ class LiveTradingOrchestrator:
         return count_holding_trade_days(
             buy_date,
             business_date,
-            self._qlib_dir / "calendars" / "day.txt",
+            self._config.calendar_dir,
         )
 
     def _select_afternoon_buy_target(self, business_date: date) -> dict[str, object]:
@@ -342,7 +342,7 @@ class LiveTradingOrchestrator:
             raise ValueError("目标交易日没有匹配前一交易日特征和当前时间合同的横截面预测")
         if len(candidates) <= self._config.trading_entry_rank:
             raise ValueError(
-                "最近预测不是完整横截面排名，请先重新执行 stock rank"
+                "最近预测不是完整横截面排名，请先重新执行 stock model-rank"
             )
         return candidates
 

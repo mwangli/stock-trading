@@ -21,9 +21,9 @@ class ConfiguredResearchModel:
         self.spec = spec
         self.qlib_dir = spec.prepared_dir(config.prepared_dir)
         self.artifact_dir = spec.model_dir(config.model_dir)
-        self._calendar_dir = config.market_dir / "raw" / "calendar"
+        self._calendar_dir = config.calendar_dir
         self._qlib = QlibBinaryStore(
-            ParquetMarketStore(config.market_dir), self.qlib_dir, spec
+            ParquetMarketStore(config.market_dir, source="derived"), self.qlib_dir, spec
         )
 
     def prepare(

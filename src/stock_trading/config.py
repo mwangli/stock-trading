@@ -49,6 +49,7 @@ class AppConfig:
     market_dir: Path
     prepared_dir: Path
     model_dir: Path
+    active_model_id: str
     state_db_path: Path
     baostock_proxy: str | None
     market_history_days: int
@@ -105,6 +106,11 @@ class AppConfig:
         """兼容旧调用方，返回市场原始数据根目录。"""
         return self.market_dir
 
+    @property
+    def calendar_dir(self) -> Path:
+        """返回全项目唯一的权威交易日日历目录。"""
+        return self.market_dir / "raw" / "calendar"
+
     @classmethod
     def from_env(cls, *, project_dir: Path | None = None) -> "AppConfig":
         """Read configuration, optionally reusing an already loaded project environment."""
@@ -121,6 +127,10 @@ class AppConfig:
             market_dir=market_dir,
             prepared_dir=prepared_dir,
             model_dir=model_dir,
+            active_model_id=(
+                os.getenv("STOCK_TRADING_ACTIVE_MODEL", "L1_daily_LightGBM").strip()
+                or "L1_daily_LightGBM"
+            ),
             state_db_path=state_db_path,
             baostock_proxy=baostock_proxy,
             market_history_days=min(

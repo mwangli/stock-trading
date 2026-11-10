@@ -76,8 +76,12 @@ def permission_scope(instrument: str | None) -> str | None:
         return None
     if normalized.startswith("SH60"):
         return "SH_MAIN"
+    if normalized.startswith("SH68"):
+        return "SH_STAR"
     if normalized.startswith("SZ00"):
         return "SZ_MAIN"
+    if normalized.startswith("SZ30"):
+        return "SZ_GEM"
     return None
 
 # AI_GENERATE_END --------

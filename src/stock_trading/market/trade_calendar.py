@@ -14,32 +14,36 @@ class MissingTradeCalendarError(ValueError):
 
 @lru_cache(maxsize=None)
 def trade_dates(year: int, calendar_dir: Path | None = None) -> tuple[date, ...]:
-    """优先读取随程序发布的日历，否则读取经供应商确认的完整年度缓存。"""
-    resource = files("stock_trading.market").joinpath(
-        f"trade_dates_{year}.txt"
-    )
-    try:
-        values = tuple(
-            date.fromisoformat(line.strip())
-            for line in resource.read_text(encoding="utf-8").splitlines()
-            if line.strip()
+    """读取统一日历目录中的供应商缓存，缺失时使用随程序发布的后备日历。"""
+    cache = calendar_dir / f"trade_dates_{year}.json" if calendar_dir else None
+    if cache is not None and cache.is_file():
+        try:
+            payload = json.loads(cache.read_text(encoding="utf-8"))
+            if (
+                payload.get("year") != year
+                or payload.get("source") != "baostock"
+                or payload.get("completeYear") is not True
+            ):
+                raise ValueError(f"{year} 年交易日历缓存来源或覆盖范围无效")
+            values = tuple(date.fromisoformat(value) for value in payload["tradeDates"])
+        except (KeyError, TypeError, json.JSONDecodeError, ValueError) as error:
+            raise ValueError(f"{year} 年交易日历缓存格式错误: {error}") from error
+    else:
+        resource = files("stock_trading.market").joinpath(
+            f"trade_dates_{year}.txt"
         )
-    except FileNotFoundError:
-        cache = calendar_dir / f"trade_dates_{year}.json" if calendar_dir else None
-        if cache is None or not cache.is_file():
+        try:
+            values = tuple(
+                date.fromisoformat(line.strip())
+                for line in resource.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            )
+        except FileNotFoundError:
             raise MissingTradeCalendarError(
-                f"缺少 {year} 年交易日历；请通过 stock prepare 或 stock rank 获取数据源完整年度日历"
+                f"缺少 {year} 年交易日历；请通过 stock model-prepare 或 stock model-rank 获取数据源完整年度日历"
             ) from None
-        payload = json.loads(cache.read_text(encoding="utf-8"))
-        if (
-            payload.get("year") != year
-            or payload.get("source") != "baostock"
-            or payload.get("completeYear") is not True
-        ):
-            raise ValueError(f"{year} 年交易日历缓存来源或覆盖范围无效")
-        values = tuple(date.fromisoformat(value) for value in payload["tradeDates"])
-    except ValueError as error:
-        raise ValueError(f"{year} 年交易日文件格式错误: {error}") from error
+        except ValueError as error:
+            raise ValueError(f"{year} 年交易日文件格式错误: {error}") from error
     if not values or any(value.year != year for value in values):
         raise ValueError(f"{year} 年交易日文件内容无效")
     if values != tuple(sorted(set(values))):
@@ -91,22 +95,15 @@ def shift_trade_date(value: date, offset: int, calendar_dir: Path | None = None)
 def count_holding_trade_days(
     buy_date: date,
     end_date: date,
-    calendar_path: Path | None = None,
+    calendar_dir: Path | None = None,
 ) -> int:
     """按交易日计算持仓天数，买入当天为 0。"""
     if end_date <= buy_date:
         return 0
-    if calendar_path is not None and calendar_path.is_file():
-        values = (
-            date.fromisoformat(value)
-            for value in calendar_path.read_text(encoding="utf-8").splitlines()
-            if value.strip()
-        )
-        return sum(buy_date < value <= end_date for value in values)
     values = (
         value
         for year in range(buy_date.year, end_date.year + 1)
-        for value in trade_dates(year)
+        for value in trade_dates(year, calendar_dir)
     )
     return sum(buy_date < value <= end_date for value in values)
 # AI_GENERATE_END --------

@@ -376,7 +376,7 @@ class ZXBrokerClient:
                     "PriceType": 0,
                     "Direction": "B",
                     "StockCode": code,
-                    "Price": 10000,
+                    "Price": 9999,
                     "Volume": 10000,
                     "WTAccount": shareholder_account,
                     "WTAccountType": account_type,
@@ -397,6 +397,8 @@ class ZXBrokerClient:
             "cancelAccepted": cancel_accepted,
             "errorNo": str(response.get("ERRORNO") or ""),
             "errorMessage": _order_error_message(response),
+            "responseMsg": _order_response_message(response),
+            "rawResponse": response,
         }
 
     def prepare_permission_probe(self) -> None:
@@ -692,12 +694,24 @@ def _post_form(url: str, params: dict[str, object], timeout: float) -> dict[str,
 
 
 def _order_error_message(response: dict[str, Any]) -> str:
-    return str(
-        response.get("ERRORMESSAGE")
-        or response.get("ERRORINFO")
-        or response.get("ERROR_INFO_ALL")
-        or ""
-    ).strip()
+    return _order_response_message(response)
+
+
+def _order_response_message(response: dict[str, Any]) -> str:
+    """保留券商原始中文消息字段，兼容不同接口大小写命名。"""
+    for key in (
+        "MSG",
+        "msg",
+        "ERRORMSG",
+        "ERRORMESSAGE",
+        "ERRORINFO",
+        "ERROR_INFO_ALL",
+        "errorMessage",
+    ):
+        value = response.get(key)
+        if value not in (None, ""):
+            return str(value).strip()
+    return ""
 
 
 def _parse_five_level_prices(

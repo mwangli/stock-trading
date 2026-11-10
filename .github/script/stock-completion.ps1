@@ -1,23 +1,28 @@
 Register-ArgumentCompleter -Native -CommandName @("stock", "stock.exe") -ScriptBlock {
     param($wordToComplete, $commandAst, $cursorPosition)
 
-    $actions = @(
-        "collect", "prepare", "train", "rank", "review",
-        "buy", "sell", "check", "order", "clean", "pull", "push"
+    $commands = @(
+        "data-collect", "data-generate",
+        "model-prepare", "model-train", "model-rank", "model-evaluate",
+        "trade-buy", "trade-sell",
+        "broker-check", "broker-sync",
+        "system-pull", "system-push", "system-clean",
+        "-h", "--help"
     )
     $options = @{
-        collect = @("--date", "--codes", "--type", "--model")
-        prepare = @("--date", "--force", "--model")
-        train = @("--force", "--model")
-        rank = @("--date", "--model")
-        review = @("--date", "--model")
-        buy = @("--model")
-        sell = @("--model")
-        check = @()
-        order = @("--date")
-        clean = @("--date")
-        pull = @("--scope")
-        push = @("--scope", "--force")
+        "data-collect" = @("--date", "--codes", "--type", "-h", "--help")
+        "data-generate" = @("--date", "-h", "--help")
+        "model-prepare" = @("--date", "--force", "-h", "--help")
+        "model-train" = @("--force", "-h", "--help")
+        "model-rank" = @("--date", "-h", "--help")
+        "model-evaluate" = @("--date", "-h", "--help")
+        "trade-buy" = @("-h", "--help")
+        "trade-sell" = @("-h", "--help")
+        "broker-check" = @("--force", "--resume", "-h", "--help")
+        "broker-sync" = @("--date", "-h", "--help")
+        "system-pull" = @("--scope", "-h", "--help")
+        "system-push" = @("--scope", "--force", "-h", "--help")
+        "system-clean" = @("--date", "-h", "--help")
     }
     $values = @{
         "--type" = @("stock", "daily", "minute5", "minute1")
@@ -26,24 +31,14 @@ Register-ArgumentCompleter -Native -CommandName @("stock", "stock.exe") -ScriptB
 
     $tokens = @($commandAst.CommandElements | ForEach-Object { $_.Extent.Text })
     $current = if ($wordToComplete) { $wordToComplete } else { "" }
-    $action = $null
-    foreach ($token in $tokens) {
-        if ($actions -contains $token) {
-            $action = $token
-            break
-        }
-    }
+    $command = $tokens | Where-Object { $options.ContainsKey($_) } | Select-Object -Last 1
     $previous = if ($tokens.Count -gt 1) { $tokens[$tokens.Count - 2] } else { "" }
     $candidates = if ($values.ContainsKey($previous)) {
         $values[$previous]
-    } elseif ($null -eq $action) {
-        $actions
+    } elseif ($command) {
+        $options[$command]
     } else {
-        $options[$action]
-    }
-
-    if ($current.StartsWith("-") -and $null -ne $action) {
-        $candidates = $options[$action]
+        $commands
     }
 
     $candidates |

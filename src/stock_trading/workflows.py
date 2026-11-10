@@ -15,7 +15,7 @@ from stock_trading.broker.client import ZXBrokerClient
 from stock_trading.config import AppConfig
 from stock_trading.utils.instruments import normalize_instrument
 from stock_trading.market.storage import ParquetMarketStore
-from stock_trading.market.derived import prepare_daily_derivatives
+from stock_trading.market.derived import prepare_daily_derivatives, transfer_daily_source
 from stock_trading.market.trade_calendar import trade_dates
 from stock_trading.market.quality import (
     require_data_quality,
@@ -83,7 +83,7 @@ def collect_workflow(
     if requested_codes and "stock" in collection_types:
         LOGGER.warning("stock 始终写入全市场快照，--codes 对 stock 不生效")
 
-    state = StateStore(config.state_db_path, calendar_dir=config.market_dir / "raw" / "calendar")
+    state = StateStore(config.state_db_path, calendar_dir=config.calendar_dir)
     store = ParquetMarketStore(config.market_dir)
     collection: dict[str, object] = {}
     errors: dict[str, str] = {}
@@ -384,18 +384,18 @@ def _local_stock_basics(store: ParquetMarketStore) -> pd.DataFrame:
         stocks = store.read_stock_basics()
     except (OSError, ValueError, KeyError) as error:
         raise ValueError(
-            "未找到本地股票基础信息；请先执行 stock collect"
+            "未找到本地股票基础信息；请先执行 stock data-collect"
         ) from error
     if stocks.empty or "snapshot_date" not in stocks:
         raise ValueError(
-            "本地股票基础信息无效；请先执行 stock collect"
+            "本地股票基础信息无效；请先执行 stock data-collect"
         )
     snapshot_dates = pd.to_datetime(
         stocks["snapshot_date"], errors="coerce"
     ).dropna()
     if snapshot_dates.empty:
         raise ValueError(
-            "本地股票基础信息缺少快照日期；请先执行 stock collect"
+            "本地股票基础信息缺少快照日期；请先执行 stock data-collect"
         )
     snapshot_date = snapshot_dates.max().date()
     today = shanghai_today()
@@ -446,16 +446,17 @@ def prepare_workflow(
     end_date: date,
     force: bool = False,
 ) -> dict[str, object]:
-    """读取原始 Parquet，补齐可信年度日历后幂等准备指定范围的 Qlib。"""
-    store = ParquetMarketStore(config.market_dir)
+    """读取 derived，补齐可信年度日历后幂等准备指定范围的 Qlib。"""
+    raw_store = ParquetMarketStore(config.market_dir)
+    store = ParquetMarketStore(config.market_dir, source="derived")
     ensure_trade_calendar(
-        store, l1_market_provider(config), range(start_date.year, end_date.year + 1)
+        raw_store, l1_market_provider(config), range(start_date.year, end_date.year + 1)
     )
     try:
         stocks = store.read_stock_basics()
     except (OSError, ValueError, KeyError) as error:
         raise ValueError(
-            "未找到股票基础信息；请先执行 stock collect"
+            "未找到股票基础信息；请先执行 stock data-collect"
         ) from error
     codes = research_codes(stocks, start_date, end_date)
     if not codes:
@@ -477,7 +478,7 @@ def prepare_workflow(
         start_date,
         end_date,
     )
-    raw_daily_ready = [
+    derived_daily_ready = [
         code
         for code in codes
         if store.daily_history_valid(
@@ -485,17 +486,8 @@ def prepare_workflow(
         )
     ]
     derived: dict[str, object] = {}
-    if {"basic", "factor"} & set(spec.required_fields):
-        derived["daily"] = prepare_daily_derivatives(
-            store,
-            raw_daily_ready,
-            start_date,
-            end_date,
-            start_dates=start_dates,
-            end_dates=end_dates,
-        )
     daily_ready = store.valid_daily_codes(
-        raw_daily_ready,
+        derived_daily_ready,
         start_date,
         end_date,
         start_dates=start_dates,
@@ -522,17 +514,6 @@ def prepare_workflow(
             )
         }
         daily_ready = [code for code in daily_ready if code in factor_ready]
-    if spec.feature_frequency == "minute5":
-        derived["minute5"] = store.rebuild_minute_summaries(
-            daily_ready,
-            start_date,
-            end_date,
-            force=force,
-        )
-    elif spec.feature_frequency == "minute1":
-        derived["minute1"] = store.rebuild_minute1_summaries(
-            daily_ready, start_date, end_date
-        )
     ready_codes = store.valid_model_codes(
         daily_ready,
         spec.feature_frequency,
@@ -567,6 +548,64 @@ def prepare_workflow(
     }
 
 
+def derive_workflow(
+    config: AppConfig,
+    start_date: date,
+    end_date: date,
+) -> dict[str, object]:
+    """将 raw 原始事实转换为可供 prepare 独立消费的 derived 数据。"""
+    raw_store = ParquetMarketStore(config.market_dir)
+    derived_store = ParquetMarketStore(config.market_dir, source="derived")
+    ensure_trade_calendar(
+        raw_store, l1_market_provider(config), range(start_date.year, end_date.year + 1)
+    )
+    try:
+        stocks = raw_store.read_stock_basics()
+    except (OSError, ValueError, KeyError) as error:
+        raise ValueError("未找到股票清单；请先执行 stock data-collect") from error
+    derived_store.write_derived_stock_basics(stocks)
+    codes = research_codes(stocks, start_date, end_date)
+    coverage_ranges = research_coverage_ranges(stocks, codes, start_date, end_date)
+    start_dates = {code: values[0] for code, values in coverage_ranges.items()}
+    end_dates = {code: values[1] for code, values in coverage_ranges.items()}
+    raw_daily_ready = [
+        code
+        for code in codes
+        if raw_store.daily_history_valid(code, start_dates[code], end_dates[code])
+    ]
+    result: dict[str, object] = {
+        "daily": transfer_daily_source(
+            raw_store, derived_store, raw_daily_ready, start_dates, end_dates
+        ),
+        "indicators": prepare_daily_derivatives(
+            raw_store,
+            raw_daily_ready,
+            start_date,
+            end_date,
+            start_dates=start_dates,
+            end_dates=end_dates,
+        ),
+    }
+    daily_ready = derived_store.valid_daily_codes(
+        raw_daily_ready,
+        start_date,
+        end_date,
+        start_dates=start_dates,
+        end_dates=end_dates,
+    )
+    result["minute5"] = raw_store.rebuild_minute_summaries(
+        daily_ready, start_date, end_date, force=False
+    )
+    result["minute1"] = raw_store.rebuild_minute1_summaries(
+        daily_ready, start_date, end_date
+    )
+    return {
+        "startDate": start_date.isoformat(),
+        "endDate": end_date.isoformat(),
+        "researchCodes": len(codes),
+        "derived": result,
+    }
+
 def _minute5_date_batches(dates: list[date]) -> list[list[date]]:
     """BaoStock 单连接按完整日期范围查询，避免按年度重复请求和写盘。"""
     return [dates] if dates else []
@@ -575,7 +614,7 @@ def _minute5_date_batches(dates: list[date]) -> list[list[date]]:
 def cleanup_workflow(config: AppConfig, reference_date: date) -> dict[str, object]:
     """按统一基准日期清理可淘汰状态，不删除长期业务事实。"""
     LOGGER.info("开始清理持久化数据：基准日期=%s", reference_date)
-    store = StateStore(config.state_db_path, calendar_dir=config.market_dir / "raw" / "calendar")
+    store = StateStore(config.state_db_path, calendar_dir=config.calendar_dir)
     business_key = store.start_task("CLEAN", reference_date)
     before_bytes = _cleanup_storage_bytes(config)
     try:
@@ -626,7 +665,7 @@ def sync_order_workflow(
 ) -> dict[str, object]:
     """同步券商已成交事实和费用，并完成可闭环的 FIFO 收益。"""
     LOGGER.info("开始同步券商历史订单：日期=%s 至 %s", start_date, end_date)
-    store = StateStore(config.state_db_path, calendar_dir=config.market_dir / "raw" / "calendar")
+    store = StateStore(config.state_db_path, calendar_dir=config.calendar_dir)
     active_broker = broker or _build_broker(config)
     with _record_task(store, "ORDER", end_date):
         account_snapshot = store.save_account_snapshot(
@@ -658,26 +697,62 @@ def sync_order_workflow(
 def sync_permission_workflow(
     config: AppConfig,
     broker: ZXBrokerClient | None = None,
+    resume: bool = False,
+    force: bool = False,
 ) -> dict[str, object]:
     """对当前全部有效主板股票执行高价合法数量权限探测并逐股落库。"""
     business_date = shanghai_today()
     market_store = ParquetMarketStore(config.market_dir)
     instruments = [
         normalize_instrument(code)
-        for code in live_codes(market_store.read_stock_basics(), business_date)
+        for code in live_codes(
+            market_store.read_stock_basics(),
+            business_date,
+            include_special_boards=True,
+        )
     ]
     if not instruments:
         raise ValueError("股票基础信息中没有可执行权限探测的有效股票")
+    instruments = sorted(
+        instruments,
+        key=lambda item: (0 if item.startswith("SH68") else 1, item),
+    )
     store = StateStore(
         config.state_db_path,
-        calendar_dir=config.market_dir / "raw" / "calendar",
+        calendar_dir=config.calendar_dir,
     )
+    previous_task = store.task_status("PERMISSION", business_date)
+    if resume and previous_task and previous_task.get("status") == "FAILED":
+        started_at = str(previous_task.get("started_at") or "")
+        completed_in_run = {
+            str(item["instrument"])
+            for item in store.broker_stock_permissions()
+            if started_at and str(item.get("updated_at") or "") >= started_at
+        }
+        instruments = [
+            instrument for instrument in instruments if instrument not in completed_in_run
+        ]
+        LOGGER.info(
+            "续跑上次未完成权限探测：已完成=%d；待检查=%d",
+            len(completed_in_run),
+            len(instruments),
+        )
+        if not instruments:
+            return {
+                "total": 0,
+                "checked": 0,
+                "skipped": len(completed_in_run),
+                "allowed": 0,
+                "denied": 0,
+                "failures": [],
+                "observedAt": shanghai_now().isoformat(timespec="seconds"),
+            }
     active_broker = broker or _build_broker(config)
     observed_at = shanghai_now().isoformat(timespec="seconds")
     with _record_task(store, "PERMISSION", business_date):
         result = BrokerPermissionSyncService(
             config, store, active_broker
-        ).sync(instruments, observed_at)
+        ).sync(instruments, observed_at, force=force)
         if result["failures"]:
             raise RuntimeError(
                 f"仍有 {len(result['failures'])} 只股票权限探测网络失败，请续跑补齐"
@@ -698,7 +773,7 @@ def rank_workflow(
     now = shanghai_now()
     store = ParquetMarketStore(config.market_dir)
     provider = l1_market_provider(config)
-    calendar_dir = config.market_dir / "raw" / "calendar"
+    calendar_dir = config.calendar_dir
     if prediction_date is None:
         prediction_date = resolve_completed_trade_date(store, provider, now)
     if prediction_date > now.date() or (
@@ -710,7 +785,7 @@ def rank_workflow(
         ensure_trade_calendar(store, provider, (prediction_date.year + 1,))
     execution_date = shift_trade_date(prediction_date, 1, calendar_dir)
     LOGGER.info("开始生成完整横截面预测：预测日期=%s", prediction_date)
-    state_store = StateStore(config.state_db_path, calendar_dir=config.market_dir / "raw" / "calendar")
+    state_store = StateStore(config.state_db_path, calendar_dir=config.calendar_dir)
     _assert_task_success(state_store, "COLLECT_DAILY", prediction_date)
     if spec.feature_frequency == "minute5":
         _assert_task_success(state_store, "COLLECT_MINUTE5", prediction_date)
@@ -728,7 +803,7 @@ def rank_workflow(
     if available_instruments is None:
         raise ValueError(
             f"Qlib 未覆盖目标日期：{prediction_date.isoformat()}；"
-            "请先执行 stock prepare"
+            "请先执行 stock model-prepare"
         )
     ready_instruments = expected_instruments & available_instruments
     quality = require_data_quality(
@@ -740,7 +815,7 @@ def rank_workflow(
     model_dir = model_directory(config.model_dir, spec)
     if not model_artifacts_valid(model_dir, spec):
         raise ValueError(
-            f"模型制品不存在或不完整：{spec.model_id}；请先执行 stock train"
+            f"模型制品不存在或不完整：{spec.model_id}；请先执行 stock model-train"
         )
     prediction_path = prediction_artifact_path(model_dir, prediction_date)
     existing = _existing_prediction_summary(
@@ -843,7 +918,7 @@ def trading_workflow(
             f"{action}只能在 {start_time.strftime('%H:%M')}-"
             f"{end_time.strftime('%H:%M')} 执行"
         )
-    calendar_dir = config.market_dir / "raw" / "calendar"
+    calendar_dir = config.calendar_dir
     calendar_store = ParquetMarketStore(config.market_dir)
     provider = l1_market_provider(config)
     ensure_trade_calendar(calendar_store, provider, (business_date.year,))
@@ -861,7 +936,7 @@ def trading_workflow(
         config.trading_execution_strategy,
         ((end_time.hour * 60 + end_time.minute) - (start_time.hour * 60 + start_time.minute)) * 60,
     )
-    store = StateStore(config.state_db_path, calendar_dir=config.market_dir / "raw" / "calendar")
+    store = StateStore(config.state_db_path, calendar_dir=config.calendar_dir)
     broker = _build_broker(config)
     account_snapshot = store.save_account_snapshot(broker.get_account())
     LOGGER.info(
@@ -902,7 +977,7 @@ def review_workflow(
     config: AppConfig, spec: ModelSpec, business_date: date
 ) -> dict[str, object]:
     """汇总已实现收益并判断模型是否需要重训。"""
-    store = StateStore(config.state_db_path, calendar_dir=config.market_dir / "raw" / "calendar")
+    store = StateStore(config.state_db_path, calendar_dir=config.calendar_dir)
     _assert_task_success(store, "ORDER", business_date)
     with _record_task(store, "REVIEW", business_date):
         profit = RealizedProfitService(store).summarize(

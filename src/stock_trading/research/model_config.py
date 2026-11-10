@@ -147,6 +147,21 @@ DEFAULT_MODEL_ID = "L1_daily_LightGBM"
 _MODEL_BY_ID = {spec.model_id: spec for spec in MODEL_SPECS}
 
 
+def all_model_specs() -> tuple[ModelSpec, ...]:
+    """返回全部已配置模型，供批量训练使用。"""
+    return MODEL_SPECS
+
+
+def dataset_specs() -> tuple[ModelSpec, ...]:
+    """返回按数据集去重后的模型规格，供统一准备 Qlib 数据使用。"""
+    result: list[ModelSpec] = []
+    seen: set[str] = set()
+    for spec in MODEL_SPECS:
+        if spec.dataset_id not in seen:
+            result.append(spec)
+            seen.add(spec.dataset_id)
+    return tuple(result)
+
 def supported_model_ids() -> tuple[str, ...]:
     return tuple(_MODEL_BY_ID)
 

@@ -62,18 +62,31 @@ class ResearchDataAudit:
 class ParquetMarketStore:
     """管理股票清单、分级行情和模型基础指标。"""
 
-    def __init__(self, root: Path) -> None:
-        self._root = root / "raw"
+    def __init__(self, root: Path, source: str = "raw") -> None:
+        if source not in {"raw", "derived"}:
+            raise ValueError(f"不支持的市场数据层：{source}")
+        self._root = root / source
         self._derived_root = root / "derived"
+        self._source = source
 
     @property
     def root(self) -> Path:
         return self._root
 
+    @property
+    def calendar_dir(self) -> Path:
+        """返回市场数据使用的权威交易日日历目录。"""
+        return self._root.parent / "raw" / "calendar"
+
     def write_stock_basics(self, stocks: list[StockBasic]) -> Path:
         """原子写入当前股票基础信息快照。"""
         target = self._root / "stock" / "stocks.parquet"
         return self._write(target, [stock.as_record() for stock in stocks])
+
+    def write_derived_stock_basics(self, frame: pd.DataFrame) -> Path:
+        """保存供 prepare 使用的标准化股票范围。"""
+        target = self._derived_root / "stock" / "stocks.parquet"
+        return self._write_frame(target, frame)
 
     def read_stock_basics(self) -> pd.DataFrame:
         """读取股票基础信息快照。"""
@@ -82,6 +95,17 @@ class ParquetMarketStore:
         for field in ("ipo_date", "out_date", "snapshot_date"):
             frame[field] = pd.to_datetime(frame[field], errors="coerce")
         return frame.sort_values("code").reset_index(drop=True)
+
+    def write_derived_daily_history(self, code: str, frame: pd.DataFrame) -> Path:
+        """保存供 prepare 使用的标准化日线。"""
+        if frame.empty:
+            raise ValueError(f"Refusing to write empty derived daily history: {code}")
+        target = self._derived_root / "daily" / f"code={code}" / "bars.parquet"
+        values = frame.copy()
+        values["trade_date"] = pd.to_datetime(values["trade_date"], errors="raise")
+        values = values.drop_duplicates(subset=["trade_date"], keep="last")
+        values = values.sort_values("trade_date").reset_index(drop=True)
+        return self._write_frame(target, values)
 
     def stock_basics_valid(self, snapshot_date: date) -> bool:
         """检查基础信息文件是否可读、字段完整且属于目标快照日。"""

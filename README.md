@@ -29,27 +29,34 @@
 stock <action> [options]
 ```
 
-| 类型 | 动作 |
+| 类型 | 命令 |
 | --- | --- |
-| 数据 | `collect` |
-| 模型 | `prepare`、`train`、`rank`、`review` |
-| 券商 | `buy`、`sell`、`check`、`order` |
-| 运维 | `clean`、`pull`、`push` |
+| 数据 | `data-collect`、`data-generate` |
+| 模型 | `model-prepare`、`model-train`、`model-rank`、`model-evaluate` |
+| 交易 | `trade-buy`、`trade-sell` |
+| 券商 | `broker-check`、`broker-sync` |
+| 运维 | `system-clean`、`system-pull`、`system-push` |
 
 查看完整参数：
 
 ```bash
 stock --help
-stock collect --help
-stock buy --help
+stock data-collect --help
+stock trade-buy --help
 ```
 
 ## 完整交易闭环
 
 ```text
-行情采集 -> Qlib 数据 -> 模型训练与回测 -> 横截面排名
+行情采集 -> derived 数据生成 -> Qlib 数据准备 -> 模型训练与回测 -> 横截面排名
         -> 卖出 / 买入 -> 券商订单同步 -> 已实现收益 -> 模型复盘
 ```
+模型命令不再通过 `--model` 选择模型：`model-prepare` 准备全部数据集，`model-train` 训练全部已配置模型；`model-rank`、`trade-buy`、`trade-sell`、`model-evaluate` 使用 `.env` 中的 `STOCK_TRADING_ACTIVE_MODEL`。
+数据处理分为三个阶段：
+
+- `data-collect`：采集并保存外部行情等 raw 原始数据。
+- `data-generate`：基于 raw 数据生成可复用的 derived 派生数据，例如股票、日线、基础指标、复权因子和分钟汇总数据。
+- `model-prepare`：只读取 derived 数据，转换为模型使用的 Qlib 数据，不直接依赖 raw 数据。
 
 系统将模型评分与交易执行分离：模型负责排名，确定性规则负责候选筛选、持仓轮换、价格与数量计算、T+1 时序、幂等恢复和订单状态跟踪。交易完成后，再以券商成交事实结算收益并进入下一轮复盘。
 
@@ -86,7 +93,7 @@ stock --help
 
 - Windows PowerShell 7：点源 `.github/script/stock-completion.ps1`，或将点源命令加入 `$PROFILE`。
 - Ubuntu：发布安装脚本会复制 Bash 补全并自动加入当前用户的 `~/.bashrc`。
-- PowerShell 已将 Tab 设置为候选菜单，输入 `stock train --` 后可直接看到全部参数。
+- PowerShell 已将 Tab 设置为候选菜单，输入 `stock model-train --` 后可直接看到全部参数。
 
 服务器部署完成后重新登录，或执行：
 
@@ -96,7 +103,7 @@ source ~/.bashrc
 
 ## 技术概览
 
-`Python` · `argparse` · `Qlib` · `LightGBM` · `Parquet` · `SQLite`
+`Python` · `Typer` · `Qlib` · `LightGBM` · `Parquet` · `SQLite`
 
 运行数据、模型制品和交易状态均保存在本地目录中；实时资金、持仓、委托与成交结果以券商返回为准。
 

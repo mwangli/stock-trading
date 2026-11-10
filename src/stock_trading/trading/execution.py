@@ -511,7 +511,7 @@ class OrderExecutionOrchestrator:
         if (
             side not in {"BUY", "SELL"}
             or now.date() != business_date
-            or business_date not in trade_dates(business_date.year, self._config.market_dir / "raw" / "calendar")
+            or business_date not in trade_dates(business_date.year, self._config.calendar_dir)
             or not start_time <= now.time() < end_time
         ):
             return 0.0

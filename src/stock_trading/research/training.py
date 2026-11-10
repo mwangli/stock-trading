@@ -54,7 +54,7 @@ def default_training_codes(
         stocks = store.read_stock_basics()
     except (OSError, ValueError, KeyError) as error:
         raise ValueError(
-            "未找到股票基础信息；请先执行 stock collect"
+            "未找到股票基础信息；请先执行 stock data-collect"
         ) from error
     codes = research_codes(stocks, start_date, end_date)
     if not codes:
@@ -76,7 +76,7 @@ def run_training_pipeline(
     )
     preparation_summary = _preparation_summary(preparation)
     target = model.artifact_dir
-    store = StateStore(config.state_db_path, calendar_dir=config.market_dir / "raw" / "calendar")
+    store = StateStore(config.state_db_path, calendar_dir=config.calendar_dir)
     if not force and complete_model_artifacts_valid(config, spec, target):
         state = (
             None
@@ -200,7 +200,7 @@ def assert_training_data_ready(
         or available is None
     ):
         raise ValueError(
-            f"模型 {spec.model_id} 的 Qlib 数据未覆盖训练范围；请先执行 stock prepare"
+            f"模型 {spec.model_id} 的 Qlib 数据未覆盖训练范围；请先执行 stock model-prepare"
         )
     ready = expected & available
     qlib_quality = require_data_quality(

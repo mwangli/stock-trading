@@ -1,19 +1,25 @@
 # AI_GENERATE_START------------ ---------
 from __future__ import annotations
 
-import argparse
 import json
 import logging
 import os
 import re
 import sys
 from collections.abc import Callable
-from datetime import date, timedelta
+from datetime import date
 from time import perf_counter
-from typing import TextIO, TypeVar
+from typing import Literal, TextIO, TypeVar
+
+import typer
 
 from stock_trading.config import AppConfig, load_project_environment
-from stock_trading.research.model_config import ModelSpec, resolve_model_spec
+from stock_trading.research.model_config import (
+    ModelSpec,
+    all_model_specs,
+    dataset_specs,
+    resolve_model_spec,
+)
 from stock_trading.utils.logging_utils import (
     configure_logging,
     log_context,
@@ -22,11 +28,7 @@ from stock_trading.utils.logging_utils import (
 from stock_trading.utils.time_utils import shanghai_today
 
 
-BOLD_BLUE = "1;34"
-BOLD_CYAN = "1;36"
 BOLD_RED = "1;31"
-BOLD_YELLOW = "1;33"
-DIM = "2"
 
 
 def style(text: str, code: str, stream: TextIO = sys.stdout) -> str:
@@ -125,20 +127,22 @@ def order_command(
     today = shanghai_today()
     start_date, end_date = _parse_date_expression(date_value, today, today)
     _execute(
-        "order",
+        "broker-sync",
         {"date": date_value},
         lambda config: sync_order_workflow(config, start_date, end_date),
         result_summary=_summarize_order,
     )
 
 
-def permission_command() -> None:
+def permission_command(force: bool = False, resume: bool = False) -> None:
     from stock_trading.workflows import sync_permission_workflow
 
     _execute(
-        "permission",
-        {},
-        sync_permission_workflow,
+        "broker-check",
+        {"force": force, "resume": resume},
+        lambda config: sync_permission_workflow(
+            config, resume=resume, force=force
+        ),
         result_summary=_summarize_permission,
     )
 
@@ -146,7 +150,6 @@ def permission_command() -> None:
 def collect_command(
     date_value: str | None = None,
     codes_value: str | None = None,
-    model_value: str | None = None,
     collection_type: str | None = None,
 ) -> None:
     from stock_trading.workflows import collect_workflow
@@ -156,108 +159,118 @@ def collect_command(
     def run(config: AppConfig) -> dict[str, object]:
         today = shanghai_today()
         start, end = _parse_date_expression(date_value, today, today)
-        spec = _resolve_model(model_value) if model_value else None
         return collect_workflow(
             config,
             start,
             end,
             requested_codes=selected_codes,
-            required_fields=spec.required_fields if spec else None,
             requested_types=(collection_type,) if collection_type else None,
         )
 
     result = _execute(
-        "collect",
-        {
-            "date": date_value,
-            "codes": codes_value,
-            "model": model_value,
-            "type": collection_type,
-        },
+        "data-collect",
+        {"date": date_value, "codes": codes_value, "type": collection_type},
         run,
         result_summary=_summarize_collection,
     )
     if result.get("status") == "PARTIAL":
         raise SystemExit(1)
 
-
 def prepare_command(
     date_value: str | None = None,
     force: bool = False,
-    model_value: str | None = None,
 ) -> None:
+    from stock_trading.research.training import default_training_range
+    from stock_trading.workflows import prepare_workflow
+
     def run(config: AppConfig) -> dict[str, object]:
-        from stock_trading.research.model_adapter import create_research_model
-        from stock_trading.workflows import prepare_workflow
-
-        spec = _resolve_model(model_value)
-        latest = shanghai_today()
-        model = create_research_model(config, spec)
-        existing = model.date_range()
         if date_value is None:
-            from stock_trading.research.training import default_training_range
-
-            default_start, latest = default_training_range(config)
-            start = existing[0] if existing is not None else default_start
-            end = max(latest, existing[1]) if existing is not None else latest
+            start_date, end_date = default_training_range(config)
         else:
-            start, end = _parse_date_expression(date_value, latest, latest)
-            if existing is not None and not force:
-                start = min(start, existing[0])
-                end = max(end, existing[1])
-        return prepare_workflow(config, spec, start, end, force=force)
+            latest = shanghai_today()
+            start_date, end_date = _parse_date_expression(date_value, latest, latest)
+        items = [
+            prepare_workflow(config, spec, start_date, end_date, force=force)
+            for spec in dataset_specs()
+        ]
+        return {
+            "items": items,
+            "startDate": start_date.isoformat(),
+            "endDate": end_date.isoformat(),
+        }
 
     _execute(
-        "prepare",
-        {"date": date_value, "force": force, "model": model_value},
+        "model-prepare",
+        {"date": date_value, "force": force},
         run,
         result_summary=_summarize_preparation,
     )
 
-
-def train_command(
-    force: bool = False,
-    model_value: str | None = None,
+def generate_command(
+    date_value: str | None = None,
 ) -> None:
+    from stock_trading.research.training import default_training_range
+    from stock_trading.workflows import derive_workflow
+
+    def run(config: AppConfig) -> dict[str, object]:
+        latest = shanghai_today()
+        if date_value is None:
+            start, end = default_training_range(config)
+        else:
+            start, end = _parse_date_expression(date_value, latest, latest)
+        return derive_workflow(config, start, end)
+
+    _execute(
+        "data-generate",
+        {"date": date_value},
+        run,
+        result_summary=lambda result: (
+            f"派生数据生成完成：日期 {result['startDate']} 至 {result['endDate']}，"
+            f"研究股票 {result['researchCodes']} 只"
+        ),
+    )
+
+def train_command(force: bool = False) -> None:
     from stock_trading.research.training import run_training_pipeline
 
-    _execute(
-        "train",
-        {"force": force, "model": model_value},
-        lambda config: run_training_pipeline(
-            config,
-            _resolve_model(model_value),
-            force=force,
-        ),
+    def run(config: AppConfig) -> dict[str, object]:
+        items: list[dict[str, object]] = []
+        errors: dict[str, str] = {}
+        for spec in all_model_specs():
+            try:
+                items.append(run_training_pipeline(config, spec, force=force))
+            except Exception as error:
+                errors[spec.model_id] = str(error)
+                LOGGER.error("模型批量训练失败：模型=%s；原因=%s", spec.model_id, error)
+        return {
+            "status": "PARTIAL" if errors else "SUCCESS",
+            "items": items,
+            "errors": errors,
+        }
+
+    result = _execute(
+        "model-train",
+        {"force": force},
+        run,
         result_summary=_summarize_training,
     )
+    if result.get("status") == "PARTIAL":
+        raise SystemExit(1)
 
-
-def rank_command(
-    prediction_date: str | None = None,
-    model_value: str | None = None,
-) -> None:
+def rank_command(prediction_date: str | None = None) -> None:
     from stock_trading.workflows import rank_workflow
 
-    business_date = (
-        _parse_date(prediction_date)
-        if prediction_date
-        else None
-    )
+    business_date = _parse_date(prediction_date) if prediction_date else None
     _execute(
-        "rank",
-        {"date": prediction_date, "model": model_value},
+        "model-rank",
+        {"date": prediction_date},
         lambda config: rank_workflow(
-            config, _resolve_model(model_value), business_date
+            config, _resolve_active_model(config), business_date
         ),
         result_summary=_summarize_rank,
     )
 
-
-def settle_command(
-    trade_type: str,
-    model_value: str | None = None,
-) -> None:
+def settle_command(trade_type: str) -> None:
     from stock_trading.workflows import trading_workflow
 
     if trade_type not in {"B", "S"}:
@@ -265,35 +278,26 @@ def settle_command(
     side = "BUY" if trade_type == "B" else "SELL"
     business_date = shanghai_today()
     _execute(
-        "trading",
-        {
-            "side": side,
-            "businessDate": business_date.isoformat(),
-            "model": model_value,
-        },
+        f"trade-{side.lower()}",
+        {"side": side, "businessDate": business_date.isoformat()},
         lambda config: trading_workflow(
-            config, _resolve_model(model_value), business_date, side
+            config, _resolve_active_model(config), business_date, side
         ),
         result_summary=_summarize_trading,
     )
 
-
-def review_command(
-    business_date: str | None = None,
-    model_value: str | None = None,
-) -> None:
+def review_command(business_date: str | None = None) -> None:
     from stock_trading.workflows import review_workflow
 
     target_date = _business_date(business_date)
     _execute(
-        "review",
-        {"date": business_date, "model": model_value},
+        "model-evaluate",
+        {"date": business_date},
         lambda config: review_workflow(
-            config, _resolve_model(model_value), target_date
+            config, _resolve_active_model(config), target_date
         ),
         result_summary=_summarize_review,
     )
-
 
 def clean_command(
     reference_date: str | None = None,
@@ -302,7 +306,7 @@ def clean_command(
 
     target_date = _business_date(reference_date)
     _execute(
-        "clean",
+        "system-clean",
         {"date": reference_date},
         lambda config: cleanup_workflow(config, target_date),
         result_summary=_summarize_cleanup,
@@ -322,7 +326,7 @@ def sync_command(
     if force and not push:
         raise CliParameterError("--force 仅用于 --push")
     result = _execute(
-        "sync",
+        "system-push" if push else "system-pull",
         {
             "pull": pull,
             "push": push,
@@ -342,6 +346,10 @@ def _business_date(value: str | None) -> date:
         if value
         else shanghai_today()
     )
+
+
+def _resolve_active_model(config: AppConfig) -> ModelSpec:
+    return _resolve_model(config.active_model_id)
 
 
 def _resolve_model(value: str | None) -> ModelSpec:
@@ -460,46 +468,25 @@ def _summarize_collection(result: dict[str, object]) -> str:
 
 
 def _summarize_preparation(result: dict[str, object]) -> str:
-    qlib = dict(result["qlib"])
+    items = list(result.get("items") or [])
+    modes = ", ".join(
+        f"{item.get('modelId', item.get('datasetId', '-'))}:{dict(item.get('qlib') or {}).get('mode', '-')}"
+        for item in items
+    ) or "无"
     return (
-        f"特征数据准备完成：模型 {result['modelId']}，日期 "
-        f"{result['startDate']} 至 {result['endDate']}，研究股票 "
-        f"{result['researchCodes']} 只，Qlib 模式 {qlib.get('mode', '-')}，"
-        f"有效股票 {qlib.get('codes', '-')} 只，质量 "
-        f"{_format_quality(result.get('dataQuality'))}。"
+        f"Qlib 数据准备完成：数据集 {len(items)} 个，"
+        f"日期 {result.get('startDate', '-')} 至 {result.get('endDate', '-')}，"
+        f"状态 {modes}"
     )
-
 
 def _summarize_training(result: dict[str, object]) -> str:
-    training = dict(result["training"])
-    evaluation = dict(result.get("evaluation") or {})
-    backtest = dict(evaluation.get("backtest") or {})
-    action = "复用现有制品" if training.get("skipped") else "完成训练与回测"
-    summary = (
-        f"模型训练完成：模型 {result['modelId']}，{action}，制品 "
-        f"{training.get('artifactPath', '-')}"
-    )
-    if backtest:
-        stability = dict(backtest.get("monthlyReturnStability") or {})
-        summary += (
-            f"，回测资金 {_format_amount(backtest.get('capital'))} 元，"
-            f"毛收益 {_format_amount(backtest.get('grossProfit'))} 元，"
-            f"毛收益率 {_format_percent(backtest.get('grossReturn'))}，"
-            f"月收益稳定性 {float(stability.get('score') or 0):.4f}，"
-            f"正收益月份占比 {_format_percent(stability.get('positiveMonthRate'))}"
-        )
-        months = list(backtest.get("monthlyPerformance") or [])
-        if months:
-            summary += "\n" + "\n".join(
-                f"  {month.get('month')}：毛收益 "
-                f"{_format_amount(month.get('grossProfit'))} 元，毛收益率 "
-                f"{_format_percent(month.get('grossReturn'))}，闭环交易 "
-                f"{month.get('closedTrades', 0)} 笔"
-                for month in months
-                if isinstance(month, dict)
-            )
-    return summary + "。"
-
+    items = list(result.get("items") or [])
+    errors = dict(result.get("errors") or {})
+    completed = ", ".join(str(item.get("modelId", "-")) for item in items) or "无"
+    summary = f"模型批量训练完成：成功或复用 {len(items)} 个，模型={completed}"
+    if errors:
+        summary += "；失败=" + ", ".join(f"{key}: {value}" for key, value in errors.items())
+    return summary
 
 def _summarize_rank(result: dict[str, object]) -> str:
     prediction = dict(result["prediction"])
@@ -604,187 +591,152 @@ def _format_bytes(value: object) -> str:
     return "-"
 
 
-class ColoredHelpFormatter(argparse.RawDescriptionHelpFormatter):
-    def start_section(self, heading: str | None) -> None:
-        super().start_section(style(heading, BOLD_BLUE) if heading else heading)
-
-    def _format_action(self, action: argparse.Action) -> str:
-        rendered = super()._format_action(action)
-        invocation = super()._format_action_invocation(action)
-        return rendered.replace(invocation, style(invocation, BOLD_CYAN), 1)
+CollectionType = Literal["stock", "daily", "minute5", "minute1"]
+SyncScope = Literal["market", "prepared", "model", "state"]
+HELP_CONTEXT = {"help_option_names": ["-h", "--help"]}
 
 
-class ChineseArgumentParser(argparse.ArgumentParser):
-    def format_help(self) -> str:
-        return super().format_help().replace(
-            "usage:", style("用法:", BOLD_YELLOW), 1
-        )
+app = typer.Typer(
+    name="stock",
+    help="A 股 T+1 数据、模型、交易和运行维护命令。",
+    no_args_is_help=True,
+    add_completion=True,
+    context_settings=HELP_CONTEXT,
+)
 
-    def format_usage(self) -> str:
-        return super().format_usage().replace(
-            "usage:", style("用法:", BOLD_YELLOW), 1
-        )
-
-    def error(self, message: str) -> None:
-        if message.startswith("unrecognized arguments:"):
-            message = "不支持的参数：" + message.removeprefix(
-                "unrecognized arguments:"
-            ).strip()
-        self.print_usage()
-        self.exit(2, f"{self.prog}: 参数错误：{message}\n")
-
-
-def _section(title: str, lines: tuple[str, ...], prefix: str = "") -> str:
-    return "\n".join(
-        (style(title, BOLD_BLUE), *(f"  {prefix}{line}" for line in lines))
-    )
+@app.command("data-collect")
+def data_collect(
+    date_value: str | None = typer.Option(
+        None, "--date", help="采集日期或日期范围，默认当天。"
+    ),
+    codes_value: str | None = typer.Option(
+        None, "--codes", help="股票代码，逗号分隔，默认全市场。"
+    ),
+    collection_type: CollectionType | None = typer.Option(
+        None, "--type", help="只采集一个明确的数据类型。"
+    ),
+) -> None:
+    """采集股票清单、日线和分钟原始行情。"""
+    collect_command(date_value, codes_value, collection_type)
 
 
-def _parser(
-    prog: str,
-    description: str,
-    business: tuple[str, ...],
-    examples: tuple[str, ...],
-    boundaries: tuple[str, ...],
-) -> ChineseArgumentParser:
-    parser = ChineseArgumentParser(
-        prog=prog,
-        description=description,
-        epilog="\n\n".join(
-            (
-                _section("业务说明", business),
-                _section("示例", examples, "  "),
-                _section("业务边界", boundaries, "· "),
-            )
-        ),
-        formatter_class=ColoredHelpFormatter,
-    )
-    parser._optionals.title = "参数"
-    return parser
+@app.command("data-generate")
+def data_generate(
+    date_value: str | None = typer.Option(
+        None, "--date", help="生成日期或日期范围，默认训练历史范围。"
+    ),
+) -> None:
+    """从原始数据生成派生数据。"""
+    generate_command(date_value)
 
 
-def _add_model_argument(parser: ChineseArgumentParser) -> None:
-    parser.add_argument("--model", help="模型完整 ID。")
+@app.command("model-prepare")
+def model_prepare(
+    date_value: str | None = typer.Option(
+        None, "--date", help="准备日期或日期范围，默认训练历史范围。"
+    ),
+    force: bool = typer.Option(False, "--force", help="强制准备。"),
+) -> None:
+    """准备全部模型所需的 Qlib 数据集。"""
+    prepare_command(date_value, force)
 
 
-def _dispatch_collect(args: argparse.Namespace) -> None:
-    if args.type and args.model:
-        raise CliParameterError("--type 与 --model 不能同时使用")
-    collect_command(args.date, args.codes, args.model, args.type)
+@app.command("model-train")
+def model_train(
+    force: bool = typer.Option(False, "--force", help="强制训练。"),
+) -> None:
+    """训练、评估并回测全部已配置模型。"""
+    train_command(force)
 
 
-def _add_action_parser(
-    subparsers: argparse._SubParsersAction,
-    name: str,
-    help_text: str,
-) -> ChineseArgumentParser:
-    return subparsers.add_parser(
-        name,
-        help=help_text,
-        description=help_text,
-        formatter_class=ColoredHelpFormatter,
-    )
+@app.command("model-rank")
+def model_rank(
+    date_value: str | None = typer.Option(None, "--date", help="排名日期。"),
+) -> None:
+    """使用当前模型生成完整横截面排名。"""
+    rank_command(date_value)
+
+
+@app.command("model-evaluate")
+def model_evaluate(
+    business_date: str | None = typer.Option(
+        None, "--date", help="评估日期，默认当天。"
+    ),
+) -> None:
+    """评估已实现交易收益并判断是否需要重训。"""
+    review_command(business_date)
+
+
+@app.command("trade-buy")
+def trade_buy() -> None:
+    """使用当前模型执行买入。"""
+    settle_command("B")
+
+
+@app.command("trade-sell")
+def trade_sell() -> None:
+    """使用当前模型执行卖出。"""
+    settle_command("S")
+
+
+@app.command("broker-check")
+def broker_permissions(
+    force: bool = typer.Option(
+        False, "--force", help="重新探测全部股票，不跳过当天已有结果。"
+    ),
+    resume: bool = typer.Option(
+        False, "--resume", help="续跑上次闭市或中断后尚未完成的股票。"
+    ),
+) -> None:
+    """逐股检查交易权限。"""
+    permission_command(force, resume)
+
+
+@app.command("broker-sync")
+def broker_orders(
+    date_value: str | None = typer.Option(
+        None, "--date", help="订单同步日期或日期范围。"
+    ),
+) -> None:
+    """同步账户快照、历史订单和成交事实。"""
+    order_command(date_value)
+
+
+@app.command("system-pull")
+def system_pull(
+    scope: SyncScope | None = typer.Option(
+        None, "--scope", help="只同步一个范围，省略时沿用默认范围。"
+    ),
+) -> None:
+    """从服务器拉取运行数据。"""
+    sync_command(pull=True, scope=scope)
+
+
+@app.command("system-push")
+def system_push(
+    scope: SyncScope | None = typer.Option(
+        None, "--scope", help="只同步一个范围，省略时沿用默认范围。"
+    ),
+    force: bool = typer.Option(
+        False, "--force", help="同时覆盖服务器 state。"
+    ),
+) -> None:
+    """向服务器推送运行数据。"""
+    sync_command(push=True, force=force, scope=scope)
+
+
+@app.command("system-clean")
+def system_clean(
+    reference_date: str | None = typer.Option(
+        None, "--date", help="清理基准日期，默认当天。"
+    ),
+) -> None:
+    """清理超过保留期的数据和已终结状态。"""
+    clean_command(reference_date)
 
 
 def main() -> None:
-    parser = _parser(
-        "stock",
-        "A 股 T+1 数据、研究、交易和运行维护命令。",
-        (
-            "所有业务使用一级动作命令，避免记忆多个入口。",
-            "collect 采集原始行情，prepare/train/rank/review 管理研究链路。",
-            "buy/sell/check/order 管理券商交易链路。",
-            "clean/pull/push 管理本地数据和服务器同步。",
-        ),
-        (
-            "stock collect --type daily",
-            "stock prepare --model L2_minute5_LightGBM",
-            "stock train --model L2_minute5_LightGBM",
-            "stock rank --model L2_minute5_LightGBM",
-            "stock check",
-            "stock buy --model L2_minute5_LightGBM",
-        ),
-        (
-            "每次只能执行一个一级动作。",
-            "最终交易合法性和成交状态由券商判断。",
-        ),
-    )
-    actions = parser.add_subparsers(dest="action", required=True, title="动作")
-
-    collect = _add_action_parser(actions, "collect", "采集股票清单、日线和分钟原始行情。")
-    collect.add_argument("--date", help="采集日期或日期范围，默认当天。")
-    collect.add_argument("--codes", help="股票代码，逗号分隔，默认全市场。")
-    collect.add_argument(
-        "--type",
-        choices=("stock", "daily", "minute5", "minute1"),
-        help="只采集一个明确的数据类型。",
-    )
-    _add_model_argument(collect)
-    collect.set_defaults(handler=_dispatch_collect)
-
-    prepare = _add_action_parser(actions, "prepare", "从本地 Parquet 准备 Qlib。")
-    prepare.add_argument("--date", help="准备日期或日期范围。")
-    prepare.add_argument("--force", action="store_true", help="强制准备。")
-    _add_model_argument(prepare)
-    prepare.set_defaults(handler=lambda args: prepare_command(args.date, args.force, args.model))
-
-    train = _add_action_parser(actions, "train", "训练、评估并回测模型。")
-    train.add_argument("--force", action="store_true", help="强制训练。")
-    _add_model_argument(train)
-    train.set_defaults(handler=lambda args: train_command(args.force, args.model))
-
-    rank = _add_action_parser(actions, "rank", "生成完整横截面排名。")
-    rank.add_argument("--date", help="排名日期。")
-    _add_model_argument(rank)
-    rank.set_defaults(handler=lambda args: rank_command(args.date, args.model))
-
-    review = _add_action_parser(actions, "review", "汇总已实现收益并判断是否重训。")
-    review.add_argument("--date", help="复盘日期，默认当天。")
-    _add_model_argument(review)
-    review.set_defaults(handler=lambda args: review_command(args.date, args.model))
-
-    for name, side, help_text in (
-        ("buy", "B", "执行买入。"),
-        ("sell", "S", "执行卖出。"),
-    ):
-        trade = _add_action_parser(actions, name, help_text)
-        _add_model_argument(trade)
-        trade.set_defaults(handler=lambda args, side=side: settle_command(side, args.model))
-
-    check = _add_action_parser(actions, "check", "同步逐股交易权限。")
-    check.set_defaults(handler=lambda args: permission_command())
-
-    order = _add_action_parser(actions, "order", "同步账户快照和历史成交。")
-    order.add_argument("--date", help="订单同步日期或日期范围。")
-    order.set_defaults(handler=lambda args: order_command(args.date))
-
-    clean = _add_action_parser(actions, "clean", "清理超过保留期的数据和已终结状态。")
-    clean.add_argument("--date", help="清理基准日期，默认当天。")
-    clean.set_defaults(handler=lambda args: clean_command(args.date))
-
-    for name, pull, push, help_text in (
-        ("pull", True, False, "从服务器拉取运行数据。"),
-        ("push", False, True, "向服务器推送运行数据。"),
-    ):
-        sync = _add_action_parser(actions, name, help_text)
-        sync.add_argument(
-            "--scope",
-            choices=("market", "prepared", "model", "state"),
-            help="只同步一个范围，省略时沿用默认范围。",
-        )
-        if push:
-            sync.add_argument("--force", action="store_true", help="同时覆盖服务器 state。")
-        sync.set_defaults(
-            handler=lambda args, pull=pull, push=push: sync_command(
-                pull, push, getattr(args, "force", False), args.scope
-            )
-        )
-
-    arguments = parser.parse_args()
-    try:
-        arguments.handler(arguments)
-    except CliParameterError as error:
-        parser.error(str(error))
+    app()
 
 
 # AI_GENERATE_END------------ ---------
