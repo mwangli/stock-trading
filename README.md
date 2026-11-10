@@ -11,6 +11,10 @@
 
 </div>
 
+<p align="center">
+  <img src="assets/stock-cli-demo.gif" alt="stock-trading CLI 帮助和 PowerShell 自动补全演示" width="860">
+</p>
+
 > **独立运行**：本项目不依赖 Web 服务即可部署和完成交易闭环。`stock-web` 只是可选的可视化增强模块，不参与本项目的数据、模型与交易执行。
 
 ## 核心能力
