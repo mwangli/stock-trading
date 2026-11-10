@@ -588,7 +588,7 @@ def data_collect(
         None, "--codes", help="股票代码，逗号分隔，默认全市场。"
     ),
     level: int = typer.Option(
-        1, "--level", help="数据层级：1=stock+日线，2=stock+5分钟，3=stock+1分钟。"
+        1, "--level", help="数据层级：1=日线，2=五分钟线，3=分钟线。"
     ),
 ) -> None:
     """按数据层级幂等采集股票基础信息、日线和分钟原始行情。"""
