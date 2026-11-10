@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import os
 import socket
+from threading import RLock
 from collections.abc import Callable
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import date, timedelta
@@ -56,51 +57,76 @@ class _ClosedAwareSocket:
 class BaoStockProcessLock:
     """禁止多个进程同时建立 BaoStock 连接。"""
 
+    _registry_lock = RLock()
+    _held_locks: dict[Path, tuple[Any, int]] = {}
+
     def __init__(self, path: Path) -> None:
         self._path = path
         self._handle: Any = None
 
     def acquire(self) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        handle = self._path.open("a+b")
-        handle.seek(0, 2)
-        if handle.tell() == 0:
-            handle.write(b"0")
-            handle.flush()
-        handle.seek(0)
-        try:
-            if os.name == "nt":
-                import msvcrt
+        path = self._path.resolve()
+        with self._registry_lock:
+            held = self._held_locks.get(path)
+            if held is not None:
+                handle, count = held
+                self._held_locks[path] = (handle, count + 1)
+                self._handle = handle
+                return
 
-                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
-            else:
-                import fcntl
+            handle = path.open("a+b")
+            handle.seek(0, 2)
+            if handle.tell() == 0:
+                handle.write(b"0")
+                handle.flush()
+            handle.seek(0)
+            try:
+                if os.name == "nt":
+                    import msvcrt
 
-                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError as error:
-            handle.close()
-            raise BaoStockConcurrentAccessError(
-                "已有 BaoStock 采集进程运行；禁止并发连接，请等待当前任务完成"
-            ) from error
-        self._handle = handle
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                else:
+                    import fcntl
+
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError as error:
+                handle.close()
+                raise BaoStockConcurrentAccessError(
+                    "已有 BaoStock 采集进程运行；禁止并发连接，请等待当前任务完成"
+                ) from error
+            self._held_locks[path] = (handle, 1)
+            self._handle = handle
 
     def release(self) -> None:
         handle = self._handle
         if handle is None:
             return
-        try:
-            handle.seek(0)
-            if os.name == "nt":
-                import msvcrt
+        path = self._path.resolve()
+        with self._registry_lock:
+            held = self._held_locks.get(path)
+            if held is None or held[0] is not handle:
+                self._handle = None
+                return
+            _, count = held
+            if count > 1:
+                self._held_locks[path] = (handle, count - 1)
+                self._handle = None
+                return
+            try:
+                handle.seek(0)
+                if os.name == "nt":
+                    import msvcrt
 
-                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
-            else:
-                import fcntl
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    import fcntl
 
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-        finally:
-            handle.close()
-            self._handle = None
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            finally:
+                self._held_locks.pop(path, None)
+                handle.close()
+                self._handle = None
 
 
 class BaoStockClient:

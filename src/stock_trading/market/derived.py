@@ -98,35 +98,6 @@ def prepare_daily_derivatives(
     }
 
 
-def transfer_daily_source(
-    raw_store: ParquetMarketStore,
-    derived_store: ParquetMarketStore,
-    codes: list[str],
-    start_dates: Mapping[str, date],
-    end_dates: Mapping[str, date],
-) -> dict[str, object]:
-    """将通过质量检查的原始日线物化到 derived，供 prepare 独立读取。"""
-    copied = 0
-    failed: dict[str, str] = {}
-    for code in codes:
-        try:
-            daily = raw_store.read_daily_history(code)
-            if not raw_store.daily_history_valid(
-                code, start_dates[code], end_dates[code]
-            ):
-                continue
-            derived_store.write_derived_daily_history(code, daily)
-            copied += 1
-        except Exception as error:
-            failed[code] = str(error)
-    return {
-        "requestedCodes": len(codes),
-        "copiedCodes": copied,
-        "failedCodes": len(failed),
-        "failureSamples": dict(list(failed.items())[:20]),
-    }
-
-
 def _derive_factors(
     code: str, daily: pd.DataFrame
 ) -> list[CumulativeAdjustmentFactor]:

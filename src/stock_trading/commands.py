@@ -3,13 +3,12 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 import sys
 from collections.abc import Callable
 from datetime import date
 from time import perf_counter
-from typing import Literal, TextIO, TypeVar
+from typing import Literal, TypeVar
 
 import typer
 
@@ -28,28 +27,8 @@ from stock_trading.utils.logging_utils import (
 from stock_trading.utils.time_utils import shanghai_today
 
 
-BOLD_RED = "1;31"
-
-
-def style(text: str, code: str, stream: TextIO = sys.stdout) -> str:
-    if not stream.isatty() or "NO_COLOR" in os.environ:
-        return text
-    return f"\033[{code}m{text}\033[0m"
-
-
-def echo(
-    text: object = "",
-    *,
-    color: str | None = None,
-    error: bool = False,
-) -> None:
-    stream = sys.stderr if error else sys.stdout
-    value = str(text)
-    print(
-        style(value, color, stream) if color else value,
-        file=stream,
-        flush=True,
-    )
+def echo(text: object = "") -> None:
+    print(text, file=sys.stdout, flush=True)
 
 
 LOGGER = logging.getLogger(__name__)
@@ -89,7 +68,6 @@ def _execute(
                 perf_counter() - started_at,
                 error,
             )
-            echo(f"参数错误：{error}", color=BOLD_RED, error=True)
             raise SystemExit(2) from None
         except Exception as error:
             LOGGER.error(
@@ -100,14 +78,12 @@ def _execute(
             from stock_trading.utils.notifications import push_system_failure
 
             push_system_failure(config, command, error)
-            echo(f"执行失败：{error}", color=BOLD_RED, error=True)
             raise SystemExit(1) from None
         except KeyboardInterrupt:
             LOGGER.warning(
                 "收到 Ctrl+C，业务命令已终止：耗时=%.2f 秒",
                 perf_counter() - started_at,
             )
-            echo("命令已终止。", color=BOLD_RED, error=True)
             raise SystemExit(130) from None
         set_log_context(step="1/1", progress="-/-", target=command)
         echo(
@@ -150,7 +126,7 @@ def permission_command(force: bool = False, resume: bool = False) -> None:
 def collect_command(
     date_value: str | None = None,
     codes_value: str | None = None,
-    collection_type: str | None = None,
+    level: int = 1,
 ) -> None:
     from stock_trading.workflows import collect_workflow
 
@@ -164,12 +140,12 @@ def collect_command(
             start,
             end,
             requested_codes=selected_codes,
-            requested_types=(collection_type,) if collection_type else None,
+            level=level,
         )
 
     result = _execute(
         "data-collect",
-        {"date": date_value, "codes": codes_value, "type": collection_type},
+        {"date": date_value, "codes": codes_value, "level": level},
         run,
         result_summary=_summarize_collection,
     )
@@ -441,7 +417,7 @@ def _summarize_permission(result: dict[str, object]) -> str:
 
 def _summarize_collection(result: dict[str, object]) -> str:
     type_names = {
-        "stock": "股票清单",
+        "ensure_stock_info": "股票基础信息",
         "daily": "日线数据",
         "minute5": "5 分钟数据",
         "minute1": "1 分钟数据",
@@ -591,7 +567,6 @@ def _format_bytes(value: object) -> str:
     return "-"
 
 
-CollectionType = Literal["stock", "daily", "minute5", "minute1"]
 SyncScope = Literal["market", "prepared", "model", "state"]
 HELP_CONTEXT = {"help_option_names": ["-h", "--help"]}
 
@@ -612,12 +587,12 @@ def data_collect(
     codes_value: str | None = typer.Option(
         None, "--codes", help="股票代码，逗号分隔，默认全市场。"
     ),
-    collection_type: CollectionType | None = typer.Option(
-        None, "--type", help="只采集一个明确的数据类型。"
+    level: int = typer.Option(
+        1, "--level", help="数据层级：1=stock+日线，2=stock+5分钟，3=stock+1分钟。"
     ),
 ) -> None:
-    """采集股票清单、日线和分钟原始行情。"""
-    collect_command(date_value, codes_value, collection_type)
+    """按数据层级幂等采集股票基础信息、日线和分钟原始行情。"""
+    collect_command(date_value, codes_value, level)
 
 
 @app.command("data-generate")

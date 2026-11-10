@@ -68,6 +68,7 @@ class ParquetMarketStore:
         self._root = root / source
         self._derived_root = root / "derived"
         self._source = source
+        self._daily_root = root / "raw" if source == "derived" else self._root
 
     @property
     def root(self) -> Path:
@@ -365,7 +366,7 @@ class ParquetMarketStore:
         return written[-1]
 
     def read_daily_history(self, code: str) -> pd.DataFrame:
-        target = self._root / "daily" / f"code={code}" / "bars.parquet"
+        target = self._daily_root / "daily" / f"code={code}" / "bars.parquet"
         frame = _read_parquet_file(target)
         if "code" not in frame:
             frame.insert(0, "code", code)
@@ -539,8 +540,12 @@ class ParquetMarketStore:
         """从本地原始1分钟数据显式重建指定范围的日级特征。"""
         rebuilt_codes = 0
         rebuilt_rows = 0
+        reused_codes = 0
         missing_codes: list[str] = []
         for code in codes:
+            if self.minute1_summaries_valid(code, start_date, end_date):
+                reused_codes += 1
+                continue
             raw = self.read_minute1_history(code, start_date, end_date)
             if raw.empty:
                 missing_codes.append(code)
@@ -556,9 +561,32 @@ class ParquetMarketStore:
             "requestedCodes": len(codes),
             "rebuiltCodes": rebuilt_codes,
             "rebuiltRows": rebuilt_rows,
+            "reusedCodes": reused_codes,
             "missingRawCodes": len(missing_codes),
             "missingRawSamples": missing_codes[:20],
         }
+
+    def minute1_summaries_valid(
+        self, code: str, start_date: date, end_date: date
+    ) -> bool:
+        """检查 1 分钟摘要是否覆盖原始数据中的完整交易日。"""
+        try:
+            raw = self.read_minute1_history(code, start_date, end_date)
+            summary = self.read_minute1_summaries(code)
+        except (OSError, ValueError, KeyError, AttributeError):
+            return False
+        if raw.empty or summary.empty:
+            return False
+        expected_dates = set(raw["trade_date"].dt.date)
+        summary_dates = set(summary["trade_date"].dt.date)
+        complete = summary[
+            summary["minute1_complete"].fillna(False).astype(bool)
+            & summary["buy_complete"].fillna(False).astype(bool)
+            & summary["sell_complete"].fillna(False).astype(bool)
+        ]
+        return expected_dates.issubset(summary_dates) and expected_dates.issubset(
+            set(complete["trade_date"].dt.date)
+        )
 
     def _read_minute_summary_frame(
         self,
@@ -670,11 +698,13 @@ class ParquetMarketStore:
         code: str,
         start_date: date,
         end_date: date,
+        expected_dates: set[date] | None = None,
     ) -> bool:
-        """检查原始5分钟行情的完整交易日覆盖率是否达到模型门槛。"""
+        """检查原始5分钟行情，不要求读取日线即可判断覆盖范围。"""
         try:
             minutes = self.read_minutes(code, start_date, end_date)
-            daily = self._eligible_daily_rows(self.read_daily_history(code))
+            if expected_dates is None:
+                daily = self._eligible_daily_rows(self.read_daily_history(code))
         except (OSError, ValueError, KeyError, AttributeError):
             return False
         required = {
@@ -691,12 +721,18 @@ class ParquetMarketStore:
         }
         if minutes.empty or not required.issubset(minutes.columns):
             return False
-        expected_dates = set(
-            pd.to_datetime(daily["trade_date"], errors="raise")
-            .dt.date.loc[
-                lambda values: values.between(start_date, end_date)
-            ]
-        )
+        if expected_dates is None:
+            expected_dates = set(
+                pd.to_datetime(daily["trade_date"], errors="raise")
+                .dt.date.loc[
+                    lambda values: values.between(start_date, end_date)
+                ]
+            )
+        else:
+            expected_dates = {
+                value for value in expected_dates
+                if start_date <= value <= end_date
+            }
         if not expected_dates:
             return True
         summaries = summarize_trading_windows(minutes)
@@ -718,12 +754,15 @@ class ParquetMarketStore:
         code: str,
         start_date: date,
         end_date: date,
+        expected_dates: set[date] | None = None,
     ) -> bool:
         """用已生成的日级摘要轻量判断原始5分钟数据是否需要补采。"""
         raw_path = self._root / "minute5" / f"code={code}" / "bars.parquet"
         if not raw_path.is_file():
             return False
-        if self._minute_coverage_valid(code, start_date, end_date):
+        if expected_dates is None and self._minute_coverage_valid(
+            code, start_date, end_date
+        ):
             return True
         try:
             raw_dates = pd.to_datetime(
@@ -732,13 +771,19 @@ class ParquetMarketStore:
                 ].to_pandas(),
                 errors="raise",
             ).dt.date
-            daily = self._eligible_daily_rows(self.read_daily_history(code))
-            expected_dates = set(
-                pd.to_datetime(daily["trade_date"], errors="raise")
-                .dt.date.loc[
-                    lambda values: values.between(start_date, end_date)
-                ]
-            )
+            if expected_dates is None:
+                daily = self._eligible_daily_rows(self.read_daily_history(code))
+                expected_dates = set(
+                    pd.to_datetime(daily["trade_date"], errors="raise")
+                    .dt.date.loc[
+                        lambda values: values.between(start_date, end_date)
+                    ]
+                )
+            else:
+                expected_dates = {
+                    value for value in expected_dates
+                    if start_date <= value <= end_date
+                }
         except (OSError, ValueError, KeyError, AttributeError):
             return False
         if not expected_dates:
@@ -748,7 +793,9 @@ class ParquetMarketStore:
             < MINUTE_HISTORY_MIN_COMPLETE_RATIO
         ):
             return False
-        valid = self.minute_history_valid(code, start_date, end_date)
+        valid = self.minute_history_valid(
+            code, start_date, end_date, expected_dates=expected_dates
+        )
         if valid:
             self._write_minute_coverage(code, start_date, end_date)
         return valid

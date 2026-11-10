@@ -34,6 +34,7 @@ class MarketDataProvider(Protocol):
         codes: list[str],
         start_date: date,
         end_date: date,
+        expected_dates: set[date] | None = None,
     ) -> dict[str, object]: ...
 
     def sync_minute(

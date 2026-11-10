@@ -15,7 +15,7 @@ from stock_trading.broker.client import ZXBrokerClient
 from stock_trading.config import AppConfig
 from stock_trading.utils.instruments import normalize_instrument
 from stock_trading.market.storage import ParquetMarketStore
-from stock_trading.market.derived import prepare_daily_derivatives, transfer_daily_source
+from stock_trading.market.derived import prepare_daily_derivatives
 from stock_trading.market.trade_calendar import trade_dates
 from stock_trading.market.quality import (
     require_data_quality,
@@ -55,7 +55,11 @@ from stock_trading.utils.time_utils import shanghai_now, shanghai_today
 from stock_trading.market.trade_calendar import shift_trade_date
 
 LOGGER = logging.getLogger(__name__)
-COLLECTION_TYPES = ("stock", "daily", "minute5", "minute1")
+COLLECTION_LEVELS = {
+    1: ("daily",),
+    2: ("minute5",),
+    3: ("minute1",),
+}
 
 
 @contextmanager
@@ -75,39 +79,44 @@ def collect_workflow(
     start_date: date,
     end_date: date,
     requested_codes: list[str] | None = None,
-    required_fields: tuple[str, ...] | None = None,
-    requested_types: tuple[str, ...] | None = None,
+    level: int = 1,
 ) -> dict[str, object]:
-    """按固定顺序采集全部数据类型，单项失败不阻断后续阶段。"""
-    collection_types = _collection_types(required_fields, requested_types)
-    if requested_codes and "stock" in collection_types:
-        LOGGER.warning("stock 始终写入全市场快照，--codes 对 stock 不生效")
+    """按数据层级顺序幂等采集；每一层都可从数据内容恢复。"""
+    if level not in COLLECTION_LEVELS:
+        raise ValueError("数据层级只能是 1、2 或 3")
+    collection_types = _collection_types(level)
 
     state = StateStore(config.state_db_path, calendar_dir=config.calendar_dir)
     store = ParquetMarketStore(config.market_dir)
-    collection: dict[str, object] = {}
-    errors: dict[str, str] = {}
     today = shanghai_today()
-    stocks: pd.DataFrame | None = None
-    codes: list[str] | None = None
+    try:
+        stocks, stock_result = ensure_stock_info(config, store)
+    except Exception as error:
+        stock_task = state.start_task("COLLECT_STOCK", today)
+        state.finish_task(stock_task, False, error)
+        return {
+            "status": "PARTIAL", "types": list(collection_types), "level": level,
+            "startDate": start_date.isoformat(), "endDate": end_date.isoformat(),
+            "collection": {"ensure_stock_info": {"status": "FAILED", "error": str(error)}},
+            "errors": {"ensure_stock_info": str(error)},
+        }
+    stock_task = state.start_task("COLLECT_STOCK", today)
+    state.finish_task(stock_task, True)
+    collection: dict[str, object] = {"ensure_stock_info": stock_result}
+    errors: dict[str, str] = {}
+    codes = _collection_codes(stocks, start_date, end_date, requested_codes)
     for collection_type in collection_types:
-        task_date = today if collection_type == "stock" else end_date
+        task_date = end_date
         business_key = state.start_task(
             f"COLLECT_{collection_type.upper()}", task_date
         )
         try:
-            if collection_type != "stock" and stocks is None:
-                stocks = _local_stock_basics(store)
-                codes = _collection_codes(
-                    stocks, start_date, end_date, requested_codes
-                )
             result = _collect_type(
                 config,
                 store,
                 collection_type,
                 start_date,
                 end_date,
-                requested_codes,
                 stocks,
                 codes,
             )
@@ -129,6 +138,7 @@ def collect_workflow(
     summary = {
         "status": "PARTIAL" if errors else "SUCCESS",
         "types": list(collection_types),
+        "level": level,
         "startDate": start_date.isoformat(),
         "endDate": end_date.isoformat(),
         "collection": collection,
@@ -137,28 +147,8 @@ def collect_workflow(
     return summary
 
 
-def _collection_types(
-    required_fields: tuple[str, ...] | None,
-    requested_types: tuple[str, ...] | None = None,
-) -> tuple[str, ...]:
-    if requested_types is not None:
-        unknown = set(requested_types) - set(COLLECTION_TYPES)
-        if unknown:
-            raise ValueError(f"不支持的采集类型：{','.join(sorted(unknown))}")
-        return tuple(name for name in COLLECTION_TYPES if name in requested_types)
-    if required_fields is None:
-        return COLLECTION_TYPES
-    selected = {"stock"}
-    field_types = {
-        "daily": "daily",
-        "factor": "daily",
-        "basic": "daily",
-        "minute_summary": "minute5",
-        "minute5": "minute5",
-        "minute1": "minute1",
-    }
-    selected.update(field_types[field] for field in required_fields if field in field_types)
-    return tuple(name for name in COLLECTION_TYPES if name in selected)
+def _collection_types(level: int) -> tuple[str, ...]:
+    return COLLECTION_LEVELS[level]
 
 
 def _collect_type(
@@ -167,12 +157,9 @@ def _collect_type(
     collection_type: str,
     start_date: date,
     end_date: date,
-    requested_codes: list[str] | None,
     stocks: pd.DataFrame | None = None,
     codes: list[str] | None = None,
 ) -> dict[str, object]:
-    if collection_type == "stock":
-        return _collect_stock(config, store)
     if stocks is None or codes is None:
         raise ValueError("非基础采集缺少股票范围")
     if collection_type == "daily":
@@ -184,9 +171,10 @@ def _collect_type(
     raise ValueError(f"不支持的采集类型：{collection_type}")
 
 
-def _collect_stock(
+def ensure_stock_info(
     config: AppConfig, store: ParquetMarketStore
-) -> dict[str, object]:
+) -> tuple[pd.DataFrame, dict[str, object]]:
+    """检查并按需补齐股票基础信息，返回本次运行可复用的清单。"""
     provider = l1_market_provider(config)
     snapshot_date = resolve_completed_trade_date(store, provider, shanghai_now())
     if store.stock_basics_valid(snapshot_date):
@@ -199,7 +187,9 @@ def _collect_stock(
     quality = _stock_quality(store, snapshot_date)
     if not quality["valid"]:
         raise ValueError("股票清单快照检查失败")
-    return {
+    stocks = store.read_stock_basics()
+    return stocks, {
+        "status": "SUCCESS",
         "skipped": bool(result.get("skipped")),
         "provider": provider.name,
         "scope": "full-market",
@@ -291,7 +281,9 @@ def _collect_minute5(
             ready = {
                 code
                 for code in codes
-                if store.minute_collection_ready(code, batch_start, batch_end)
+                if store.minute_collection_ready(
+                    code, batch_start, batch_end, expected_dates=set(batch)
+                )
             }
             usable_codes.update(ready)
             pending = [code for code in codes if code not in ready]
@@ -304,7 +296,7 @@ def _collect_minute5(
             )
             fetched = (
                 provider.sync_minute5(
-                    store, pending, batch_start, batch_end
+                    store, pending, batch_start, batch_end, expected_dates=set(batch)
                 )
                 if pending
                 else {"skipped": True, "reason": "该日期批次已完整"}
@@ -372,40 +364,13 @@ def _collect_minute(
         config.data_quality_min_ratio,
     )
     return {
+        "skipped": bool(result.get("targetCodeDates", 0))
+        and int(result.get("targetCodeDates", 0)) == int(result.get("skippedCodeDates", 0)),
         "provider": provider.name,
         "researchCodes": len(codes),
         "result": result,
         "dataQuality": quality,
     }
-
-
-def _local_stock_basics(store: ParquetMarketStore) -> pd.DataFrame:
-    try:
-        stocks = store.read_stock_basics()
-    except (OSError, ValueError, KeyError) as error:
-        raise ValueError(
-            "未找到本地股票基础信息；请先执行 stock data-collect"
-        ) from error
-    if stocks.empty or "snapshot_date" not in stocks:
-        raise ValueError(
-            "本地股票基础信息无效；请先执行 stock data-collect"
-        )
-    snapshot_dates = pd.to_datetime(
-        stocks["snapshot_date"], errors="coerce"
-    ).dropna()
-    if snapshot_dates.empty:
-        raise ValueError(
-            "本地股票基础信息缺少快照日期；请先执行 stock data-collect"
-        )
-    snapshot_date = snapshot_dates.max().date()
-    today = shanghai_today()
-    if snapshot_date != today:
-        LOGGER.warning(
-            "本地股票基础信息不是今日快照，仍继续执行：快照=%s；今日=%s",
-            snapshot_date,
-            today,
-        )
-    return stocks
 
 
 def _stock_quality(
@@ -556,9 +521,13 @@ def derive_workflow(
     """将 raw 原始事实转换为可供 prepare 独立消费的 derived 数据。"""
     raw_store = ParquetMarketStore(config.market_dir)
     derived_store = ParquetMarketStore(config.market_dir, source="derived")
-    ensure_trade_calendar(
-        raw_store, l1_market_provider(config), range(start_date.year, end_date.year + 1)
-    )
+    for year in range(start_date.year, end_date.year + 1):
+        try:
+            trade_dates(year, raw_store.calendar_dir)
+        except (FileNotFoundError, OSError, ValueError) as error:
+            raise ValueError(
+                f"缺少 {year} 年本地交易日历；请先执行 stock data-collect"
+            ) from error
     try:
         stocks = raw_store.read_stock_basics()
     except (OSError, ValueError, KeyError) as error:
@@ -574,9 +543,6 @@ def derive_workflow(
         if raw_store.daily_history_valid(code, start_dates[code], end_dates[code])
     ]
     result: dict[str, object] = {
-        "daily": transfer_daily_source(
-            raw_store, derived_store, raw_daily_ready, start_dates, end_dates
-        ),
         "indicators": prepare_daily_derivatives(
             raw_store,
             raw_daily_ready,

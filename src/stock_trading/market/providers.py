@@ -101,6 +101,7 @@ class BaoStockMarketProvider:
         codes: list[str],
         start_date: date,
         end_date: date,
+        expected_dates: set[date] | None = None,
     ) -> dict[str, object]:
         batches: list[tuple[date, date]] = []
         cursor = start_date
@@ -121,7 +122,10 @@ class BaoStockMarketProvider:
             pending_codes = [
                 code
                 for code in codes
-                if not store.minute_history_valid(code, batch_start, batch_end)
+                if not store.minute_history_valid(
+                    code, batch_start, batch_end,
+                    expected_dates=expected_dates,
+                )
             ]
             skipped = len(codes) - len(pending_codes)
             skipped_code_batches += skipped
@@ -204,7 +208,9 @@ class BaoStockMarketProvider:
         completed_codes = [
             code
             for code in codes
-            if store.minute_collection_ready(code, start_date, end_date)
+            if store.minute_collection_ready(
+                code, start_date, end_date, expected_dates=expected_dates
+            )
         ]
         return {
             "provider": self.name,
@@ -390,8 +396,9 @@ class ZXBrokerMarketProvider:
         codes: list[str],
         start_date: date,
         end_date: date,
+        expected_dates: set[date] | None = None,
     ) -> dict[str, object]:
-        del store, codes, start_date, end_date
+        del store, codes, start_date, end_date, expected_dates
         raise ValueError("券商适配器只提供 1 分钟行情")
 
     def sync_minute(

@@ -14,8 +14,8 @@ from stock_trading.market.quality import (
     research_coverage_ranges,
 )
 from stock_trading.market.storage import ParquetMarketStore
-from stock_trading.market.sync import research_codes, resolve_completed_trade_date
-from stock_trading.market.providers import l1_market_provider
+from stock_trading.market.sync import research_codes
+from stock_trading.market.trade_calendar import latest_completed_trade_date
 from stock_trading.research.artifacts import (
     model_artifacts_valid,
     replace_model_directory,
@@ -40,8 +40,9 @@ MINIMUM_MODEL_DAYS = 63
 
 
 def default_training_range(config: AppConfig) -> tuple[date, date]:
-    end_date = resolve_completed_trade_date(
-        ParquetMarketStore(config.market_dir), l1_market_provider(config), shanghai_now()
+    store = ParquetMarketStore(config.market_dir)
+    end_date = latest_completed_trade_date(
+        shanghai_now(), calendar_dir=store.calendar_dir
     )
     return end_date - timedelta(days=config.market_history_days), end_date
 
