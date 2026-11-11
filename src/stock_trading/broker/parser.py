@@ -203,14 +203,38 @@ def parse_minute_series(
         raise ValueError("券商分钟行情 PRICEUNIT 无效")
 
     pre_close_raw, open_raw = _snapshot_prices(response)
-    base_raw = _price_base(response)
     start_position = int(str(response.get("STARTPOS") or "0"))
-    if start_position == 0 and open_raw > 0 and rows:
+    try:
+        base_raw = _price_base(response)
+    except ValueError as error:
+        if "价格基准缺失" not in str(error):
+            raise
+        base_raw = 0
+    if (
+        base_raw <= 0
+        and pre_close_raw <= 0
+        and open_raw <= 0
+        and all(
+            price_offset == 0
+            and average_offset == 0
+            and volume_lots == 0
+            for price_offset, average_offset, volume_lots in rows
+        )
+    ):
+        return BrokerMinuteSeries(
+            stock_code=stock_code,
+            trade_date=trade_date,
+            pre_close=Decimal("0"),
+            open_price=Decimal("0"),
+            points=(),
+        )
+    if base_raw <= 0 and start_position == 0 and open_raw > 0 and rows:
         inferred_base = open_raw - rows[0][0]
         if inferred_base <= 0:
             raise ValueError("券商分钟行情价格基准校验失败")
         base_raw = inferred_base
-
+    if base_raw <= 0:
+        raise ValueError("券商分钟行情价格基准缺失且无法推导")
     slots = _minute_slots(str(response.get("BEGINDATE") or ""), trade_date)
     selected_slots = slots[start_position : start_position + count]
     if len(selected_slots) != count:

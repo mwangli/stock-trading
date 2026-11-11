@@ -6,7 +6,7 @@ from decimal import Decimal, ROUND_FLOOR
 
 from stock_trading.broker.models import FiveLevelQuote
 from stock_trading.config import FIXED_TIME_URGENCY_STRATEGY
-from stock_trading.utils.instruments import normalize_instrument
+from stock_trading.market.domain import normalize_instrument
 
 LOT_SIZE = 100
 

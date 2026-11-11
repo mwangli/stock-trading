@@ -1,4 +1,4 @@
-# AI_GENERATE_START ----------------------------------------
+# AI_GENERATE_START ------------------------------------------
 from __future__ import annotations
 
 import logging
@@ -6,15 +6,13 @@ import os
 import sys
 from contextlib import contextmanager
 from contextvars import ContextVar
-from logging.handlers import WatchedFileHandler
-from pathlib import Path
 from typing import Iterator
 
 _TASK = ContextVar("log_task", default="-")
-_STEP = ContextVar("log_step", default="-/-")
-_PROGRESS = ContextVar("log_progress", default="-/-")
+_STEP = ContextVar("log_step", default="-")
+_PROGRESS = ContextVar("log_progress", default="-")
 _TARGET = ContextVar("log_target", default="-")
-_STEP_LOCKED = ContextVar("log_step_locked", default=False)
+
 _LEVEL_COLORS = {
     logging.DEBUG: "\033[90m",
     logging.INFO: "\033[32m",
@@ -32,48 +30,16 @@ _LEVEL_LABELS = {
 _ANSI_RESET = "\033[0m"
 
 
-def _default_log_path() -> Path:
-    source_project_dir = Path(__file__).resolve().parents[3]
-    project_dir = source_project_dir if os.name == "nt" else Path.home() / "stock-trading"
-    return project_dir / "logs" / "run.log"
+class LogContextFilter:
+    """将命令产生的日志字段写入标准 LogRecord。"""
 
-
-class _ContextFilter(logging.Filter):
-    def filter(self, record: logging.LogRecord) -> bool:
-        record.task = _TASK.get()
-        record.step = _STEP.get()
-        record.progress = _PROGRESS.get()
-        target = _TARGET.get()
-        record.target = (
-            target
-            if target != "-"
-            else record.name.removeprefix("stock_trading.") or "stock_trading"
-        )
+    def filter(self, record: object) -> bool:
+        log_record = record
+        log_record.task = _TASK.get()
+        log_record.step = _STEP.get()
+        log_record.progress = _PROGRESS.get()
+        log_record.target = _TARGET.get()
         return True
-
-
-class _ColorFormatter(logging.Formatter):
-    def __init__(self, *, use_color: bool) -> None:
-        super().__init__(
-            fmt=(
-                "%(asctime)s | %(level_label)s | task=%(task)s | "
-                "step=%(step)s | progress=%(progress)s | "
-                "target=%(target)s | %(message)s"
-            ),
-            datefmt="%Y-%m-%d %H:%M:%S",
-        )
-        self._use_color = use_color
-
-    def format(self, record: logging.LogRecord) -> str:
-        label = _LEVEL_LABELS.get(record.levelno, record.levelname[:5]).ljust(5)
-        color = _LEVEL_COLORS.get(record.levelno) if self._use_color else None
-        record.level_label = (
-            f"{color}{label}{_ANSI_RESET}" if color else label
-        )
-        try:
-            return super().format(record)
-        finally:
-            record.__dict__.pop("level_label", None)
 
 
 @contextmanager
@@ -85,14 +51,15 @@ def log_context(
     target: str | None = None,
 ) -> Iterator[None]:
     tokens = []
-    if task is not None:
-        tokens.append((_TASK, _TASK.set(task)))
-    if step is not None and not _STEP_LOCKED.get():
-        tokens.append((_STEP, _STEP.set(step)))
-    if progress is not None:
-        tokens.append((_PROGRESS, _PROGRESS.set(progress)))
-    if target is not None:
-        tokens.append((_TARGET, _TARGET.set(target)))
+    values = (
+        (_TASK, task),
+        (_STEP, step),
+        (_PROGRESS, progress),
+        (_TARGET, target),
+    )
+    for variable, value in values:
+        if value is not None:
+            tokens.append((variable, variable.set(value)))
     try:
         yield
     finally:
@@ -100,42 +67,67 @@ def log_context(
             variable.reset(token)
 
 
-@contextmanager
-def fixed_log_step(step: str) -> Iterator[None]:
-    """固定顶层业务阶段，避免内部流程覆盖阶段编号。"""
-    step_token = _STEP.set(step)
-    lock_token = _STEP_LOCKED.set(True)
-    try:
-        yield
-    finally:
-        _STEP_LOCKED.reset(lock_token)
-        _STEP.reset(step_token)
-
-
 def set_log_context(
     *,
+    task: str | None = None,
     step: str | None = None,
     progress: str | None = None,
     target: str | None = None,
 ) -> None:
-    if step is not None and not _STEP_LOCKED.get():
-        _STEP.set(step)
-    if progress is not None:
-        _PROGRESS.set(progress)
-    if target is not None:
-        _TARGET.set(target)
+    """由命令或工作流更新当前日志事件的业务字段。"""
+    values = (
+        (_TASK, task),
+        (_STEP, step),
+        (_PROGRESS, progress),
+        (_TARGET, target),
+    )
+    for variable, value in values:
+        if value is not None:
+            variable.set(value)
 
 
 def should_log_progress(current: int, total: int, steps: int = 20) -> bool:
-    """Limit long loops to a bounded number of ordinary progress logs."""
+    """限制长循环日志数量，避免每条记录都输出。"""
     if total <= 0:
         return current == 1
     interval = max(1, total // max(1, steps))
     return current == 1 or current == total or current % interval == 0
 
 
+class _ColorFormatter(logging.Formatter):
+    def __init__(self, *, use_color: bool) -> None:
+        super().__init__(datefmt="%Y-%m-%d %H:%M:%S")
+        self._use_color = use_color
+
+    def format(self, record: logging.LogRecord) -> str:
+        label = _LEVEL_LABELS.get(record.levelno, record.levelname[:5]).ljust(5)
+        color = _LEVEL_COLORS.get(record.levelno) if self._use_color else None
+        record.level_label = (
+            f"{color}{label}{_ANSI_RESET}" if color else label
+        )
+        try:
+            task = getattr(record, "task", "-")
+            step = getattr(record, "step", "-")
+            progress = getattr(record, "progress", "-")
+            target = getattr(record, "target", "-")
+            parts = [f"task={task}", f"step={step}"]
+            parts.extend(
+                [
+                    f"progress={progress}",
+                    f"target={target}",
+                    record.getMessage(),
+                ]
+            )
+            return (
+                f"{self.formatTime(record, self.datefmt)} | "
+                f"{record.level_label} | {' | '.join(parts)}"
+            )
+        finally:
+            record.__dict__.pop("level_label", None)
+
+
 def configure_logging() -> None:
-    """配置结构化控制台日志和 UTF-8 文件日志。"""
+    """配置结构化控制台日志。"""
     logger = logging.getLogger("stock_trading")
     if logger.handlers:
         return
@@ -143,22 +135,12 @@ def configure_logging() -> None:
     level = getattr(logging, level_name, logging.INFO)
     interactive = bool(getattr(sys.stderr, "isatty", lambda: False)())
     use_color = interactive and "NO_COLOR" not in os.environ
-    if os.getenv("STOCK_TRADING_CONSOLE_LOG", "1") != "0":
-        handler = logging.StreamHandler(sys.stderr)
-        handler.addFilter(_ContextFilter())
-        handler.setFormatter(_ColorFormatter(use_color=use_color))
-        logger.addHandler(handler)
-
-    if os.getenv("STOCK_TRADING_FILE_LOG", "1") != "0":
-        log_path = _default_log_path()
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        # Multiple collector processes share the project log on Windows.
-        # In-process rotation can race across those processes while renaming
-        # the same file, producing WinError 32 and noisy logging failures.
-        file_handler = WatchedFileHandler(log_path, encoding="utf-8")
-        file_handler.addFilter(_ContextFilter())
-        file_handler.setFormatter(_ColorFormatter(use_color=False))
-        logger.addHandler(file_handler)
+    handler = logging.StreamHandler(sys.stderr)
+    handler.addFilter(LogContextFilter())
+    handler.setFormatter(_ColorFormatter(use_color=use_color))
+    logger.addHandler(handler)
     logger.setLevel(level)
     logger.propagate = False
-# AI_GENERATE_END ----------------------------------------
+
+
+# AI_GENERATE_END ------------------------------------------

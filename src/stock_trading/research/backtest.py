@@ -1,4 +1,4 @@
-# AI_GENERATE_START------ -------------------------------
+# AI_GENERATE_START------- -------------------------------
 from __future__ import annotations
 
 import json
@@ -12,12 +12,15 @@ from pathlib import Path
 import pandas as pd
 
 from stock_trading.config import AppConfig
-from stock_trading.market.rules import limit_price, limit_rate, recent_limit_down_count
-from stock_trading.utils.instruments import normalize_instrument, to_market_code
+from stock_trading.market.domain import limit_price, limit_rate, recent_limit_down_count
+from stock_trading.market.domain import normalize_instrument, to_market_code
 from stock_trading.market.storage import ParquetMarketStore
-from stock_trading.market.minute5_summary import require_window_contract
-from stock_trading.research.model_config import ModelSpec, resolve_model_spec
-from stock_trading.research.qlib_contract import TRADING_TIME_CONTRACT, trading_time_contract
+from stock_trading.market.transform import require_window_contract
+from stock_trading.research.config import (
+    ModelSpec,
+    TRADING_TIME_CONTRACT,
+    trading_time_contract,
+)
 from stock_trading.utils.logging_utils import set_log_context, should_log_progress
 
 
@@ -99,7 +102,7 @@ class PortfolioBacktester:
 
     def run(self, artifact_dir: Path) -> dict[str, object]:
         codes = sorted(self._topk["instrument"].map(to_market_code).unique())
-        set_log_context(step="1/4", progress="0/-", target="回测行情")
+        set_log_context(progress="0/-", target="回测行情")
         LOGGER.info("加载回测行情：股票数=%d", len(codes))
         self._load_market(codes)
         ranked = {
@@ -122,7 +125,7 @@ class PortfolioBacktester:
         retained_days = 0
 
         total_dates = len(simulation_dates)
-        set_log_context(step="2/4", progress="0/-", target="逐日模拟")
+        set_log_context(progress="0/-", target="逐日模拟")
         LOGGER.info("开始逐日模拟：交易日数=%d", total_dates)
         for index, timestamp in enumerate(simulation_dates, start=1):
             trade_date = timestamp.date()
@@ -215,7 +218,7 @@ class PortfolioBacktester:
                     len(rejects),
                 )
 
-        set_log_context(step="3/4", progress="-/-", target="收益汇总")
+        set_log_context(progress="-/-", target="收益汇总")
         LOGGER.info("开始汇总收益、费用和回撤")
         mark_to_market_equity = equity_rows[-1]["equity"] if equity_rows else cash
         monthly_performance = self._monthly_performance(trades, equity_rows)
@@ -228,7 +231,7 @@ class PortfolioBacktester:
             position,
             retained_days,
         )
-        set_log_context(step="4/4", progress="-/-", target=str(artifact_dir))
+        set_log_context(progress="-/-", target=str(artifact_dir))
         LOGGER.info("开始写入回测制品")
         artifact_dir.mkdir(parents=True, exist_ok=True)
         pd.DataFrame.from_records(trades).to_parquet(artifact_dir / "trades.parquet", index=False)
@@ -385,7 +388,7 @@ class PortfolioBacktester:
             1.0 - self._config.slippage_bps / 10_000.0
         )
         sell_notional = sell_price * position.quantity
-        sell_fees = self._sell_fees(sell_notional, position.quantity)
+        sell_fees = self._sell_fees(position.quantity)
         return (
             {
                 "sellDate": sell_date,
@@ -404,15 +407,17 @@ class PortfolioBacktester:
 
     def _affordable_quantity(self, cash: float, price: float) -> tuple[int, float]:
         quantity = math.floor(cash / (price * self._config.lot_size)) * self._config.lot_size
-        fees = self._buy_fees(price * quantity, quantity) if quantity > 0 else 0.0
+        fees = self._buy_fees(quantity) if quantity > 0 else 0.0
         return quantity, fees
 
-    def _buy_fees(self, notional: float, quantity: int) -> float:
-        slices = min(self._config.buy_slices, quantity // self._config.lot_size)
-        return _money(self._config.order_fee * slices)
+    def _buy_fees(self, quantity: int) -> float:
+        return self._order_fees(quantity, self._config.buy_slices)
 
-    def _sell_fees(self, notional: float, quantity: int) -> float:
-        slices = min(self._config.sell_slices, quantity // self._config.lot_size)
+    def _sell_fees(self, quantity: int) -> float:
+        return self._order_fees(quantity, self._config.sell_slices)
+
+    def _order_fees(self, quantity: int, max_slices: int) -> float:
+        slices = min(max_slices, quantity // self._config.lot_size)
         return _money(self._config.order_fee * slices)
 
     def _market_value(self, position: Position | None, trade_date: date) -> float:
@@ -580,6 +585,7 @@ class PortfolioBacktester:
 
 def run_portfolio_backtest(
     config: AppConfig,
+    spec: ModelSpec,
     model_dir: Path,
     artifact_dir: Path,
     initial_cash: Decimal | int | float,
@@ -598,8 +604,6 @@ def run_portfolio_backtest(
         limit_down_lookback_days=config.trading_limit_down_lookback_days,
         max_recent_limit_downs=config.trading_max_recent_limit_downs,
     )
-    metrics = json.loads((model_dir / "metrics.json").read_text(encoding="utf-8"))
-    spec = resolve_model_spec(metrics["modelId"])
     return PortfolioBacktester(
         ParquetMarketStore(config.market_dir),
         (qlib_dir or config.prepared_dir) / "calendars" / "day.txt",
@@ -799,4 +803,4 @@ def read_backtest_summary(directory: Path) -> dict[str, object]:
     """读取模型回测摘要。"""
     return json.loads((directory / "summary.json").read_text(encoding="utf-8"))
 
-# AI_GENERATE_END------ -------------------------------
+# AI_GENERATE_END------- -------------------------------

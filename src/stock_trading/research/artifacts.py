@@ -1,4 +1,4 @@
-# AI_GENERATE_START--- -------------------------
+# AI_GENERATE_START---- -------------------------
 from __future__ import annotations
 
 import json
@@ -10,9 +10,12 @@ from uuid import uuid4
 
 import pandas as pd
 
-from stock_trading.research.model_config import ModelSpec
-from stock_trading.research.qlib_contract import TRADING_TIME_CONTRACT, expected_label_contract
-from stock_trading.market.trade_calendar import shift_trade_date
+from stock_trading.research.config import (
+    ModelSpec,
+    TRADING_TIME_CONTRACT,
+    expected_label_contract,
+)
+from stock_trading.market.domain import shift_trade_date
 
 _REQUIRED_FILES = (
     "model.pkl",
@@ -52,13 +55,13 @@ def prediction_artifact_path(model_dir: Path, prediction_date: date) -> Path:
 
 
 def load_valid_prediction_artifact(
-    model_dir: Path, prediction_date: date, calendar_dir: Path | None = None,
+    model_dir: Path, prediction_date: date,
 ) -> pd.DataFrame | None:
     """读取一次排名制品，合同检查通过后返回可复用的数据。"""
     try:
         frame = pd.read_parquet(prediction_artifact_path(model_dir, prediction_date))
         dates = pd.to_datetime(frame["datetime"]).dt.date.unique()
-        execution_date = shift_trade_date(prediction_date, 1, calendar_dir).isoformat()
+        execution_date = shift_trade_date(prediction_date, 1).isoformat()
         generated = pd.to_datetime(frame["generated_at"], utc=True, errors="coerce")
         earliest = pd.Timestamp(prediction_date).tz_localize("Asia/Shanghai") + pd.Timedelta(hours=15)
         latest = pd.Timestamp(execution_date).tz_localize("Asia/Shanghai") + pd.Timedelta(hours=14)
@@ -86,11 +89,11 @@ def load_valid_prediction_artifact(
 
 
 def prediction_artifact_valid(
-    model_dir: Path, prediction_date: date, calendar_dir: Path | None = None,
+    model_dir: Path, prediction_date: date,
 ) -> bool:
     """保留布尔校验入口；需要内容的调用方直接使用加载函数。"""
     return (
-        load_valid_prediction_artifact(model_dir, prediction_date, calendar_dir)
+        load_valid_prediction_artifact(model_dir, prediction_date)
         is not None
     )
 
@@ -162,4 +165,4 @@ def validate_model_artifacts(directory: Path, spec: ModelSpec) -> None:
         raise ValueError(f"训练模型无法反序列化: {directory / 'model.pkl'}") from error
 
 
-# AI_GENERATE_END--- -------------------------
+# AI_GENERATE_END---- -------------------------

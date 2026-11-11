@@ -18,7 +18,7 @@ from typing import Iterator
 from uuid import uuid4
 
 from stock_trading.config import AppConfig
-from stock_trading.utils.logging_utils import should_log_progress
+from stock_trading.utils.logging_utils import set_log_context, should_log_progress
 
 LOGGER = logging.getLogger(__name__)
 REMOTE_DATA_ROOT = "stock-trading/data"
@@ -106,7 +106,15 @@ def sync_data(
     )
     operations: list[dict[str, object]] = []
     errors: dict[str, str] = {}
-    for scope in scopes:
+    total_scopes = len(scopes)
+    scope_names = {
+        "market": "market",
+        "prepared": "prepared",
+        "model": "model",
+        "state": "state",
+    }
+    for index, scope in enumerate(scopes, start=1):
+        set_log_context(step=f"{index}/{total_scopes} {scope_names[scope]}")
         try:
             LOGGER.info("%s 数据同步检查开始：范围=%s", direction, scope)
             local = _local_manifest(local_data_root, scope)

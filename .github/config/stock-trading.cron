@@ -5,8 +5,6 @@ MAILTO=""
 
 PROJECT_DIR=__PROJECT_DIR__
 LOG=__PROJECT_DIR__/logs/run.log
-STOCK_TRADING_FILE_LOG=1
-STOCK_TRADING_CONSOLE_LOG=0
 LOCK=__PROJECT_DIR__/data/state/scheduler.lock
 SCHEDULER=__PROJECT_DIR__/config/scheduler.sh
 LOGROTATE=__PROJECT_DIR__/config/stock-trading.logrotate

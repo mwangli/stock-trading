@@ -1,4 +1,4 @@
-# AI_GENERATE_START- ----------------------------------
+# AI_GENERATE_START-- ----------------------------------
 from __future__ import annotations
 
 import logging
@@ -7,6 +7,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 from time import monotonic, sleep
 from typing import Protocol
+from zoneinfo import ZoneInfo
 
 from stock_trading.broker.client import BrokerRejectedError
 from stock_trading.broker.models import (
@@ -17,10 +18,11 @@ from stock_trading.broker.models import (
 )
 from stock_trading.config import AppConfig
 from stock_trading.contracts import BUY_START, BUY_END, SELL_START, SELL_END, execution_window_seconds
-from stock_trading.market.trade_calendar import trade_dates
+from stock_trading.market.domain import trade_dates
 from stock_trading.state.store import ORDER_ACTIVE_STATUSES, StateStore
 from stock_trading.trading.strategy import permission_scope, affordable_quantity, select_execution_price
-from stock_trading.utils.time_utils import shanghai_now, utc_now
+
+SHANGHAI_ZONE = ZoneInfo("Asia/Shanghai")
 
 LOGGER = logging.getLogger(__name__)
 
@@ -504,14 +506,14 @@ class OrderExecutionOrchestrator:
         ]
 
     def _remaining_window_seconds(self, business_date: date, side: str) -> float:
-        now = shanghai_now()
+        now = datetime.now(SHANGHAI_ZONE)
         start_time, end_time = (
             (SELL_START, SELL_END) if side == "SELL" else (BUY_START, BUY_END)
         )
         if (
             side not in {"BUY", "SELL"}
             or now.date() != business_date
-            or business_date not in trade_dates(business_date.year, self._config.calendar_dir)
+            or business_date not in trade_dates(business_date.year)
             or not start_time <= now.time() < end_time
         ):
             return 0.0
@@ -534,7 +536,7 @@ class OrderExecutionOrchestrator:
         created_at = datetime.fromisoformat(str(intents[0]["created_at"]))
         if created_at.tzinfo is None:
             created_at = created_at.replace(tzinfo=UTC)
-        return max(0.0, (utc_now() - created_at.astimezone(UTC)).total_seconds())
+        return max(0.0, (datetime.now(UTC) - created_at.astimezone(UTC)).total_seconds())
 
     def _save_permission(
         self, scope: str, status: str, evidence_type: str, evidence_detail: str
@@ -546,7 +548,7 @@ class OrderExecutionOrchestrator:
                     "status": status,
                     "evidenceType": evidence_type,
                     "evidenceDetail": evidence_detail[:300],
-                    "observedAt": shanghai_now().isoformat(),
+                    "observedAt": datetime.now(SHANGHAI_ZONE).isoformat(),
                 }
             ]
         )
@@ -609,4 +611,4 @@ def _is_permission_denial(message: str) -> bool:
         keyword in normalized
         for keyword in ("无权限", "没有权限", "未开通", "禁止交易", "不允许交易")
     )
-# AI_GENERATE_END- ----------------------------------
+# AI_GENERATE_END-- ----------------------------------

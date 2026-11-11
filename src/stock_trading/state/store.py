@@ -1,23 +1,25 @@
-# AI_GENERATE_START---------- ------------------------------------------------------------------------------
+# AI_GENERATE_START----------- ------------------------------------------------------------------------------
 from __future__ import annotations
 
 import hashlib
 import json
 import logging
 import sqlite3
-from datetime import date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Iterable
+from zoneinfo import ZoneInfo
 
 from stock_trading.broker.models import BrokerAccount, BrokerOrder
 from stock_trading.utils.logging_utils import set_log_context
 from stock_trading.state.database import (
     SQLiteStateDatabase, SCHEMA, SCHEMA_VERSION, SCHEMA_MIGRATIONS,
 )
-from stock_trading.utils.time_utils import SHANGHAI_ZONE, utc_now
-from stock_trading.market.trade_calendar import shift_trade_date
-from stock_trading.research.qlib_contract import TRADING_TIME_CONTRACT
+from stock_trading.market.domain import shift_trade_date
+from stock_trading.contracts import TRADING_TIME_CONTRACT
+
+SHANGHAI_ZONE = ZoneInfo("Asia/Shanghai")
 
 LOGGER = logging.getLogger(__name__)
 
@@ -68,9 +70,8 @@ ORDER_TRANSITIONS = {
 class StateStore(SQLiteStateDatabase):
     """Transactional SQLite store for model, broker, and realized-trade state."""
 
-    def __init__(self, path: Path, calendar_dir: Path | None = None) -> None:
+    def __init__(self, path: Path) -> None:
         super().__init__(path)
-        self._calendar_dir = calendar_dir
 
     def initialize(self) -> None:
         """创建或校验当前状态库结构。"""
@@ -94,7 +95,7 @@ class StateStore(SQLiteStateDatabase):
         if retention_days <= 0:
             raise ValueError("通知保留天数必须大于 0")
         self.initialize()
-        created_at = utc_now()
+        created_at = datetime.now(UTC)
         expires_at = created_at + timedelta(days=retention_days)
         with self._connect() as connection:
             inserted = connection.execute(
@@ -123,7 +124,7 @@ class StateStore(SQLiteStateDatabase):
         self.initialize()
         task_cutoff = (reference_date - timedelta(days=180)).isoformat()
         history_cutoff = (reference_date - timedelta(days=366 * 5)).isoformat()
-        notification_cutoff = utc_now().isoformat()
+        notification_cutoff = datetime.now(UTC).isoformat()
         deleted: dict[str, int] = {}
         with self._connect() as connection:
             rules = (
@@ -179,7 +180,7 @@ class StateStore(SQLiteStateDatabase):
         import pandas as pd
 
         self.initialize()
-        set_log_context(step="1/3", progress="-/-", target="模型制品")
+        set_log_context(progress="-/-", target="模型制品")
         LOGGER.info("读取模型指标和完整测试集排名")
         metrics = json.loads((model_dir / "metrics.json").read_text(encoding="utf-8"))
         rankings = pd.read_parquet(model_dir / "test_predictions.parquet").dropna(
@@ -194,13 +195,13 @@ class StateStore(SQLiteStateDatabase):
         self._start_run(business_key, "IMPORT_MODEL", business_date)
         try:
             with self._connect() as connection:
-                set_log_context(step="2/3", progress="-/-", target="模型和预测")
+                set_log_context(progress="-/-", target="模型和预测")
                 LOGGER.info("写入模型和预测")
                 model_id = self._upsert_model(
                     connection, model_dir, metrics, model_status
                 )
                 prediction_rows = self._upsert_predictions(connection, model_id, rankings)
-            set_log_context(step="3/3", progress="-/-", target="模型制品")
+            set_log_context(progress="-/-", target="模型制品")
             LOGGER.info("提交事务并记录成功状态")
             self._finish_run(business_key, "SUCCESS", None)
         except BaseException as error:
@@ -618,7 +619,7 @@ class StateStore(SQLiteStateDatabase):
         if len(metadata) != 1:
             return False
         execution_date, generated_at, contract_version = metadata.iloc[0]
-        expected_execution = shift_trade_date(date.fromisoformat(prediction_date), 1, self._calendar_dir)
+        expected_execution = shift_trade_date(date.fromisoformat(prediction_date), 1)
         if execution_date != expected_execution.isoformat() or contract_version != TRADING_TIME_CONTRACT:
             return False
         with self._connect() as connection:
@@ -655,7 +656,7 @@ class StateStore(SQLiteStateDatabase):
         import pandas as pd
 
         self.initialize()
-        set_log_context(step="1/3", progress="-/-", target=str(prediction_path))
+        set_log_context(progress="-/-", target=str(prediction_path))
         LOGGER.info("读取预测制品")
         predictions = pd.read_parquet(prediction_path)
         required = {
@@ -675,7 +676,7 @@ class StateStore(SQLiteStateDatabase):
         if metrics.get("timeContractVersion") != TRADING_TIME_CONTRACT:
             raise ValueError("模型时间合同已过期，请重新训练后生成排名")
         feature_date = prediction_dates[0]
-        expected_execution = shift_trade_date(feature_date, 1, self._calendar_dir)
+        expected_execution = shift_trade_date(feature_date, 1)
         earliest = datetime.combine(feature_date, time(15, 0), SHANGHAI_ZONE)
         latest = datetime.combine(expected_execution, time(14, 0), SHANGHAI_ZONE)
         time_metadata = predictions[
@@ -697,12 +698,12 @@ class StateStore(SQLiteStateDatabase):
         self._start_run(business_key, "PREDICT", business_date)
         try:
             with self._connect() as connection:
-                set_log_context(step="2/3", progress="-/-", target="模型版本")
+                set_log_context(progress="-/-", target="模型版本")
                 LOGGER.info("绑定模型版本")
                 model_id = self._upsert_model(
                     connection, model_dir, metrics, artifact_hash=model_hash
                 )
-                set_log_context(step="3/3", progress="-/-", target="横截面排名")
+                set_log_context(progress="-/-", target="横截面排名")
                 LOGGER.info("写入横截面排名：候选数=%d", len(predictions))
                 # 全横截面原子替换，避免重排后被剔除证券仍留在旧快照中。
                 connection.execute(
@@ -733,7 +734,7 @@ class StateStore(SQLiteStateDatabase):
         """只读取前一交易日特征、绑定本执行日且合同匹配的排名。"""
         self.initialize()
         execution_date = date.fromisoformat(business_date)
-        prediction_date = shift_trade_date(execution_date, -1, self._calendar_dir).isoformat()
+        prediction_date = shift_trade_date(execution_date, -1).isoformat()
         with self._connect() as connection:
             model_version_id = connection.execute(
                 """
@@ -1228,6 +1229,21 @@ class StateStore(SQLiteStateDatabase):
             ).fetchone()
         return dict(row) if row else None
 
+    def latest_task_status(self, task_type: str) -> dict[str, Any] | None:
+        """读取指定类型最近一次任务状态。"""
+        self.initialize()
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM task_run
+                WHERE task_type = ?
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (task_type,),
+            ).fetchone()
+        return dict(row) if row else None
+
     @staticmethod
     def _assert_same_order_intent(
         existing: sqlite3.Row,
@@ -1463,7 +1479,7 @@ class StateStore(SQLiteStateDatabase):
 
 def _now() -> str:
     """用途：生成统一 UTC 时间；输入：无；输出：ISO-8601 时间字符串。"""
-    return utc_now().isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _artifact_fingerprint(*paths: Path) -> str:
@@ -1486,4 +1502,4 @@ def _broker_order_matches_intent(order: BrokerOrder, intent: sqlite3.Row) -> boo
         and order.order_quantity == int(intent["quantity"])
         and order.order_price == Decimal(str(intent["price"]))
     )
-# AI_GENERATE_END---------- ------------------------------------------------------------------------------
+# AI_GENERATE_END----------- ------------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-# AI_GENERATE_START-------- -----------------------------
+# AI_GENERATE_START--------- -----------------------------
 from __future__ import annotations
 
 import logging
@@ -14,12 +14,12 @@ from stock_trading.broker.models import (
     FiveLevelQuote,
 )
 from stock_trading.config import AppConfig
-from stock_trading.market.rules import recent_limit_down_count
+from stock_trading.market.domain import recent_limit_down_count
 from stock_trading.market.storage import ParquetMarketStore
-from stock_trading.utils.instruments import normalize_instrument, to_broker_code, to_market_code
+from stock_trading.market.domain import normalize_instrument, to_broker_code, to_market_code
 from stock_trading.state.store import StateStore
 from stock_trading.trading.strategy import permission_scope, affordable_quantity
-from stock_trading.market.trade_calendar import count_holding_trade_days
+from stock_trading.market.domain import count_holding_trade_days
 
 LOGGER = logging.getLogger(__name__)
 
@@ -155,7 +155,6 @@ class LiveTradingOrchestrator:
         return count_holding_trade_days(
             buy_date,
             business_date,
-            self._config.calendar_dir,
         )
 
     def _select_afternoon_buy_target(self, business_date: date) -> dict[str, object]:
@@ -389,4 +388,4 @@ class LiveTradingOrchestrator:
             "targets": [target] if target else [],
             "rejected": rejected,
         }
-# AI_GENERATE_END-------- -----------------------------
+# AI_GENERATE_END--------- -----------------------------

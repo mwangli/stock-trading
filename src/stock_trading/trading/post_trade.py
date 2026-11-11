@@ -18,7 +18,7 @@ from stock_trading.broker.models import BrokerFeeBreakdown, BrokerOrder
 from stock_trading.config import AppConfig
 from stock_trading.state.store import StateStore
 from stock_trading.trading.strategy import permission_scope
-from stock_trading.utils.instruments import normalize_instrument
+from stock_trading.market.domain import normalize_instrument
 from stock_trading.utils.logging_utils import set_log_context
 
 LOGGER = logging.getLogger(__name__)
@@ -77,9 +77,11 @@ class BrokerOrderSyncService:
                 len(valid_orders),
             )
 
+        set_log_context(step="3/4 成交")
         settlement = IncrementalSettlementService(
             self._config, self._state_store
         ).settle()
+        set_log_context(step="4/4 收益闭环")
         return {
             "startDate": start_date.isoformat(),
             "endDate": end_date.isoformat(),
@@ -310,7 +312,7 @@ class RealizedProfitService:
     def summarize(
         self, model_id: str, business_date: date
     ) -> dict[str, object]:
-        set_log_context(step="1/2", progress="-/-", target=str(business_date))
+        set_log_context(progress="-/-", target=str(business_date))
         profit = self._state_store.realized_performance(model_id, business_date)
         LOGGER.info(
             "已实现收益汇总完成：闭环=%d；数量=%d；成本=%s；卖出额=%s；净收益=%s",
@@ -331,7 +333,7 @@ class ModelReviewService:
         self._state_store = state_store
 
     def review(self, model_id: str, business_date: date) -> dict[str, object]:
-        set_log_context(step="2/2", progress="-/-", target=str(business_date))
+        set_log_context(progress="-/-", target=str(business_date))
         model_version_id = self._state_store.latest_model_version_id(model_id)
         window_observations = self._config.model_evaluation_observations
         rows = self._state_store.recent_monthly_realized_performance(
@@ -473,6 +475,10 @@ class BrokerPermissionSyncService:
                 allowed += status == "ALLOWED"
                 denied += status == "DENIED"
                 index = skipped + checked
+                set_log_context(
+                    progress=f"{index}/{total}",
+                    target=instrument,
+                )
                 if status == "DENIED" or index == total or index % 100 == 0:
                     LOGGER.info(
                         "逐股权限同步进度：%d/%d；股票=%s；状态=%s；允许=%d；拒绝=%d",

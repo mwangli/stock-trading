@@ -1,4 +1,4 @@
-# AI_GENERATE_START-------- ---------------------------------------------------------
+# AI_GENERATE_START--------- ---------------------------------------------------------
 from __future__ import annotations
 
 import logging
@@ -17,7 +17,6 @@ TRADING_EXIT_RANK = 15
 TRADING_MAX_HOLDING_DAYS = 3
 TRADING_LIMIT_DOWN_LOOKBACK_DAYS = 10
 TRADING_MAX_RECENT_LIMIT_DOWNS = 2
-EXECUTION_WINDOW_SECONDS = 60 * 60
 ORDER_WAIT_SECONDS = 60
 ORDER_POLL_SECONDS = 5
 CANCEL_CONFIRM_SECONDS = 30
@@ -86,7 +85,6 @@ class AppConfig:
     trading_allowed_prefixes: tuple[str, ...]
     trading_max_prediction_age_days: int
     trading_execution_strategy: str
-    trading_execution_window_seconds: int
     trading_order_wait_seconds: int
     trading_order_poll_seconds: int
     trading_cancel_confirm_seconds: int
@@ -105,11 +103,6 @@ class AppConfig:
     def data_dir(self) -> Path:
         """兼容旧调用方，返回市场原始数据根目录。"""
         return self.market_dir
-
-    @property
-    def calendar_dir(self) -> Path:
-        """返回全项目唯一的权威交易日日历目录。"""
-        return self.market_dir / "raw" / "calendar"
 
     @classmethod
     def from_env(cls, *, project_dir: Path | None = None) -> "AppConfig":
@@ -185,7 +178,7 @@ class AppConfig:
                 _env_float("ZXBROKER_HISTORY_REQUEST_INTERVAL_SECONDS", 0.2),
             ),
             minute_market_workers=min(
-                16, max(1, _env_int("MINUTE_MARKET_WORKERS", 4))
+                16, max(1, _env_int("MINUTE_MARKET_WORKERS", 6))
             ),
             minute_market_request_interval_seconds=max(
                 0.25,
@@ -210,7 +203,6 @@ class AppConfig:
                 1, _env_int("STOCK_TRADING_MAX_PREDICTION_AGE_DAYS", 7)
             ),
             trading_execution_strategy=FIXED_TIME_URGENCY_STRATEGY,
-            trading_execution_window_seconds=EXECUTION_WINDOW_SECONDS,
             trading_order_wait_seconds=ORDER_WAIT_SECONDS,
             trading_order_poll_seconds=ORDER_POLL_SECONDS,
             trading_cancel_confirm_seconds=CANCEL_CONFIRM_SECONDS,
@@ -317,4 +309,4 @@ def _env_float(name: str, default: float) -> float:
         return float(value)
     except ValueError:
         raise ValueError(f"环境变量 {name} 必须是数字") from None
-# AI_GENERATE_END-------- ---------------------------------------------------------
+# AI_GENERATE_END--------- ---------------------------------------------------------

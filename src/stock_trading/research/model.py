@@ -1,31 +1,88 @@
-# AI_GENERATE_START --------------------------------------------
+# AI_GENERATE_START- --------------------------------------------
 from __future__ import annotations
 
 import json
 import logging
 import pickle
 from dataclasses import asdict, dataclass
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 
 import pandas as pd
 
 from stock_trading.contracts import TRADING_TIME_CONTRACT
-from stock_trading.config import MODEL_TRAIN_SPLIT
-from stock_trading.market.trade_calendar import shift_trade_date
-from stock_trading.research.model_config import ModelSpec
-from stock_trading.research.qlib_contract import (
+from stock_trading.config import AppConfig, MODEL_TRAIN_SPLIT
+from stock_trading.market.domain import shift_trade_date
+from stock_trading.research.config import (
     MIN_QLIB_TRADING_DAYS,
+    ModelSpec,
     expected_label_contract,
     strategy_contract_hash,
     trading_time_contract,
 )
+from stock_trading.research.dataset import QlibBinaryStore
+from stock_trading.market.storage import ParquetMarketStore
 from stock_trading.utils.logging_utils import set_log_context
-from stock_trading.utils.time_utils import utc_now
 
 LOGGER = logging.getLogger(__name__)
 EARLY_STOPPING_ROUNDS = 30
+
+
+class ConfiguredResearchModel:
+    """把模型配置映射到统一的数据准备、训练和排名入口。"""
+
+    def __init__(self, config: AppConfig, spec: ModelSpec) -> None:
+        self.spec = spec
+        self.qlib_dir = spec.prepared_dir(config.prepared_dir)
+        self.artifact_dir = spec.model_dir(config.model_dir)
+        self._qlib = QlibBinaryStore(
+            ParquetMarketStore(config.market_dir, source="derived"),
+            self.qlib_dir,
+            spec,
+        )
+
+    def prepare(
+        self,
+        codes: list[str],
+        start_date: date,
+        end_date: date,
+        force: bool = False,
+    ) -> dict[str, object]:
+        return self._qlib.prepare(codes, start_date, end_date, force=force)
+
+    def train(self, destination: Path, segments: ModelSegments) -> dict[str, object]:
+        return train_configured_model(
+            self.spec,
+            self.qlib_dir,
+            destination,
+            segments,
+        )
+
+    def rank(
+        self,
+        prediction_date: date,
+        eligible_instruments: set[str] | None = None,
+    ) -> dict[str, object]:
+        return predict_configured_model(
+            self.spec,
+            self.qlib_dir,
+            self.artifact_dir,
+            prediction_date,
+            eligible_instruments,
+        )
+
+    def date_range(self) -> tuple[date, date] | None:
+        return self._qlib.date_range()
+
+    def available_instruments(self, target_date: date) -> set[str] | None:
+        return self._qlib.available_instruments(target_date)
+
+
+def create_research_model(
+    config: AppConfig, spec: ModelSpec
+) -> ConfiguredResearchModel:
+    return ConfiguredResearchModel(config, spec)
 
 
 @dataclass(frozen=True)
@@ -59,7 +116,7 @@ def train_configured_model(
     from qlib.data.dataset import DatasetH
     from qlib.data.dataset.handler import DataHandlerLP
 
-    set_log_context(step="1/4", progress="-/-", target=spec.model_id)
+    set_log_context(progress="-/-", target=spec.model_id)
     qlib.init(provider_uri=str(qlib_dir), region=REG_CN, kernels=2)
     handler = _configured_handler(spec)(
         instruments="all",
@@ -77,7 +134,7 @@ def train_configured_model(
             "test": (segments.test_start, segments.test_end),
         },
     )
-    set_log_context(step="2/4", progress="-/-", target="训练数据")
+    set_log_context(progress="-/-", target="训练数据")
     train = dataset.prepare("train", col_set=["feature", "label"], data_key=DataHandlerLP.DK_L)
     valid = dataset.prepare("valid", col_set=["feature", "label"], data_key=DataHandlerLP.DK_L)
     test_features = dataset.prepare("test", col_set="feature", data_key=DataHandlerLP.DK_I)
@@ -86,7 +143,7 @@ def train_configured_model(
     train_target = train["label"].iloc[:, 0].astype(float)
     valid_target = valid["label"].iloc[:, 0].astype(float)
     model = _configured_estimator(spec)
-    set_log_context(step="3/4", progress="0/300", target=spec.algorithm)
+    set_log_context(progress="0/300", target=spec.algorithm)
     if spec.algorithm == "LightGBM":
         import lightgbm as lgb
 
@@ -114,7 +171,7 @@ def train_configured_model(
     labels = dataset.prepare("test", col_set="label", data_key=DataHandlerLP.DK_R).iloc[:, 0].rename("label")
     scored = pd.concat([predictions, labels], axis=1)
     scored.index.names = ["datetime", "instrument"]
-    set_log_context(step="4/4", progress="-/-", target=str(artifact_dir))
+    set_log_context(progress="-/-", target=str(artifact_dir))
     return _persist_training_artifacts(
         spec,
         model,
@@ -129,7 +186,7 @@ def train_configured_model(
 
 
 def _configured_handler(spec: ModelSpec):
-    from stock_trading.research.features import (
+    from stock_trading.research.dataset import (
         DailyAlpha158,
         DailyMinute5PathAlpha158,
     )
@@ -237,7 +294,6 @@ def predict_configured_model(
     model_dir: Path,
     prediction_date: date,
     eligible_instruments: set[str] | None = None,
-    calendar_dir: Path | None = None,
 ) -> dict[str, object]:
     metrics, calendar = _prediction_context(spec, qlib_dir, model_dir, prediction_date)
     features = _prediction_features(
@@ -248,7 +304,7 @@ def predict_configured_model(
     scored = _prediction_scores(model_dir, features, eligible_instruments)
     if scored.empty:
         raise ValueError(f"目标日期没有可排名股票：{prediction_date}")
-    return {"modelId": spec.model_id, **_persist_prediction(scored, metrics, model_dir, prediction_date, calendar_dir)}
+    return {"modelId": spec.model_id, **_persist_prediction(scored, metrics, model_dir, prediction_date)}
 
 
 def _prediction_features(handler_type, qlib_dir: Path, prediction_date: date, segments: dict[str, str], calendar: pd.DatetimeIndex) -> pd.DataFrame:
@@ -298,12 +354,12 @@ def _prediction_scores(model_dir: Path, features: pd.DataFrame, eligible_instrum
     return scored
 
 
-def _persist_prediction(scored: pd.Series, metrics: dict[str, object], model_dir: Path, prediction_date: date, calendar_dir: Path | None) -> dict[str, object]:
+def _persist_prediction(scored: pd.Series, metrics: dict[str, object], model_dir: Path, prediction_date: date) -> dict[str, object]:
     ranking = scored.reset_index().sort_values(["datetime", "score", "instrument"], ascending=[True, False, True]).reset_index(drop=True)
     ranking["rank"] = range(1, len(ranking) + 1)
     ranking["label"] = float("nan")
-    ranking["execution_date"] = shift_trade_date(prediction_date, 1, calendar_dir).isoformat()
-    ranking["generated_at"] = utc_now().isoformat()
+    ranking["execution_date"] = shift_trade_date(prediction_date, 1).isoformat()
+    ranking["generated_at"] = datetime.now(UTC).isoformat()
     ranking["contract_version"] = TRADING_TIME_CONTRACT
     output = model_dir / "predictions" / f"ranking-{prediction_date.isoformat()}.parquet"
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -336,7 +392,8 @@ def _model_predict(model, features: pd.DataFrame):
     if model.__class__.__module__.startswith("xgboost"):
         return model.predict(features)
     best_iteration = getattr(model, "best_iteration_", None)
-    return model.predict(features, num_iteration=best_iteration) if best_iteration else model.predict(features)
+    kwargs = {"num_iteration": best_iteration} if best_iteration else {}
+    return model.predict(features, **kwargs)
 
 
 def _cross_sectional_metrics(frame: pd.DataFrame) -> dict[str, float | int]:
@@ -412,4 +469,4 @@ def automatic_model_segments(
     )
 
 
-# AI_GENERATE_END --------------------------------------------
+# AI_GENERATE_END- --------------------------------------------

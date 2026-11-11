@@ -8,12 +8,14 @@ import re
 import socket
 import urllib.request
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 from stock_trading.config import AppConfig
 from stock_trading.state.store import StateStore
-from stock_trading.utils.time_utils import shanghai_now
+
+SHANGHAI_ZONE = ZoneInfo("Asia/Shanghai")
 
 LOGGER = logging.getLogger(__name__)
 BARK_PUSH_URL = "https://api.day.app/push"
@@ -106,7 +108,7 @@ def push_system_failure(
     body = "\n".join(
         (
             f"任务：{command}",
-            f"时间：{shanghai_now().isoformat(timespec='seconds')}",
+            f"时间：{datetime.now(SHANGHAI_ZONE).isoformat(timespec='seconds')}",
             f"原因：{safe_error_text(error)}",
         )
     )
