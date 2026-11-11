@@ -65,12 +65,12 @@ class MissingTradeCalendarError(ValueError):
     """本地交易日历缺少所需年度数据。"""
 
 
-TRADE_CALENDAR_PATH = Path(__file__).resolve().parents[3] / "trade_dates.txt"
+TRADE_CALENDAR_PATH = Path(__file__).resolve().parents[1] / "trade_dates.txt"
 
 
 @lru_cache(maxsize=1)
 def _trade_calendar() -> dict[int, tuple[date, ...]]:
-    """读取项目根目录唯一的交易日历文件并按年度分组。"""
+    """读取随包发布的唯一交易日历文件并按年度分组。"""
     try:
         lines = TRADE_CALENDAR_PATH.read_text(encoding="utf-8").splitlines()
     except FileNotFoundError:
@@ -92,7 +92,7 @@ def _trade_calendar() -> dict[int, tuple[date, ...]]:
 
 
 def trade_dates(year: int) -> tuple[date, ...]:
-    """返回项目根目录 trade_dates.txt 中指定年度的交易日。"""
+    """返回随包交易日历中指定年度的交易日。"""
     try:
         return _trade_calendar()[year]
     except KeyError:
