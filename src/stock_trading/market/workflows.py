@@ -230,9 +230,7 @@ def _collect_minute5(
     start_date: date,
     end_date: date,
 ) -> dict[str, object]:
-    dates = trading_dates_between(
-        store, l1_market_provider(config), start_date, end_date
-    )
+    dates = trading_dates_between(start_date, end_date)
     if not dates:
         raise ValueError("指定日期范围内没有交易日")
     provider = market_provider(config, "baostock")
@@ -251,8 +249,8 @@ def _collect_minute5(
             ready = {
                 code
                 for code in codes
-                if store.minute_collection_ready(
-                    code, batch_start, batch_end, expected_dates=set(batch)
+                if quality.minute_collection_ready(
+                    store, code, batch_start, batch_end, expected_dates=set(batch)
                 )
             }
             usable_codes.update(ready)
@@ -293,7 +291,7 @@ def _collect_minute5(
                 int(fetched.get("failedCodes", 0)),
             )
     usable = len(usable_codes)
-    quality = require_data_quality(
+    minute5_quality = require_data_quality(
         "collect-minute5",
         len(codes),
         usable,
@@ -314,7 +312,7 @@ def _collect_minute5(
             "failedCodes": failed_codes,
             "batchResults": batch_results,
         },
-        "dataQuality": quality,
+        "dataQuality": minute5_quality,
     }
 
 
@@ -328,10 +326,10 @@ def _collect_minute(
 ) -> dict[str, object]:
     provider = market_provider(config, "zxbroker")
     result = provider.sync_minute(store, codes, start_date, end_date)
-    quality = require_data_quality(
+    minute_quality = require_data_quality(
         "collect-minute",
         len(codes),
-        len(store.valid_minute1_raw_codes(codes, start_date, end_date)),
+        len(quality.valid_minute1_raw_codes(store, codes, start_date, end_date)),
         config.data_quality_min_ratio,
     )
     return {
@@ -340,7 +338,7 @@ def _collect_minute(
         "provider": provider.name,
         "researchCodes": len(codes),
         "result": result,
-        "dataQuality": quality,
+        "dataQuality": minute_quality,
     }
 
 
