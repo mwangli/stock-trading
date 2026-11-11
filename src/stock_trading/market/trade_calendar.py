@@ -40,7 +40,8 @@ def trade_dates(year: int, calendar_dir: Path | None = None) -> tuple[date, ...]
             )
         except FileNotFoundError:
             raise MissingTradeCalendarError(
-                f"缺少 {year} 年交易日历；请通过 stock model-prepare 或 stock model-rank 获取数据源完整年度日历"
+                f"缺少 {year} 年交易日历文件: trade_dates_{year}.txt；"
+                "该文件属于程序发布资源，请重新安装包含完整交易日历的版本"
             ) from None
         except ValueError as error:
             raise ValueError(f"{year} 年交易日文件格式错误: {error}") from error

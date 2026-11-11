@@ -421,7 +421,7 @@ def prepare_workflow(
         stocks = store.read_stock_basics()
     except (OSError, ValueError, KeyError) as error:
         raise ValueError(
-            "未找到股票基础信息；请先执行 stock data-collect"
+            "未找到派生股票基础信息；请先执行 stock data-generate"
         ) from error
     codes = research_codes(stocks, start_date, end_date)
     if not codes:
@@ -531,7 +531,9 @@ def derive_workflow(
     try:
         stocks = raw_store.read_stock_basics()
     except (OSError, ValueError, KeyError) as error:
-        raise ValueError("未找到股票清单；请先执行 stock data-collect") from error
+        raise ValueError(
+            "未找到原始股票基础信息；请先执行 stock data-collect --level 1"
+        ) from error
     derived_store.write_derived_stock_basics(stocks)
     codes = research_codes(stocks, start_date, end_date)
     coverage_ranges = research_coverage_ranges(stocks, codes, start_date, end_date)
