@@ -1,12 +1,29 @@
 # AI_GENERATE_START
 from __future__ import annotations
 
-from datetime import date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from functools import lru_cache
-from importlib.resources import files
+from pathlib import Path
 
 import pandas as pd
+
+from stock_trading.market.models import SHANGHAI
+
+
+def shanghai_now() -> datetime:
+    """返回带时区的上海当前时间，供业务统一确定日期和时间。"""
+    return datetime.now(SHANGHAI)
+
+
+def shanghai_today() -> date:
+    """返回上海时区业务日期。"""
+    return shanghai_now().date()
+
+
+def utc_now() -> datetime:
+    """返回带 UTC 时区的当前时间，供持久化时间戳使用。"""
+    return datetime.now(UTC)
 
 
 def normalize_instrument(value: object, market: str | None = None) -> str:
@@ -45,33 +62,43 @@ def to_broker_code(instrument: object) -> str:
 
 
 class MissingTradeCalendarError(ValueError):
-    """本地尚无该年度经数据源完整确认的交易日历。"""
+    """本地交易日历缺少所需年度数据。"""
 
 
-@lru_cache(maxsize=None)
-def trade_dates(year: int) -> tuple[date, ...]:
-    """读取随程序发布的年度交易日历。"""
-    resource = files("stock_trading.market").joinpath(
-        "trade_dates", f"{year}.txt"
-    )
+TRADE_CALENDAR_PATH = Path(__file__).resolve().parents[3] / "trade_dates.txt"
+
+
+@lru_cache(maxsize=1)
+def _trade_calendar() -> dict[int, tuple[date, ...]]:
+    """读取项目根目录唯一的交易日历文件并按年度分组。"""
     try:
-        values = tuple(
-            date.fromisoformat(line.strip())
-            for line in resource.read_text(encoding="utf-8").splitlines()
-            if line.strip()
-        )
+        lines = TRADE_CALENDAR_PATH.read_text(encoding="utf-8").splitlines()
     except FileNotFoundError:
         raise MissingTradeCalendarError(
-            f"缺少 {year} 年交易日历文件: trade_dates/{year}.txt；"
-            "该文件属于程序发布资源，请重新安装包含完整交易日历的版本"
+            f"缺少交易日历文件: {TRADE_CALENDAR_PATH}"
         ) from None
+    try:
+        values = tuple(
+            date.fromisoformat(line.strip()) for line in lines if line.strip()
+        )
     except ValueError as error:
-        raise ValueError(f"{year} 年交易日文件格式错误: {error}") from error
-    if not values or any(value.year != year for value in values):
-        raise ValueError(f"{year} 年交易日文件内容无效")
+        raise ValueError(f"交易日历文件格式错误: {error}") from error
     if values != tuple(sorted(set(values))):
-        raise ValueError(f"{year} 年交易日文件必须按日期升序且不能重复")
-    return values
+        raise ValueError("交易日历文件必须按日期升序且不能重复")
+    grouped: dict[int, list[date]] = {}
+    for value in values:
+        grouped.setdefault(value.year, []).append(value)
+    return {year: tuple(items) for year, items in grouped.items()}
+
+
+def trade_dates(year: int) -> tuple[date, ...]:
+    """返回项目根目录 trade_dates.txt 中指定年度的交易日。"""
+    try:
+        return _trade_calendar()[year]
+    except KeyError:
+        raise MissingTradeCalendarError(
+            f"交易日历缺少 {year} 年数据: {TRADE_CALENDAR_PATH}"
+        ) from None
 
 
 

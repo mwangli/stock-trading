@@ -13,7 +13,7 @@ from typing import Literal, TypeVar
 import typer
 
 from stock_trading.config import AppConfig, load_project_environment
-from stock_trading.research.model_config import (
+from stock_trading.research.config import (
     ModelSpec,
     all_model_specs,
     dataset_specs,
@@ -24,7 +24,7 @@ from stock_trading.utils.logging_utils import (
     log_context,
     set_log_context,
 )
-from stock_trading.utils.time_utils import shanghai_today
+from stock_trading.market.domain import shanghai_today
 
 
 def echo(text: object = "") -> None:
@@ -46,7 +46,7 @@ def _execute(
     result_summary: Callable[[T], str] | None = None,
 ) -> T:
     project_dir = load_project_environment()
-    configure_logging()
+    configure_logging(project_dir)
     started_at = perf_counter()
     config: AppConfig | None = None
     with log_context(
@@ -156,8 +156,10 @@ def prepare_command(
     date_value: str | None = None,
     force: bool = False,
 ) -> None:
-    from stock_trading.research.training import default_training_range
-    from stock_trading.research.workflows import prepare_workflow
+    from stock_trading.research.workflows import (
+        default_training_range,
+        prepare_workflow,
+    )
 
     def run(config: AppConfig) -> dict[str, object]:
         if date_value is None:
@@ -185,7 +187,7 @@ def prepare_command(
 def generate_command(
     date_value: str | None = None,
 ) -> None:
-    from stock_trading.research.training import default_training_range
+    from stock_trading.research.workflows import default_training_range
     from stock_trading.market.workflows import derive_workflow
 
     def run(config: AppConfig) -> dict[str, object]:
@@ -207,7 +209,7 @@ def generate_command(
     )
 
 def train_command(force: bool = False) -> None:
-    from stock_trading.research.training import run_training_pipeline
+    from stock_trading.research.workflows import run_training_pipeline
 
     def run(config: AppConfig) -> dict[str, object]:
         items: list[dict[str, object]] = []
@@ -295,7 +297,7 @@ def sync_command(
     force: bool = False,
     scope: str | None = None,
 ) -> None:
-    from stock_trading.data_sync import sync_data
+    from stock_trading.state.data_sync import sync_data
 
     if pull == push:
         raise CliParameterError("必须且只能指定 --pull 或 --push")

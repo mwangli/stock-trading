@@ -16,7 +16,6 @@ outputs
 # Runtime data and artifacts
 .tmp/
 /data/
-/logs/
 *.db
 *.db-shm
 *.db-wal

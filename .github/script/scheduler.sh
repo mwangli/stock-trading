@@ -8,11 +8,9 @@ install_scheduler() {
   local config_dir="$project_dir/config"
   local cron_file="$config_dir/stock-trading.cron"
   local scheduler="$config_dir/scheduler.sh"
-  local logrotate_file="$config_dir/stock-trading.logrotate"
   local cron_template="$release_dir/config/stock-trading.cron"
   local scheduler_source="$release_dir/script/scheduler.sh"
-  local logrotate_template="$release_dir/config/stock-trading.logrotate"
-  local tmp_dir desired_cron current_cron next_cron installed_cron desired_logrotate
+  local tmp_dir desired_cron current_cron next_cron installed_cron
 
   mkdir -p "$config_dir"
   if [ ! -x "$scheduler" ] || ! cmp -s "$scheduler_source" "$scheduler"; then
@@ -25,13 +23,11 @@ install_scheduler() {
   current_cron="$tmp_dir/current.cron"
   next_cron="$tmp_dir/next.cron"
   installed_cron="$tmp_dir/installed.cron"
-  desired_logrotate="$tmp_dir/desired.logrotate"
 
   sed \
     -e "s|__PROJECT_DIR__|$project_dir|g" \
     -e "s|__SYSTEM_PATH__|$system_path|g" \
     "$cron_template" > "$desired_cron"
-  sed "s|__PROJECT_DIR__|$project_dir|g" "$logrotate_template" > "$desired_logrotate"
 
   crontab -l > "$current_cron" 2>/dev/null || true
   extract_managed_cron "$current_cron" > "$installed_cron"
@@ -48,7 +44,6 @@ install_scheduler() {
   fi
 
   cmp -s "$desired_cron" "$cron_file" || install -m 0644 "$desired_cron" "$cron_file"
-  cmp -s "$desired_logrotate" "$logrotate_file" || install -m 0644 "$desired_logrotate" "$logrotate_file"
 }
 
 extract_managed_cron() {

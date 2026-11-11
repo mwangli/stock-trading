@@ -11,8 +11,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from stock_trading.contracts import TRADING_TIME_CONTRACT
-from stock_trading.config import AppConfig, MODEL_TRAIN_SPLIT
+from stock_trading.config import AppConfig, MODEL_TRAIN_SPLIT, TRADING_TIME_CONTRACT
 from stock_trading.market.domain import shift_trade_date
 from stock_trading.research.config import (
     MIN_QLIB_TRADING_DAYS,
@@ -21,7 +20,11 @@ from stock_trading.research.config import (
     strategy_contract_hash,
     trading_time_contract,
 )
-from stock_trading.research.dataset import QlibBinaryStore
+from stock_trading.research.dataset import (
+    DailyAlpha158,
+    DailyMinute5PathAlpha158,
+    QlibBinaryStore,
+)
 from stock_trading.market.storage import ParquetMarketStore
 from stock_trading.utils.logging_utils import set_log_context
 
@@ -108,7 +111,6 @@ def train_configured_model(
     qlib_dir: Path,
     artifact_dir: Path,
     segments: ModelSegments,
-    top_k: int = 5,
 ) -> dict[str, object]:
     """按固定模型配置训练一个回归模型并写入研究制品。"""
     import qlib
@@ -178,7 +180,6 @@ def train_configured_model(
         scored,
         artifact_dir,
         segments,
-        top_k,
         len(train),
         len(valid),
         train["feature"].shape[1],
@@ -186,11 +187,6 @@ def train_configured_model(
 
 
 def _configured_handler(spec: ModelSpec):
-    from stock_trading.research.dataset import (
-        DailyAlpha158,
-        DailyMinute5PathAlpha158,
-    )
-
     if spec.data_level == "L1":
         return DailyAlpha158
     if spec.data_level == "L2":
@@ -231,7 +227,6 @@ def _persist_training_artifacts(
     scored: pd.DataFrame,
     artifact_dir: Path,
     segments: ModelSegments,
-    top_k: int,
     train_rows: int,
     valid_rows: int,
     feature_count: int,
@@ -240,16 +235,13 @@ def _persist_training_artifacts(
     if evaluation.empty:
         raise ValueError(f"测试集没有有效评分和标签：{spec.model_id}")
     metrics = _cross_sectional_metrics(evaluation)
-    top = (
+    prediction_days = int(
         scored.dropna(subset=["score"])
-        .reset_index()
-        .sort_values(["datetime", "score", "instrument"], ascending=[True, False, True])
-        .groupby("datetime", sort=True)
-        .head(top_k)
+        .index.get_level_values("datetime")
+        .nunique()
     )
     artifact_dir.mkdir(parents=True, exist_ok=True)
     scored.reset_index().to_parquet(artifact_dir / "test_predictions.parquet", index=False)
-    top.to_parquet(artifact_dir / "top5.parquet", index=False)
     with (artifact_dir / "model.pkl").open("wb") as stream:
         pickle.dump(model, stream)
     payload = {
@@ -273,10 +265,9 @@ def _persist_training_artifacts(
         "requiredFields": spec.required_fields,
         "segments": _segments_record(segments),
         "metrics": metrics,
-        "topK": top_k,
         "rows": len(scored),
         "labeledRows": len(evaluation),
-        "predictionDays": int(top["datetime"].nunique()),
+        "predictionDays": prediction_days,
         "trainingMode": "single-pass",
         "trainRows": train_rows,
         "validRows": valid_rows,

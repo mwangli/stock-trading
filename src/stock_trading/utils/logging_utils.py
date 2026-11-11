@@ -6,6 +6,8 @@ import os
 import sys
 from contextlib import contextmanager
 from contextvars import ContextVar
+from logging.handlers import TimedRotatingFileHandler
+from pathlib import Path
 from typing import Iterator
 
 _TASK = ContextVar("log_task", default="-")
@@ -126,19 +128,36 @@ class _ColorFormatter(logging.Formatter):
             record.__dict__.pop("level_label", None)
 
 
-def configure_logging() -> None:
-    """配置结构化控制台日志。"""
+def configure_logging(project_dir: Path) -> None:
+    """配置结构化日志：交互终端输出到 stderr，所有日志统一写入 data/logs。"""
     logger = logging.getLogger("stock_trading")
     if logger.handlers:
         return
     level_name = os.getenv("STOCK_TRADING_LOG_LEVEL", "INFO").upper()
     level = getattr(logging, level_name, logging.INFO)
     interactive = bool(getattr(sys.stderr, "isatty", lambda: False)())
-    use_color = interactive and "NO_COLOR" not in os.environ
-    handler = logging.StreamHandler(sys.stderr)
-    handler.addFilter(LogContextFilter())
-    handler.setFormatter(_ColorFormatter(use_color=use_color))
-    logger.addHandler(handler)
+    # 调度器会把 stderr 重定向到同一日志文件，非交互终端不再重复输出控制台日志。
+    if interactive:
+        use_color = "NO_COLOR" not in os.environ
+        handler = logging.StreamHandler(sys.stderr)
+        handler.addFilter(LogContextFilter())
+        handler.setFormatter(_ColorFormatter(use_color=use_color))
+        logger.addHandler(handler)
+
+    log_dir = project_dir / "data" / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    file_handler = TimedRotatingFileHandler(
+        log_dir / "stock-trading.log",
+        when="midnight",
+        interval=1,
+        backupCount=30,
+        encoding="utf-8",
+        delay=True,
+    )
+    file_handler.addFilter(LogContextFilter())
+    file_handler.setFormatter(_ColorFormatter(use_color=False))
+    logger.addHandler(file_handler)
+
     logger.setLevel(level)
     logger.propagate = False
 

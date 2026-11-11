@@ -8,7 +8,7 @@ usage() {
 mode="${1:---check}"
 project_dir="${STOCK_TRADING_PROJECT_DIR:-$HOME/stock-trading}"
 export PATH="$HOME/.local/bin:$PATH"
-required_tools=(uv crontab flock logrotate setsid)
+required_tools=(uv crontab flock setsid)
 
 missing_tools() {
   local tool
@@ -48,13 +48,13 @@ run_as_root() {
 install_system_tools() {
   if command -v apt-get >/dev/null 2>&1; then
     run_as_root apt-get update
-    run_as_root apt-get install -y cron util-linux logrotate curl ca-certificates
+    run_as_root apt-get install -y cron util-linux curl ca-certificates
   elif command -v dnf >/dev/null 2>&1; then
-    run_as_root dnf install -y cronie util-linux logrotate curl ca-certificates
+    run_as_root dnf install -y cronie util-linux curl ca-certificates
   elif command -v yum >/dev/null 2>&1; then
-    run_as_root yum install -y cronie util-linux logrotate curl ca-certificates
+    run_as_root yum install -y cronie util-linux curl ca-certificates
   else
-    echo "Unsupported package manager. Install cron, util-linux and logrotate manually." >&2
+    echo "Unsupported package manager. Install cron and util-linux manually." >&2
     return 1
   fi
 }
@@ -62,7 +62,7 @@ install_system_tools() {
 apply_environment() {
   local system_tool
   local install_packages=0
-  for system_tool in crontab flock logrotate setsid; do
+  for system_tool in crontab flock setsid; do
     if ! command -v "$system_tool" >/dev/null 2>&1; then
       install_packages=1
     fi
@@ -85,8 +85,8 @@ apply_environment() {
     "$project_dir/data/qlib" \
     "$project_dir/data/artifacts" \
     "$project_dir/data/state" \
-    "$project_dir/config" \
-    "$project_dir/logs"
+    "$project_dir/data/logs" \
+    "$project_dir/config"
   check_environment
 }
 

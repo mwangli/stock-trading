@@ -7,15 +7,15 @@ from datetime import date, time
 from stock_trading.broker.captcha import BaiduCaptchaSolver
 from stock_trading.broker.client import ZXBrokerClient
 from stock_trading.config import AppConfig
-from stock_trading.market.domain import live_codes, normalize_instrument, trade_dates
+from stock_trading.market.domain import live_codes, normalize_instrument, shanghai_now, shanghai_today, trade_dates
 from stock_trading.market.storage import ParquetMarketStore
+from stock_trading.research.model import create_research_model
+from stock_trading.research.config import ModelSpec
 from stock_trading.state.store import StateStore
 from stock_trading.trading.execution import OrderExecutionOrchestrator
 from stock_trading.trading.orchestrator import LiveTradingOrchestrator
 from stock_trading.trading.post_trade import BrokerOrderSyncService, BrokerPermissionSyncService
-from stock_trading.utils.logging_utils import set_log_context
 from stock_trading.utils.notifications import push_execution_result
-from stock_trading.utils.time_utils import shanghai_now, shanghai_today
 from stock_trading.state.workflows import _record_task
 
 LOGGER = logging.getLogger(__name__)
@@ -148,7 +148,6 @@ def trading_workflow(
     dates = trade_dates(business_date.year)
     if business_date not in dates:
         raise ValueError(f"不是交易日: {business_date}")
-    if side == "BUY" and business_date == dates[0]:
     mode = f"{spec.data_level}_{side}"
     mode_name = "买入" if side == "BUY" else "卖出"
     LOGGER.info(

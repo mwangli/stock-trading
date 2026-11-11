@@ -29,7 +29,7 @@ from stock_trading.broker.parser import (
 )
 from stock_trading.config import AppConfig
 from stock_trading.utils.logging_utils import set_log_context
-from stock_trading.utils.time_utils import shanghai_today
+from stock_trading.market.domain import shanghai_today
 
 ACTION_GET_PRICE = 33
 ACTION_GET_MINUTES = 20109

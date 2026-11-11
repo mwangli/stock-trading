@@ -4,11 +4,9 @@ CRON_TZ=Asia/Shanghai
 MAILTO=""
 
 PROJECT_DIR=__PROJECT_DIR__
-LOG=__PROJECT_DIR__/logs/run.log
+LOG=__PROJECT_DIR__/data/logs/stock-trading.log
 LOCK=__PROJECT_DIR__/data/state/scheduler.lock
 SCHEDULER=__PROJECT_DIR__/config/scheduler.sh
-LOGROTATE=__PROJECT_DIR__/config/stock-trading.logrotate
-LOGROTATE_STATE=__PROJECT_DIR__/data/state/logrotate.status
 
 # Sell during 09:30-11:30 continuous trading, then buy during 14:00-15:00
 30 9 * * 1-5 "$SCHEDULER" run "stock trade-sell"
@@ -21,7 +19,6 @@ LOGROTATE_STATE=__PROJECT_DIR__/data/state/logrotate.status
 # Historical orders and model review
 20 20 * * 1-5 "$SCHEDULER" run "stock broker-sync" "stock model-evaluate"
 
-# Weekly cleanup and daily log rotation
+# Weekly cleanup; the application log rotates daily by date on its own.
 0 3 * * 0 "$SCHEDULER" run "stock system-clean"
-30 3 * * * logrotate -s "$LOGROTATE_STATE" "$LOGROTATE"
 # STOCK_TRADING_CRON_END

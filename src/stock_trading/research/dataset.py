@@ -9,20 +9,123 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from stock_trading.utils.instruments import normalize_instrument
+from qlib.contrib.data.handler import Alpha158
+from qlib.contrib.data.loader import Alpha158DL
+
+from stock_trading.market.domain import normalize_instrument, trade_dates
 from stock_trading.market.storage import ParquetMarketStore
-from stock_trading.market.trade_calendar import trade_dates
-from stock_trading.market.minute5_summary import (
+from stock_trading.market.transform import (
     MINUTE5_FEATURE_FIELDS,
     require_window_contract,
 )
 from stock_trading.utils.logging_utils import set_log_context, should_log_progress
-from stock_trading.research.labels import build_labels
-from stock_trading.research.features import BASIC_FEATURE_FIELDS
-from stock_trading.research.qlib_contract import MIN_QLIB_TRADING_DAYS, expected_qlib_contract
-from stock_trading.research.model_config import ModelSpec
+from stock_trading.research.config import (
+    MIN_QLIB_TRADING_DAYS,
+    ModelSpec,
+    expected_qlib_contract,
+)
 
 LOGGER = logging.getLogger(__name__)
+
+BASIC_FEATURE_FIELDS = (
+    "turnover_rate",
+    "volume_ratio",
+    "log_circulating_market_value",
+    "signed_log_pe_ttm",
+    "signed_log_pb_mrq",
+    "signed_log_ps_ttm",
+    "signed_log_pcf_ncf_ttm",
+)
+
+
+class DailyAlpha158(Alpha158):
+    """消费标准日线和同日已发布基础指标的 Alpha158。"""
+
+    def get_feature_config(self):
+        fields, names = super().get_feature_config()
+        fields.extend(f"${field}" for field in BASIC_FEATURE_FIELDS)
+        names.extend(field.upper() for field in BASIC_FEATURE_FIELDS)
+        return fields, names
+
+
+class DailyMinute5PathAlpha158(Alpha158):
+    """权威日线 Alpha158、基础指标和 5 分钟路径特征。"""
+
+    def get_feature_config(self):
+        fields, names = Alpha158DL.get_feature_config(
+            {
+                "kbar": {},
+                "price": {
+                    "windows": [0],
+                    "feature": ["OPEN", "HIGH", "LOW", "VWAP"],
+                },
+                "rolling": {},
+            }
+        )
+        extra_fields = BASIC_FEATURE_FIELDS + MINUTE5_FEATURE_FIELDS
+        fields.extend(f"${field}" for field in extra_fields)
+        names.extend(field.upper() for field in extra_fields)
+        return fields, names
+
+
+def build_labels(
+    observation: pd.DataFrame,
+    calendar: pd.DatetimeIndex,
+    spec: ModelSpec,
+) -> pd.Series:
+    """严格按模型绑定的唯一策略生成 T+1 标签。"""
+    if observation.empty:
+        return pd.Series(index=calendar, dtype="float32", name="label")
+    if spec.data_level == "L1":
+        return _daily_vwap_labels(observation, calendar)
+    if spec.data_level == "L2":
+        return _minute5_window_labels(observation, calendar)
+    raise ValueError(f"当前阶段不支持的数据等级：{spec.data_level}")
+
+
+def _daily_vwap_labels(
+    observation: pd.DataFrame, calendar: pd.DatetimeIndex
+) -> pd.Series:
+    if not {"amount", "volume"}.issubset(observation.columns):
+        raise ValueError("L1 标签缺少 amount/volume 日线字段")
+    amount = pd.to_numeric(observation["amount"], errors="coerce").reindex(calendar)
+    volume = pd.to_numeric(observation["volume"], errors="coerce").reindex(calendar)
+    daily_vwap = amount / volume.where(volume.gt(0))
+    buy_vwap = daily_vwap.shift(-1)
+    sell_vwap = daily_vwap.shift(-2)
+    labels = (sell_vwap / buy_vwap - 1.0).where(
+        daily_vwap.gt(0) & buy_vwap.gt(0) & sell_vwap.gt(0)
+    )
+    return labels.astype("float32").rename("label")
+
+
+def _minute5_window_labels(
+    observation: pd.DataFrame, calendar: pd.DatetimeIndex
+) -> pd.Series:
+    required = {
+        "full_complete",
+        "buy_vwap",
+        "sell_vwap",
+        "buy_complete",
+        "sell_complete",
+    }
+    if not required.issubset(observation.columns):
+        raise ValueError("L2 标签缺少完整日或买卖窗口字段")
+    full_complete = observation["full_complete"].reindex(calendar).fillna(False)
+    buy_complete = observation["buy_complete"].reindex(calendar).shift(-1).fillna(False)
+    sell_complete = observation["sell_complete"].reindex(calendar).shift(-2).fillna(False)
+    buy_vwap = pd.to_numeric(observation["buy_vwap"], errors="coerce").reindex(calendar).shift(-1)
+    sell_vwap = pd.to_numeric(observation["sell_vwap"], errors="coerce").reindex(calendar).shift(-2)
+    labels = (sell_vwap / buy_vwap - 1.0).where(
+        full_complete.astype(bool)
+        & buy_complete.astype(bool)
+        & sell_complete.astype(bool)
+        & buy_vwap.gt(0)
+        & sell_vwap.gt(0)
+    )
+    return labels.astype("float32").rename("label")
+
+
 QLIB_BASE_FIELDS = (
     "open", "high", "low", "close", "volume", "amount", "vwap", "factor",
 )
@@ -36,7 +139,7 @@ MINUTE5_QLIB_FIELDS = (
 
 
 def _official_calendar(
-    start_date: date, end_date: date, calendar_dir: Path,
+    start_date: date, end_date: date,
 ) -> pd.DatetimeIndex:
     """缺行情不能压缩交易日；缺年度权威日历时明确要求补齐。"""
     if start_date > end_date:
@@ -44,7 +147,7 @@ def _official_calendar(
     return pd.DatetimeIndex([
         value
         for year in range(start_date.year, end_date.year + 1)
-        for value in trade_dates(year, calendar_dir)
+        for value in trade_dates(year)
         if start_date <= value <= end_date
     ])
 
@@ -147,7 +250,7 @@ class QlibBinaryStore:
             if should_log_progress(index, total_codes):
                 set_log_context(progress=f"{index}/{total_codes}", target=code)
                 LOGGER.info("Qlib 日线处理完成")
-        calendar = _official_calendar(start_date, end_date, self._market_store.calendar_dir)
+        calendar = _official_calendar(start_date, end_date)
         if len(calendar) < MIN_QLIB_TRADING_DAYS:
             raise ValueError(f"Qlib calendar requires at least {MIN_QLIB_TRADING_DAYS} trading days for Alpha158")
 
@@ -460,11 +563,7 @@ class QlibBinaryStore:
         self._load_basic_cache(codes, start_date, end_date)
         existing_calendar = self._read_calendar(self._target)
         new_start = existing_range[1] + timedelta(days=1)
-        new_frames = {
-            code: self._adjusted_daily(code, new_start, end_date)
-            for code in codes
-        }
-        new_calendar = _official_calendar(new_start, end_date, self._market_store.calendar_dir)
+        new_calendar = _official_calendar(new_start, end_date)
         new_instruments = {
             normalize_instrument(code) for code in codes
         } - existing_instruments
@@ -485,6 +584,7 @@ class QlibBinaryStore:
             for index, code in enumerate(codes, start=1):
                 instrument = normalize_instrument(code)
                 full = self._adjusted_daily(code, start_date, end_date)
+                labels = build_labels(full, calendar, self._spec).reindex(calendar)
                 if instrument in existing_instruments:
                     if new_calendar.empty:
                         latest = full.reindex(calendar[-1:])
@@ -493,12 +593,12 @@ class QlibBinaryStore:
                                 temporary, instrument, field, latest[field]
                             )
                     else:
-                        aligned = new_frames[code].reindex(new_calendar)
+                        aligned = full.reindex(new_calendar)
                         for field in self._qlib_fields[:-1]:
                             self._append_field(
                                 temporary, instrument, field, aligned[field]
                             )
-                    valid = new_frames[code].dropna(subset=["close"])
+                    valid = full.dropna(subset=["close"])
                     old_start, old_end = intervals[instrument]
                     intervals[instrument] = (
                         old_start,
@@ -508,8 +608,7 @@ class QlibBinaryStore:
                     )
                 else:
                     aligned = full.reindex(calendar)
-                    labels = build_labels(full, calendar, self._spec)
-                    aligned["label"] = labels.reindex(calendar)
+                    aligned["label"] = labels
                     self._write_features(temporary, instrument, aligned)
                     valid = full.dropna(subset=["close"])
                     if valid.empty:
@@ -519,7 +618,6 @@ class QlibBinaryStore:
                         valid.index.max().date(),
                     )
 
-                labels = build_labels(full, calendar, self._spec).reindex(calendar)
                 self._write_field(temporary, instrument, "label", labels)
                 label_count += int(labels.notna().sum())
                 if should_log_progress(index, total_codes):

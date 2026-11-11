@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
-from stock_trading.contracts import BUY_END, BUY_START, SELL_END, SELL_START, WINDOW_CONTRACT
+from stock_trading.config import BUY_END, BUY_START, SELL_END, SELL_START, WINDOW_CONTRACT
 from stock_trading.market.models import BASIC_CONTRACT_BAOSTOCK, FACTOR_CONTRACT_BAOSTOCK, CumulativeAdjustmentFactor, DailyBasic
 from stock_trading.utils.logging_utils import set_log_context, should_log_progress
 

@@ -17,7 +17,7 @@ from stock_trading.state.database import (
     SQLiteStateDatabase, SCHEMA, SCHEMA_VERSION, SCHEMA_MIGRATIONS,
 )
 from stock_trading.market.domain import shift_trade_date
-from stock_trading.contracts import TRADING_TIME_CONTRACT
+from stock_trading.config import TRADING_TIME_CONTRACT
 
 SHANGHAI_ZONE = ZoneInfo("Asia/Shanghai")
 

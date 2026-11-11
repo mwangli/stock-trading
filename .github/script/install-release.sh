@@ -14,7 +14,7 @@ venv_dir="$project_dir/venv"
 python_dir="$project_dir/python"
 uv_cache_dir="$project_dir/.uv-cache"
 data_dir="$project_dir/data"
-logs_dir="$project_dir/logs"
+logs_dir="$data_dir/logs"
 config_dir="$project_dir/config"
 completion_dir="$config_dir/completion"
 bootstrap_script="$release_dir/script/bootstrap-server.sh"
@@ -27,8 +27,7 @@ for required_file in \
   "$scheduler_script" \
   "$release_dir/script/stock-completion.bash" \
   "$release_dir/script/stock-completion.ps1" \
-  "$release_dir/config/stock-trading.cron" \
-  "$release_dir/config/stock-trading.logrotate"; do
+  "$release_dir/config/stock-trading.cron"; do
   if [ ! -f "$required_file" ]; then
     echo "Missing release file: $required_file" >&2
     exit 1
@@ -111,7 +110,7 @@ for command_name in $commands; do
   test -x "$venv_dir/bin/$command_name"
 done
 
-touch "$logs_dir/run.log" "$data_dir/state/scheduler.lock"
+touch "$logs_dir/stock-trading.log" "$data_dir/state/scheduler.lock"
 bash "$scheduler_script" install "$project_dir" "$release_dir" "$system_path"
 
 find "$releases_dir" \

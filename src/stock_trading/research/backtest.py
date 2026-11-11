@@ -11,16 +11,12 @@ from pathlib import Path
 
 import pandas as pd
 
-from stock_trading.config import AppConfig
+from stock_trading.config import AppConfig, TRADING_TIME_CONTRACT
 from stock_trading.market.domain import limit_price, limit_rate, recent_limit_down_count
 from stock_trading.market.domain import normalize_instrument, to_market_code
 from stock_trading.market.storage import ParquetMarketStore
 from stock_trading.market.transform import require_window_contract
-from stock_trading.research.config import (
-    ModelSpec,
-    TRADING_TIME_CONTRACT,
-    trading_time_contract,
-)
+from stock_trading.research.config import ModelSpec, trading_time_contract
 from stock_trading.utils.logging_utils import set_log_context, should_log_progress
 
 
@@ -238,9 +234,6 @@ class PortfolioBacktester:
         pd.DataFrame.from_records(rejects).to_parquet(artifact_dir / "rejects.parquet", index=False)
         pd.DataFrame.from_records(equity_rows).to_parquet(
             artifact_dir / "daily_equity.parquet", index=False
-        )
-        pd.DataFrame.from_records(monthly_performance).to_parquet(
-            artifact_dir / "monthly_returns.parquet", index=False
         )
         (artifact_dir / "summary.json").write_text(
             json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -677,6 +670,8 @@ def _position_record(position: Position | None) -> dict[str, object] | None:
         "buyFees": position.buy_fees,
         "candidateRank": position.candidate_rank,
     }
+
+
 def _money(value: float) -> float:
     return float(Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
@@ -736,7 +731,6 @@ def backtest_artifact_valid(
         directory / "trades.parquet",
         directory / "rejects.parquet",
         directory / "daily_equity.parquet",
-        directory / "monthly_returns.parquet",
     )
     if not all(path.is_file() for path in required):
         return False

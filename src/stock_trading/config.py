@@ -5,6 +5,7 @@ import logging
 import os
 import re
 from dataclasses import dataclass
+from datetime import time
 from pathlib import Path
 
 # 当前真实交易只使用这一组代码内固定参数，不从环境变量读取。
@@ -39,6 +40,22 @@ REQUIRED_ENV_NAMES = (
     "BAIDU_OCR_SECRET_KEY",
 )
 _LOADED_ENV_ROOTS: set[Path] = set()
+
+# 共享交易时间约定；不含数据访问或执行副作用。
+TRADING_TIME_CONTRACT = "fixed-model-matrix-v1"
+WINDOW_CONTRACT = "full-day-minute5-v3"
+SELL_START = time(9, 30)
+SELL_END = time(11, 30)
+BUY_START = time(14, 0)
+BUY_END = time(15, 0)
+
+
+def execution_window_seconds(side: str) -> int:
+    """返回单个方向完整连续竞价时段的执行预算秒数。"""
+    if side not in {"BUY", "SELL"}:
+        raise ValueError("side must be BUY or SELL")
+    start, end = (BUY_START, BUY_END) if side == "BUY" else (SELL_START, SELL_END)
+    return ((end.hour - start.hour) * 60 + end.minute - start.minute) * 60
 
 
 @dataclass(frozen=True)

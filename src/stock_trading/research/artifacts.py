@@ -10,17 +10,13 @@ from uuid import uuid4
 
 import pandas as pd
 
-from stock_trading.research.config import (
-    ModelSpec,
-    TRADING_TIME_CONTRACT,
-    expected_label_contract,
-)
+from stock_trading.config import TRADING_TIME_CONTRACT
+from stock_trading.research.config import ModelSpec, expected_label_contract
 from stock_trading.market.domain import shift_trade_date
 
 _REQUIRED_FILES = (
     "model.pkl",
     "metrics.json",
-    "top5.parquet",
     "test_predictions.parquet",
 )
 
@@ -98,11 +94,7 @@ def prediction_artifact_valid(
     )
 
 
-def model_artifacts_valid(
-    directory: Path,
-    spec: ModelSpec,
-    require_evaluation: bool = False,
-) -> bool:
+def model_artifacts_valid(directory: Path, spec: ModelSpec) -> bool:
     """检查模型、指标和测试预测是否属于同一模型配置。"""
     try:
         if not all(
@@ -112,27 +104,12 @@ def model_artifacts_valid(
         ):
             return False
         metrics = json.loads((directory / "metrics.json").read_text(encoding="utf-8"))
-        evaluation = (
-            json.loads(
-                (directory / "evaluation.json").read_text(encoding="utf-8")
-            )
-            if require_evaluation
-            else None
-        )
         predictions = pd.read_parquet(
             directory / "test_predictions.parquet",
             columns=["datetime", "instrument", "score"],
         )
-        if not isinstance(metrics, dict) or (
-            evaluation is not None and not isinstance(evaluation, dict)
-        ):
+        if not isinstance(metrics, dict):
             return False
-        backtest = evaluation.get("backtest") if evaluation else None
-        backtest_capital = (
-            float(backtest.get("capital", 0))
-            if isinstance(backtest, dict)
-            else 0
-        )
     except Exception:
         return False
     return (
@@ -143,15 +120,6 @@ def model_artifacts_valid(
         and metrics.get("modelId") == spec.model_id
         and metrics.get("strategyId") == spec.strategy.strategy_id
         and metrics.get("algorithm") == spec.algorithm
-        and (
-            evaluation is None
-            or (
-                evaluation.get("modelId") == metrics.get("modelId")
-                and isinstance(backtest, dict)
-                and backtest_capital > 0
-                and backtest.get("grossProfit") is not None
-            )
-        )
     )
 
 

@@ -8,7 +8,7 @@ from datetime import date, timedelta
 
 import pandas as pd
 
-from stock_trading.contracts import WINDOW_CONTRACT
+from stock_trading.config import WINDOW_CONTRACT
 from stock_trading.market.models import (
     DAILY_CONTRACT_BAOSTOCK,
     FACTOR_CONTRACT_BAOSTOCK,

@@ -10,7 +10,7 @@ from uuid import uuid4
 import pandas as pd
 import pyarrow.parquet as pq
 
-from stock_trading.contracts import WINDOW_CONTRACT
+from stock_trading.config import WINDOW_CONTRACT
 from stock_trading.market.models import (
     BASIC_CONTRACT_BAOSTOCK,
     DAILY_CONTRACT_BAOSTOCK,

@@ -5,24 +5,21 @@ from contextlib import contextmanager
 from collections.abc import Iterator
 import logging
 from datetime import date
-from pathlib import Path
 
 import pandas as pd
 
 from stock_trading.config import AppConfig
 from stock_trading.market.domain import (
-    latest_completed_trade_date, live_codes, normalize_instrument, research_codes,
-    shift_trade_date, trade_dates, trading_dates_between,
+    latest_completed_trade_date, live_codes, research_codes,
+    shanghai_now, shanghai_today, trade_dates, trading_dates_between,
 )
 from stock_trading.market.quality import require_data_quality, research_coverage_ranges
 import stock_trading.market.quality as quality
 from stock_trading.market.sources import l1_market_provider, market_provider
-from stock_trading.market.storage import ParquetMarketStore, ParquetWritePolicy, normalize_parquet_compression
+from stock_trading.market.storage import ParquetMarketStore
 from stock_trading.market.transform import prepare_daily_derivatives
 from stock_trading.state.store import StateStore
-from stock_trading.utils.logging_utils import log_context, set_log_context
-from stock_trading.utils.time_utils import shanghai_now, shanghai_today
-from stock_trading.state.workflows import _record_task
+from stock_trading.utils.logging_utils import log_context
 
 LOGGER = logging.getLogger(__name__)
 COLLECTION_LEVELS = {1: ("daily",), 2: ("minute5",), 3: ("minute1",)}
@@ -155,8 +152,8 @@ def ensure_stock_info(
         }
     else:
         result = provider.sync_stock_basics(store, snapshot_date)
-    quality = _stock_quality(store, snapshot_date)
-    if not quality["valid"]:
+    stock_quality = _stock_quality(store, snapshot_date)
+    if not stock_quality["valid"]:
         raise ValueError("股票清单快照检查失败")
     stocks = store.read_stock_basics()
     return stocks, {
@@ -165,7 +162,7 @@ def ensure_stock_info(
         "provider": provider.name,
         "scope": "full-market",
         "result": result,
-        "dataQuality": quality,
+        "dataQuality": stock_quality,
     }
 
 
@@ -205,7 +202,7 @@ def _collect_daily(
     else:
         result = {"skipped": True, "reason": "daily 数据已完整"}
     usable_codes = sum(
-        store.daily_history_valid(code, start_dates[code], end_dates[code])
+        quality.daily_history_valid(store, code, start_dates[code], end_dates[code])
         for code in codes
     )
     code_quality = require_data_quality(
@@ -410,7 +407,7 @@ def derive_workflow(
     raw_daily_ready = [
         code
         for code in codes
-        if raw_store.daily_history_valid(code, start_dates[code], end_dates[code])
+        if quality.daily_history_valid(raw_store, code, start_dates[code], end_dates[code])
     ]
     result: dict[str, object] = {
         "indicators": prepare_daily_derivatives(
