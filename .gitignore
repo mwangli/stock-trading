@@ -37,3 +37,6 @@ Thumbs.db
 /.understand-anything/
 /dist/
 /build/
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+graft/

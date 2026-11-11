@@ -19,6 +19,13 @@ dependencies = [
     "typer>=0.16,<1",
 ]
 
+[project.optional-dependencies]
+test = [
+    "pytest>=8,<9",
+    "pytest-cov>=6,<7",
+    "pytest-mock>=3,<4",
+]
+
 [project.scripts]
 stock = "stock_trading.commands:main"
 
@@ -30,3 +37,13 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "stock_trading.market" = ["trade_dates_*.txt"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-markers"]
+markers = [
+    "unit: 纯函数、解析器和状态层测试",
+    "workflow: 工作流测试",
+    "cli: CLI 参数、输出和退出码测试",
+    "scenario: 多命令组合测试",
+]

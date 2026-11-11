@@ -98,7 +98,7 @@ def _execute(
 def order_command(
     date_value: str | None = None,
 ) -> None:
-    from stock_trading.workflows import sync_order_workflow
+    from stock_trading.trading.workflows import sync_order_workflow
 
     today = shanghai_today()
     start_date, end_date = _parse_date_expression(date_value, today, today)
@@ -111,7 +111,7 @@ def order_command(
 
 
 def permission_command(force: bool = False, resume: bool = False) -> None:
-    from stock_trading.workflows import sync_permission_workflow
+    from stock_trading.trading.workflows import sync_permission_workflow
 
     _execute(
         "broker-check",
@@ -128,7 +128,7 @@ def collect_command(
     codes_value: str | None = None,
     level: int = 1,
 ) -> None:
-    from stock_trading.workflows import collect_workflow
+    from stock_trading.market.workflows import collect_workflow
 
     selected_codes = _parse_stock_codes(codes_value) if codes_value else None
 
@@ -157,7 +157,7 @@ def prepare_command(
     force: bool = False,
 ) -> None:
     from stock_trading.research.training import default_training_range
-    from stock_trading.workflows import prepare_workflow
+    from stock_trading.research.workflows import prepare_workflow
 
     def run(config: AppConfig) -> dict[str, object]:
         if date_value is None:
@@ -186,7 +186,7 @@ def generate_command(
     date_value: str | None = None,
 ) -> None:
     from stock_trading.research.training import default_training_range
-    from stock_trading.workflows import derive_workflow
+    from stock_trading.market.workflows import derive_workflow
 
     def run(config: AppConfig) -> dict[str, object]:
         latest = shanghai_today()
@@ -234,7 +234,7 @@ def train_command(force: bool = False) -> None:
         raise SystemExit(1)
 
 def rank_command(prediction_date: str | None = None) -> None:
-    from stock_trading.workflows import rank_workflow
+    from stock_trading.research.workflows import rank_workflow
 
     business_date = _parse_date(prediction_date) if prediction_date else None
     _execute(
@@ -247,7 +247,7 @@ def rank_command(prediction_date: str | None = None) -> None:
     )
 
 def settle_command(trade_type: str) -> None:
-    from stock_trading.workflows import trading_workflow
+    from stock_trading.trading.workflows import trading_workflow
 
     if trade_type not in {"B", "S"}:
         raise CliParameterError("交易方向只能是 B 或 S")
@@ -263,7 +263,7 @@ def settle_command(trade_type: str) -> None:
     )
 
 def review_command(business_date: str | None = None) -> None:
-    from stock_trading.workflows import review_workflow
+    from stock_trading.research.workflows import review_workflow
 
     target_date = _business_date(business_date)
     _execute(
@@ -278,7 +278,7 @@ def review_command(business_date: str | None = None) -> None:
 def clean_command(
     reference_date: str | None = None,
 ) -> None:
-    from stock_trading.workflows import cleanup_workflow
+    from stock_trading.state.workflows import cleanup_workflow
 
     target_date = _business_date(reference_date)
     _execute(
