@@ -1,4 +1,4 @@
-# AI_GENERATE_START---------------------- --------
+# AI_GENERATE_START----------------------- --------
 from __future__ import annotations
 
 import logging
@@ -27,13 +27,13 @@ from stock_trading.market.baostock_client import (
 from stock_trading.market.models import DailyBar, MinuteBar
 from stock_trading.market.provider import MarketDataProvider
 from stock_trading.market.storage import ParquetMarketStore
+from stock_trading.market.trade_calendar import trade_dates
 from stock_trading.utils.instruments import to_broker_code
 from stock_trading.utils.logging_utils import (
     log_context,
     set_log_context,
     should_log_progress,
 )
-from stock_trading.utils.time_utils import shanghai_today
 
 LOGGER = logging.getLogger(__name__)
 BAOSTOCK_SESSION_REQUEST_LIMIT = 500
@@ -410,6 +410,7 @@ class ZXBrokerMarketProvider:
     ) -> dict[str, object]:
         completed_code_dates = 0
         skipped_code_dates = 0
+        empty_code_dates = 0
         rows = 0
         minute_points = 0
         failures: dict[str, str] = {}
@@ -455,13 +456,14 @@ class ZXBrokerMarketProvider:
                         for code in missing_codes
                     }
                     date_failures = 0
+                    date_empty = 0
                     for completed, future in enumerate(
                         as_completed(futures), start=1
                     ):
                         code = futures[future]
                         failure_key = f"{code}@{trade_date.isoformat()}"
                         try:
-                            written_rows, points = future.result()
+                            result = future.result()
                         except HTTPError as error:
                             if error.code in {403, 429}:
                                 for pending in futures:
@@ -488,10 +490,16 @@ class ZXBrokerMarketProvider:
                                 error,
                             )
                         else:
-                            complete_dates_by_code[code].add(trade_date)
-                            completed_code_dates += 1
-                            rows += written_rows
-                            minute_points += points
+                            if result is None:
+                                empty_code_dates += 1
+                                date_empty += 1
+                                skipped_code_dates += 1
+                            else:
+                                written_rows, points = result
+                                complete_dates_by_code[code].add(trade_date)
+                                completed_code_dates += 1
+                                rows += written_rows
+                                minute_points += points
                         if should_log_progress(completed, len(futures)):
                             LOGGER.info(
                                 "1分钟线日期批次覆盖：日期=%s；完成=%d/%d",
@@ -500,9 +508,10 @@ class ZXBrokerMarketProvider:
                                 len(futures),
                             )
                     LOGGER.info(
-                        "1分钟线日期批次完成：日期=%s；采集成功=%d；失败=%d",
+                        "1分钟线日期批次完成：日期=%s；采集成功=%d；无成交=%d；失败=%d",
                         trade_date,
-                        len(missing_codes) - date_failures,
+                        len(missing_codes) - date_failures - date_empty,
+                        date_empty,
                         date_failures,
                     )
         return {
@@ -513,6 +522,7 @@ class ZXBrokerMarketProvider:
             "targetCodeDates": target_code_dates,
             "completedCodeDates": completed_code_dates,
             "skippedCodeDates": skipped_code_dates,
+            "emptyCodeDates": empty_code_dates,
             "failedCodeDates": len(failures),
             "workers": self._workers,
             "requestIntervalSeconds": self._request_interval_seconds,
@@ -524,11 +534,11 @@ class ZXBrokerMarketProvider:
         store: ParquetMarketStore,
         code: str,
         trade_date: date,
-    ) -> tuple[int, int]:
+    ) -> tuple[int, int] | None:
         series = self._get_minute_series(code, trade_date)
         values = _to_minute_bars(code, series)
         if not values:
-            raise ValueError("券商分钟行情没有可写入的 1 分钟数据")
+            return None
         store.write_minute1_history(code, values)
         return len(values), len(series.points)
 
@@ -586,30 +596,36 @@ def _minute_codes_by_trade_date(
     start_date: date,
     end_date: date,
 ) -> dict[date, list[str]]:
+    calendar_dates = [
+        value
+        for year in range(start_date.year, end_date.year + 1)
+        for value in trade_dates(year)
+        if start_date <= value <= end_date
+    ]
+    stocks = store.read_stock_basics()
+    stocks["code"] = stocks["code"].astype(str).str.lower()
     result: dict[date, list[str]] = defaultdict(list)
     for code in codes:
-        try:
-            daily = store.read_daily_history(code)
-        except (OSError, ValueError, KeyError) as error:
-            raise ValueError(
-                f"股票 {code} 缺少日线，无法确定历史分钟交易日"
-            ) from error
-        dates = daily["trade_date"].dt.date
-        selected = daily[(dates >= start_date) & (dates <= end_date)]
-        if "tradestatus" in selected:
-            selected = selected[selected["tradestatus"].astype(str).eq("1")]
-        if "volume" in selected:
-            selected = selected[
-                pd.to_numeric(selected["volume"], errors="coerce")
-                .fillna(0)
-                .gt(0)
-            ]
-        for trade_date in sorted(set(selected["trade_date"].dt.date)):
+        matched = stocks[stocks["code"].eq(code)]
+        if matched.empty:
+            raise ValueError(f"股票基础信息中不存在股票 {code}")
+        stock = matched.iloc[0]
+        ipo_date = (
+            pd.Timestamp(stock["ipo_date"]).date()
+            if pd.notna(stock["ipo_date"])
+            else None
+        )
+        out_date = (
+            pd.Timestamp(stock["out_date"]).date()
+            if pd.notna(stock["out_date"])
+            else None
+        )
+        for trade_date in calendar_dates:
+            if (ipo_date and trade_date < ipo_date) or (
+                out_date and trade_date > out_date
+            ):
+                continue
             result[trade_date].append(code)
-    today = shanghai_today()
-    if start_date <= today <= end_date:
-        existing = set(result[today])
-        result[today].extend(code for code in codes if code not in existing)
     return dict(result)
 
 
@@ -640,4 +656,4 @@ def _to_minute_bars(
         )
         for point in regular
     ]
-# AI_GENERATE_END---------------------- --------
+# AI_GENERATE_END----------------------- --------
