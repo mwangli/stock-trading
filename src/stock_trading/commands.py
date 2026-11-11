@@ -155,6 +155,7 @@ def collect_command(
 def prepare_command(
     date_value: str | None = None,
     force: bool = False,
+    model_id: str | None = None,
 ) -> None:
     from stock_trading.research.workflows import (
         default_training_range,
@@ -167,9 +168,15 @@ def prepare_command(
         else:
             latest = shanghai_today()
             start_date, end_date = _parse_date_expression(date_value, latest, latest)
+        specs = dataset_specs()
+        if model_id is not None:
+            selected = _resolve_model(model_id)
+            specs = tuple(
+                spec for spec in specs if spec.dataset_id == selected.dataset_id
+            )
         items = [
             prepare_workflow(config, spec, start_date, end_date, force=force)
-            for spec in dataset_specs()
+            for spec in specs
         ]
         return {
             "items": items,
@@ -179,13 +186,14 @@ def prepare_command(
 
     _execute(
         "model-prepare",
-        {"date": date_value, "force": force},
+        {"date": date_value, "force": force, "model": model_id},
         run,
         result_summary=_summarize_preparation,
     )
 
 def generate_command(
     date_value: str | None = None,
+    level: int | None = None,
 ) -> None:
     from stock_trading.research.workflows import default_training_range
     from stock_trading.market.workflows import derive_workflow
@@ -196,11 +204,11 @@ def generate_command(
             start, end = default_training_range(config)
         else:
             start, end = _parse_date_expression(date_value, latest, latest)
-        return derive_workflow(config, start, end)
+        return derive_workflow(config, start, end, level=level)
 
     _execute(
         "data-generate",
-        {"date": date_value},
+        {"date": date_value, "level": level},
         run,
         result_summary=lambda result: (
             f"派生数据生成完成：日期 {result['startDate']} 至 {result['endDate']}，"
@@ -208,13 +216,16 @@ def generate_command(
         ),
     )
 
-def train_command(force: bool = False) -> None:
+def train_command(force: bool = False, model_id: str | None = None) -> None:
     from stock_trading.research.workflows import run_training_pipeline
 
     def run(config: AppConfig) -> dict[str, object]:
+        specs = all_model_specs()
+        if model_id is not None:
+            specs = (_resolve_model(model_id),)
         items: list[dict[str, object]] = []
         errors: dict[str, str] = {}
-        for spec in all_model_specs():
+        for spec in specs:
             try:
                 items.append(run_training_pipeline(config, spec, force=force))
             except Exception as error:
@@ -228,22 +239,27 @@ def train_command(force: bool = False) -> None:
 
     result = _execute(
         "model-train",
-        {"force": force},
+        {"force": force, "model": model_id},
         run,
         result_summary=_summarize_training,
     )
     if result.get("status") == "PARTIAL":
         raise SystemExit(1)
 
-def rank_command(prediction_date: str | None = None) -> None:
+def rank_command(
+    prediction_date: str | None = None,
+    model_id: str | None = None,
+) -> None:
     from stock_trading.research.workflows import rank_workflow
 
     business_date = _parse_date(prediction_date) if prediction_date else None
     _execute(
         "model-rank",
-        {"date": prediction_date},
+        {"date": prediction_date, "model": model_id},
         lambda config: rank_workflow(
-            config, _resolve_active_model(config), business_date
+            config,
+            _resolve_model(model_id) if model_id else _resolve_active_model(config),
+            business_date,
         ),
         result_summary=_summarize_rank,
     )
@@ -602,9 +618,12 @@ def data_generate(
     date_value: str | None = typer.Option(
         None, "--date", help="生成日期或日期范围，默认训练历史范围。"
     ),
+    level: int | None = typer.Option(
+        None, "--level", help="数据层级：1=日线，2=五分钟线，3=分钟线；默认全部。"
+    ),
 ) -> None:
     """从原始数据生成派生数据。"""
-    generate_command(date_value)
+    generate_command(date_value, level)
 
 
 @app.command("model-prepare")
@@ -613,25 +632,34 @@ def model_prepare(
         None, "--date", help="准备日期或日期范围，默认训练历史范围。"
     ),
     force: bool = typer.Option(False, "--force", help="强制准备。"),
+    model_id: str | None = typer.Option(
+        None, "--model", help="只准备指定模型的数据集，默认全部。"
+    ),
 ) -> None:
-    """准备全部模型所需的 Qlib 数据集。"""
-    prepare_command(date_value, force)
+    """准备模型所需的 Qlib 数据集。"""
+    prepare_command(date_value, force, model_id)
 
 
 @app.command("model-train")
 def model_train(
     force: bool = typer.Option(False, "--force", help="强制训练。"),
+    model_id: str | None = typer.Option(
+        None, "--model", help="只训练指定模型，默认全部。"
+    ),
 ) -> None:
-    """训练、评估并回测全部已配置模型。"""
-    train_command(force)
+    """训练、评估并回测已配置模型。"""
+    train_command(force, model_id)
 
 
 @app.command("model-rank")
 def model_rank(
     date_value: str | None = typer.Option(None, "--date", help="排名日期。"),
+    model_id: str | None = typer.Option(
+        None, "--model", help="指定模型，默认当前激活模型。"
+    ),
 ) -> None:
-    """使用当前模型生成完整横截面排名。"""
-    rank_command(date_value)
+    """使用指定模型生成完整横截面排名。"""
+    rank_command(date_value, model_id)
 
 
 @app.command("model-evaluate")

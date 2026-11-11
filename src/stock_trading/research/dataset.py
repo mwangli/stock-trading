@@ -1,4 +1,4 @@
-# AI_GENERATE_START----------- ----------------------------------------
+# AI_GENERATE_START------------ ----------------------------------------
 from __future__ import annotations
 
 import logging
@@ -99,6 +99,26 @@ def _daily_vwap_labels(
     return labels.astype("float32").rename("label")
 
 
+def _window_locked(
+    code: str,
+    daily: pd.DataFrame,
+    window_price: pd.Series,
+    direction: int,
+) -> pd.Series:
+    """窗口价格触碰涨跌停即视为该方向无法成交。"""
+    rate = 0.20 if code.startswith(("sz.300", "sh.688")) else 0.10
+    limit = np.floor(
+        pd.to_numeric(daily["preclose"], errors="coerce").to_numpy(dtype="float64")
+        * (1.0 + direction * rate)
+        * 100.0
+        + 0.5
+        + 1e-9
+    ) / 100.0
+    prices = pd.to_numeric(window_price, errors="coerce").to_numpy(dtype="float64")
+    touched = prices >= limit - 0.001 if direction > 0 else prices <= limit + 0.001
+    return pd.Series(touched, index=daily.index)
+
+
 def _minute5_window_labels(
     observation: pd.DataFrame, calendar: pd.DatetimeIndex
 ) -> pd.Series:
@@ -108,18 +128,24 @@ def _minute5_window_labels(
         "sell_vwap",
         "buy_complete",
         "sell_complete",
+        "buy_locked",
+        "sell_locked",
     }
     if not required.issubset(observation.columns):
-        raise ValueError("L2 标签缺少完整日或买卖窗口字段")
+        raise ValueError("L2 标签缺少完整日、买卖窗口或涨跌停锁死字段")
     full_complete = observation["full_complete"].reindex(calendar).fillna(False)
     buy_complete = observation["buy_complete"].reindex(calendar).shift(-1).fillna(False)
     sell_complete = observation["sell_complete"].reindex(calendar).shift(-2).fillna(False)
+    buy_locked = observation["buy_locked"].reindex(calendar).shift(-1).fillna(True)
+    sell_locked = observation["sell_locked"].reindex(calendar).shift(-2).fillna(True)
     buy_vwap = pd.to_numeric(observation["buy_vwap"], errors="coerce").reindex(calendar).shift(-1)
     sell_vwap = pd.to_numeric(observation["sell_vwap"], errors="coerce").reindex(calendar).shift(-2)
     labels = (sell_vwap / buy_vwap - 1.0).where(
         full_complete.astype(bool)
         & buy_complete.astype(bool)
         & sell_complete.astype(bool)
+        & ~buy_locked.astype(bool)
+        & ~sell_locked.astype(bool)
         & buy_vwap.gt(0)
         & sell_vwap.gt(0)
     )
@@ -266,14 +292,15 @@ class QlibBinaryStore:
         set_log_context(step="2/3", progress="0/-", target="Qlib 特征")
         LOGGER.info("开始生成标签和特征：交易日数=%d", len(calendar))
         for index, (code, frame) in enumerate(frames.items(), start=1):
+            valid = frame.dropna(subset=["close"])
+            if valid.empty:
+                LOGGER.warning("股票范围内无有效日线，已跳过：%s", code)
+                continue
             aligned = frame.reindex(calendar)
             labels = build_labels(frame, calendar, self._spec)
             aligned["label"] = labels.reindex(calendar)
             qlib_code = normalize_instrument(code)
             self._write_features(temporary, qlib_code, aligned)
-            valid = frame.dropna(subset=["close"])
-            if valid.empty:
-                raise ValueError(f"股票没有可用 Qlib 日线：{code}")
             instruments.append(
                 (
                     qlib_code,
@@ -441,6 +468,13 @@ class QlibBinaryStore:
             adjusted = adjusted.reindex(source.index)
             for field in MINUTE5_FEATURE_FIELDS:
                 adjusted[field] = source[field].astype(float)
+            raw = daily.reindex(source.index)
+            adjusted["buy_locked"] = _window_locked(
+                code, raw, source["buy_low"], 1
+            )
+            adjusted["sell_locked"] = _window_locked(
+                code, raw, source["sell_high"], -1
+            )
         else:
             raise ValueError(f"当前阶段不支持的数据频率：{self._feature_frequency}")
 
@@ -607,12 +641,13 @@ class QlibBinaryStore:
                         else old_end,
                     )
                 else:
+                    valid = full.dropna(subset=["close"])
+                    if valid.empty:
+                        LOGGER.warning("新增股票范围内无有效日线，已跳过：%s", code)
+                        continue
                     aligned = full.reindex(calendar)
                     aligned["label"] = labels
                     self._write_features(temporary, instrument, aligned)
-                    valid = full.dropna(subset=["close"])
-                    if valid.empty:
-                        raise ValueError(f"新增股票没有可用 Qlib 日线：{code}")
                     intervals[instrument] = (
                         valid.index.min().date(),
                         valid.index.max().date(),
@@ -749,4 +784,4 @@ class QlibBinaryStore:
             raise
         shutil.rmtree(backup, ignore_errors=True)
 
-# AI_GENERATE_END------------ ----------------------------------------
+# AI_GENERATE_END------------- ----------------------------------------

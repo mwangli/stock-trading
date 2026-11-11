@@ -1,4 +1,4 @@
-# AI_GENERATE_START- --------------------------------------------
+# AI_GENERATE_START-- --------------------------------------------
 from __future__ import annotations
 
 import json
@@ -328,6 +328,12 @@ def _prediction_context(spec: ModelSpec, qlib_dir: Path, model_dir: Path, predic
 
 
 def _prediction_scores(model_dir: Path, features: pd.DataFrame, eligible_instruments: set[str] | None) -> pd.Series:
+    if eligible_instruments is not None:
+        allowed = {value.upper() for value in eligible_instruments}
+        instruments = features.index.get_level_values("instrument").astype(str).str.upper()
+        features = features[instruments.isin(allowed)]
+        if features.empty:
+            return pd.Series(dtype="float64", name="score")
     with (model_dir / "model.pkl").open("rb") as stream:
         model = pickle.load(stream)
     columns = _model_feature_names(model)
@@ -338,10 +344,6 @@ def _prediction_scores(model_dir: Path, features: pd.DataFrame, eligible_instrum
         features = features.loc[:, columns]
     scored = pd.Series(_model_predict(model, features), index=features.index, name="score").dropna()
     scored.index.names = ["datetime", "instrument"]
-    if eligible_instruments is not None:
-        allowed = {value.upper() for value in eligible_instruments}
-        instruments = scored.index.get_level_values("instrument").astype(str).str.upper()
-        scored = scored[instruments.isin(allowed)]
     return scored
 
 
@@ -460,4 +462,4 @@ def automatic_model_segments(
     )
 
 
-# AI_GENERATE_END- --------------------------------------------
+# AI_GENERATE_END-- --------------------------------------------

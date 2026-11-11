@@ -1,4 +1,4 @@
-# AI_GENERATE_START -
+# AI_GENERATE_START --
 from __future__ import annotations
 
 import json
@@ -6,6 +6,8 @@ import logging
 import shutil
 from datetime import date, time, timedelta
 from pathlib import Path
+
+import pandas as pd
 
 from stock_trading.config import AppConfig
 from stock_trading.market.domain import (
@@ -15,6 +17,7 @@ from stock_trading.market.domain import (
     research_codes,
     shanghai_now,
     shift_trade_date,
+    tradable_days,
     utc_now,
 )
 from stock_trading.market.quality import (
@@ -150,6 +153,12 @@ def rank_workflow(
         len(ready_instruments),
         config.data_quality_min_ratio,
     )
+    tradable_instruments = (
+        _tradable_pool(store, current_codes, prediction_date, config)
+        & ready_instruments
+    )
+    if not tradable_instruments:
+        raise ValueError(f"目标日期没有可交易股票：{prediction_date}")
     model_dir = model_directory(config.model_dir, spec)
     if not model_artifacts_valid(model_dir, spec):
         raise ValueError(
@@ -160,11 +169,11 @@ def rank_workflow(
         model_dir,
         prediction_path,
         prediction_date,
-        ready_instruments,
+        tradable_instruments,
     )
     if existing is None:
         prediction = model.rank(
-            prediction_date, eligible_instruments=ready_instruments
+            prediction_date, eligible_instruments=tradable_instruments
         )
         state = state_store.import_prediction_artifact(
             model_dir, Path(str(prediction["path"]))
@@ -545,6 +554,32 @@ def _existing_prediction_summary(
     }
 
 
+def _tradable_pool(
+    store: ParquetMarketStore,
+    codes: list[str],
+    prediction_date: date,
+    config: AppConfig,
+) -> set[str]:
+    """按预测日已落库的日线事实构建可买池，模型只对该池打分排名。"""
+    day = pd.Timestamp(prediction_date)
+    pool: set[str] = set()
+    for code in codes:
+        try:
+            flags = tradable_days(
+                store.read_daily_history(code),
+                code,
+                config.trading_min_price,
+                config.trading_max_price,
+                config.trading_limit_down_lookback_days,
+                config.trading_max_recent_limit_downs,
+            )
+        except (OSError, ValueError, KeyError):
+            continue
+        if bool(flags.get(day, False)):
+            pool.add(normalize_instrument(code))
+    return pool
+
+
 def _assert_task_success(
     store: StateStore, task_type: str, business_date: date
 ) -> None:
@@ -560,4 +595,4 @@ def _assert_task_success(
     )
 
 
-# AI_GENERATE_END -
+# AI_GENERATE_END --

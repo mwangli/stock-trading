@@ -1,4 +1,4 @@
-# AI_GENERATE_START--- ----------
+# AI_GENERATE_START---- ----------
 from __future__ import annotations
 
 import hashlib
@@ -69,7 +69,8 @@ L2_STRATEGY = StrategySpec(
     strategy_id="T1_AM_SELL_PM_BUY",
     display_name="收盘排名、次日上午卖出、下午买入",
     label_contract=(
-        "sell_vwap(D+2,09:30-11:30) / buy_vwap(D+1,14:00-15:00) - 1"
+        "sell_vwap(D+2,09:30-11:30) / buy_vwap(D+1,14:00-15:00) - 1;"
+        "exclude limit-locked windows"
     ),
     signal_timing="after-close",
     sell_window=("09:30", "11:30"),
@@ -183,7 +184,7 @@ def resolve_model_spec(value: str | None) -> ModelSpec:
         ) from None
 
 
-QLIB_CONTRACT_VERSION = "18"
+QLIB_CONTRACT_VERSION = "19"
 MIN_QLIB_TRADING_DAYS = 63
 
 
@@ -226,4 +227,4 @@ def expected_qlib_contract(spec: ModelSpec) -> str:
     return f"{QLIB_CONTRACT_VERSION}:{spec.dataset_id}:{strategy_contract_hash(spec)}"
 
 
-# AI_GENERATE_END--- ----------
+# AI_GENERATE_END---- ----------

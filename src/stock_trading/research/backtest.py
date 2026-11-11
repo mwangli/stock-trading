@@ -1,4 +1,4 @@
-# AI_GENERATE_START------- -------------------------------
+# AI_GENERATE_START-------- -------------------------------
 from __future__ import annotations
 
 import json
@@ -13,7 +13,7 @@ import pandas as pd
 
 from stock_trading.config import AppConfig, TRADING_TIME_CONTRACT
 from stock_trading.market.domain import limit_price, limit_rate, recent_limit_down_count
-from stock_trading.market.domain import normalize_instrument, to_market_code
+from stock_trading.market.domain import normalize_instrument, to_market_code, tradable_days
 from stock_trading.market.storage import ParquetMarketStore
 from stock_trading.market.transform import require_window_contract
 from stock_trading.research.config import ModelSpec, trading_time_contract
@@ -94,6 +94,7 @@ class PortfolioBacktester:
             if pd.notna(row.out_date)
         }
         self._daily: dict[str, pd.DataFrame] = {}
+        self._tradable: dict[str, pd.Series] = {}
         self._windows: dict[str, pd.DataFrame] = {}
 
     def run(self, artifact_dir: Path) -> dict[str, object]:
@@ -101,10 +102,7 @@ class PortfolioBacktester:
         set_log_context(progress="0/-", target="回测行情")
         LOGGER.info("加载回测行情：股票数=%d", len(codes))
         self._load_market(codes)
-        ranked = {
-            pd.Timestamp(day): group.reset_index(drop=True)
-            for day, group in self._topk.groupby("datetime", sort=True)
-        }
+        ranked = self._tradable_rankings()
         first_prediction = min(ranked)
         last_buy_date = self._calendar[-2]
         simulation_dates = self._calendar[
@@ -248,6 +246,14 @@ class PortfolioBacktester:
             amount = pd.to_numeric(daily["amount"], errors="coerce")
             daily["vwap"] = (amount / volume).where(volume > 0)
             self._daily[code] = daily
+            self._tradable[code] = tradable_days(
+                daily,
+                code,
+                self._config.min_price,
+                self._config.max_price,
+                self._config.limit_down_lookback_days,
+                self._config.max_recent_limit_downs,
+            )
             if self._model_spec.data_level == "L2":
                 self._windows[code] = self._market_store.read_minute_summaries(
                     code, self._calendar.min().date(), self._calendar.max().date()
@@ -256,6 +262,37 @@ class PortfolioBacktester:
             if should_log_progress(index, total_codes):
                 set_log_context(progress=f"{index}/{total_codes}", target=code)
                 LOGGER.info("回测行情加载完成")
+
+    def _tradable_rankings(self) -> dict[pd.Timestamp, pd.DataFrame]:
+        """先过滤预测日可交易池再按分数排序，排名序号即真实候选顺序。"""
+        frame = self._topk.assign(
+            instrument=self._topk["instrument"].map(normalize_instrument)
+        )
+        if self._config.allowed_prefixes:
+            frame = frame[
+                frame["instrument"].str.startswith(self._config.allowed_prefixes)
+            ]
+        out_date = frame["instrument"].map(self._out_dates)
+        frame = frame[
+            ~(
+                out_date.notna()
+                & (
+                    pd.to_datetime(out_date)
+                    <= frame["datetime"] + pd.Timedelta(days=30)
+                )
+            )
+        ]
+        codes = frame["instrument"].map(to_market_code)
+        keep = pd.Series(False, index=frame.index)
+        for code, group in frame.groupby(codes, sort=False):
+            flags = self._tradable[code].reindex(group["datetime"]).fillna(False)
+            keep.loc[group.index] = flags.to_numpy(dtype=bool)
+        frame = frame[keep]
+        return {
+            pd.Timestamp(day): group.sort_values("score", ascending=False)
+            .reset_index(drop=True)
+            for day, group in frame.groupby("datetime", sort=True)
+        }
 
     def _try_buy(
         self,
@@ -492,7 +529,7 @@ class PortfolioBacktester:
             "timeContract": trading_time_contract(self._model_spec),
             "simulationType": "window-vwap-benchmark",
             "sameDayRebuyAllowed": False,
-            "buyCandidateSelection": "FULL_RANKING_FIRST_TRADABLE",
+            "buyCandidateSelection": "TRADABLE_POOL_RANKED",
             "executionLimitations": (
                 "窗口VWAP基准，并非逐分钟成交回放；不模拟盘口排队、部分成交和撤单。"
             ),
@@ -758,7 +795,7 @@ def backtest_artifact_valid(
         or summary.get("simulationType") != "window-vwap-benchmark"
         or summary.get("sameDayRebuyAllowed") is not False
         or summary.get("buyCandidateSelection")
-        != "FULL_RANKING_FIRST_TRADABLE"
+        != "TRADABLE_POOL_RANKED"
         or not required_summary.issubset(summary)
         or not required_equity.issubset(equity.columns)
         or not isinstance(config, dict)
@@ -797,4 +834,4 @@ def read_backtest_summary(directory: Path) -> dict[str, object]:
     """读取模型回测摘要。"""
     return json.loads((directory / "summary.json").read_text(encoding="utf-8"))
 
-# AI_GENERATE_END------- -------------------------------
+# AI_GENERATE_END-------- -------------------------------

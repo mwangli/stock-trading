@@ -380,8 +380,15 @@ def derive_workflow(
     config: AppConfig,
     start_date: date,
     end_date: date,
+    level: int | None = None,
 ) -> dict[str, object]:
-    """将 raw 原始事实转换为可供 prepare 独立消费的 derived 数据。"""
+    """将 raw 原始事实转换为可供 prepare 独立消费的 derived 数据。
+
+    level=1 只派生日线，level=2 追加 5 分钟摘要，level=3 追加 1 分钟摘要；
+    缺省保持全量，各级别可独立执行且只写本级别产物。
+    """
+    if level not in (None, 1, 2, 3):
+        raise ValueError("level 必须是 1、2 或 3")
     raw_store = ParquetMarketStore(config.market_dir)
     derived_store = ParquetMarketStore(config.market_dir, source="derived")
     for year in range(start_date.year, end_date.year + 1):
@@ -424,12 +431,14 @@ def derive_workflow(
         start_dates=start_dates,
         end_dates=end_dates,
     )
-    result["minute5"] = raw_store.rebuild_minute_summaries(
-        daily_ready, start_date, end_date, force=False
-    )
-    result["minute1"] = raw_store.rebuild_minute1_summaries(
-        daily_ready, start_date, end_date
-    )
+    if level in (None, 2):
+        result["minute5"] = raw_store.rebuild_minute_summaries(
+            daily_ready, start_date, end_date
+        )
+    if level in (None, 3):
+        result["minute1"] = raw_store.rebuild_minute1_summaries(
+            daily_ready, start_date, end_date
+        )
     return {
         "startDate": start_date.isoformat(),
         "endDate": end_date.isoformat(),

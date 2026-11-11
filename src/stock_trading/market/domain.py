@@ -1,4 +1,4 @@
-# AI_GENERATE_START
+# AI_GENERATE_START -
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, time, timedelta
@@ -6,6 +6,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from functools import lru_cache
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from stock_trading.market.models import SHANGHAI
@@ -250,6 +251,39 @@ def recent_limit_down_count(
     )
 
 
+def tradable_days(
+    history: pd.DataFrame,
+    code: str,
+    min_price: float,
+    max_price: float,
+    lookback_days: int,
+    max_recent_limit_downs: int,
+) -> pd.Series:
+    """返回只依赖日线事实的每日可买入标记，供排名池和回测统一使用。"""
+    if "trade_date" in history.columns:
+        frame = history.set_index(pd.to_datetime(history["trade_date"])).sort_index()
+    else:
+        frame = history.sort_index()
+    close = pd.to_numeric(frame["close"], errors="coerce")
+    preclose = pd.to_numeric(frame["preclose"], errors="coerce")
+    board_rate = 0.20 if code.startswith(("sz.300", "sh.688")) else 0.10
+    rates = np.where(frame["is_st"].astype(str).eq("1"), 0.05, board_rate)
+    lower_limit = np.floor(
+        preclose.to_numpy(dtype="float64") * (1.0 - rates) * 100.0 + 0.5 + 1e-9
+    ) / 100.0
+    limit_down = pd.Series(
+        close.to_numpy(dtype="float64") <= lower_limit + 0.001,
+        index=frame.index,
+    )
+    recent = limit_down.rolling(lookback_days, min_periods=1).sum()
+    return (
+        frame["tradestatus"].astype(str).eq("1")
+        & ~frame["is_st"].astype(str).eq("1")
+        & close.between(min_price, max_price)
+        & recent.le(max_recent_limit_downs)
+    )
+
+
 def limit_rate(code: str, daily: pd.Series) -> float:
     if str(daily["is_st"]) == "1":
         return 0.05
@@ -263,4 +297,4 @@ def limit_price(preclose: float, rate: float, direction: int) -> float:
         Decimal("1") + Decimal(direction) * Decimal(str(rate))
     )
     return float(value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
-# AI_GENERATE_END
+# AI_GENERATE_END -
