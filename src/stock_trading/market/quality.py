@@ -1,4 +1,4 @@
-# AI_GENERATE_START -----
+# AI_GENERATE_START ------
 from __future__ import annotations
 
 import logging
@@ -383,7 +383,7 @@ def daily_history_valid(store, code: str, start_date: date, end_date: date) -> b
             and dates.notna().all()
             and dates.min() <= start_date + timedelta(days=15)
             and dates.le(end_date).any()
-            and dates.max() >= end_date - timedelta(days=15)
+            and dates.max() >= end_date
             and frame["source_contract"].eq(DAILY_CONTRACT_BAOSTOCK).all()
         )
 
@@ -877,4 +877,4 @@ def _eligible_daily_rows(frame: pd.DataFrame) -> pd.DataFrame:
             & (frame["volume"].astype(float) > 0)
         ]
 
-# AI_GENERATE_END -----
+# AI_GENERATE_END ------
