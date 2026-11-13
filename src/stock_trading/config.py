@@ -1,4 +1,4 @@
-# AI_GENERATE_START--------- ---------------------------------------------------------
+# AI_GENERATE_START-2--------- ---------------------------------------------------------
 from __future__ import annotations
 
 import logging
@@ -13,8 +13,7 @@ FIXED_TIME_URGENCY_STRATEGY = "FIXED_TIME_URGENCY"
 TRADING_MIN_PRICE = 0.01
 TRADING_MAX_PRICE = 1_000_000.0
 TRADING_ORDER_FEE = 5.0
-TRADING_ENTRY_RANK = 5
-TRADING_EXIT_RANK = 15
+EXIT_POSITION = 10
 TRADING_MAX_HOLDING_DAYS = 3
 TRADING_LIMIT_DOWN_LOOKBACK_DAYS = 10
 TRADING_MAX_RECENT_LIMIT_DOWNS = 2
@@ -94,8 +93,7 @@ class AppConfig:
     trading_min_price: float
     trading_max_price: float
     trading_order_fee: float
-    trading_entry_rank: int
-    trading_exit_rank: int
+    exit_position: int
     trading_max_holding_days: int
     trading_limit_down_lookback_days: int
     trading_max_recent_limit_downs: int
@@ -204,8 +202,7 @@ class AppConfig:
             trading_min_price=TRADING_MIN_PRICE,
             trading_max_price=TRADING_MAX_PRICE,
             trading_order_fee=TRADING_ORDER_FEE,
-            trading_entry_rank=TRADING_ENTRY_RANK,
-            trading_exit_rank=TRADING_EXIT_RANK,
+            exit_position=EXIT_POSITION,
             trading_max_holding_days=TRADING_MAX_HOLDING_DAYS,
             trading_limit_down_lookback_days=TRADING_LIMIT_DOWN_LOOKBACK_DAYS,
             trading_max_recent_limit_downs=TRADING_MAX_RECENT_LIMIT_DOWNS,
@@ -326,4 +323,4 @@ def _env_float(name: str, default: float) -> float:
         return float(value)
     except ValueError:
         raise ValueError(f"环境变量 {name} 必须是数字") from None
-# AI_GENERATE_END--------- ---------------------------------------------------------
+# AI_GENERATE_END-2--------- ---------------------------------------------------------

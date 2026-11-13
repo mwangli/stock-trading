@@ -1,4 +1,4 @@
-# AI_GENERATE_START--------- -----------------------------
+# AI_GENERATE_START-2------- -----------------------------
 from __future__ import annotations
 
 import logging
@@ -73,10 +73,15 @@ class LiveTradingOrchestrator:
         """只卖出跌出保留区的 T+1 可卖持仓。"""
         buy_dates = self._unsettled_buy_dates()
         candidates = self._prediction_candidates(business_date)
-        ranks = {
-            normalize_instrument(item["instrument"]): int(item["rank"])
-            for item in candidates
+        permission_status = {
+            str(item["scope"]): str(item["status"])
+            for item in self._state_store.broker_permissions()
         }
+        stock_permission_status = {
+            str(item["instrument"]): str(item["status"])
+            for item in self._state_store.broker_stock_permissions()
+        }
+        account = self._broker.get_account()
         targets: list[dict[str, object]] = []
         ignored: list[dict[str, object]] = []
         positions = self._broker.get_positions()
@@ -87,7 +92,6 @@ class LiveTradingOrchestrator:
                     {"instrument": instrument, "reason": "NO_AVAILABLE_QUANTITY"}
                 )
                 continue
-            rank = ranks.get(instrument)
             buy_date = buy_dates.get(instrument)
             holding_days = (
                 self._holding_trade_days(buy_date, business_date)
@@ -98,10 +102,20 @@ class LiveTradingOrchestrator:
                 holding_days is not None
                 and holding_days >= self._config.trading_max_holding_days
             )
+            available_cash = account.available_cash + (
+                position.current_price * position.available_quantity
+            )
+            ranks = self._executable_candidate_ranks(
+                candidates,
+                available_cash,
+                permission_status,
+                stock_permission_status,
+            )
+            rank = ranks.get(instrument)
             if (
                 not max_holding_reached
                 and rank is not None
-                and rank <= self._config.trading_exit_rank
+                and rank <= self._config.exit_position
             ):
                 ignored.append(
                     {
@@ -138,6 +152,45 @@ class LiveTradingOrchestrator:
             "targets": targets,
             "ignored": ignored,
         }
+
+    def _executable_candidate_ranks(
+        self,
+        candidates: list[dict[str, object]],
+        available_cash: Decimal,
+        permission_status: dict[str, str],
+        stock_permission_status: dict[str, str],
+    ) -> dict[str, int]:
+        """按权限、价格和资金过滤候选后重新编号，供退仓线判断。"""
+        ranks: dict[str, int] = {}
+        for candidate in candidates:
+            instrument = normalize_instrument(candidate["instrument"])
+            if self._config.trading_allowed_prefixes and not instrument.startswith(
+                self._config.trading_allowed_prefixes
+            ):
+                continue
+            scope = permission_scope(instrument)
+            if stock_permission_status.get(instrument) == "DENIED" or (
+                stock_permission_status.get(instrument) is None
+                and scope
+                and permission_status.get(scope) == "DENIED"
+            ):
+                continue
+            quote = self._broker.get_five_level_quote(to_broker_code(instrument))
+            price = quote.asks[0] if quote.asks else quote.price
+            if price is None or not (
+                Decimal(str(self._config.trading_min_price))
+                <= price
+                <= Decimal(str(self._config.trading_max_price))
+            ):
+                continue
+            if affordable_quantity(
+                available_cash,
+                price,
+                Decimal(str(self._config.trading_order_fee)),
+            ) <= 0:
+                continue
+            ranks[instrument] = len(ranks) + 1
+        return ranks
 
     def _unsettled_buy_dates(self) -> dict[str, date]:
         buy_dates: dict[str, date] = {}
@@ -339,10 +392,6 @@ class LiveTradingOrchestrator:
         )
         if not candidates:
             raise ValueError("目标交易日没有匹配前一交易日特征和当前时间合同的横截面预测")
-        if len(candidates) <= self._config.trading_entry_rank:
-            raise ValueError(
-                "最近预测不是完整横截面排名，请先重新执行 stock model-rank"
-            )
         return candidates
 
     def _existing_buy_target(
@@ -388,4 +437,4 @@ class LiveTradingOrchestrator:
             "targets": [target] if target else [],
             "rejected": rejected,
         }
-# AI_GENERATE_END--------- -----------------------------
+# AI_GENERATE_END-2------- -----------------------------

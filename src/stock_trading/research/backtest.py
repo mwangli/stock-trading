@@ -1,4 +1,4 @@
-# AI_GENERATE_START-------- -------------------------------
+# AI_GENERATE_START-2--------- -------------------------------
 from __future__ import annotations
 
 import json
@@ -34,8 +34,7 @@ class BacktestConfig:
     buy_slices: int = 1
     sell_slices: int = 1
     allowed_prefixes: tuple[str, ...] = ()
-    entry_rank: int = 5
-    exit_rank: int = 15
+    exit_position: int = 10
     max_holding_days: int = 3
     limit_down_lookback_days: int = 10
     max_recent_limit_downs: int = 2
@@ -45,8 +44,6 @@ class BacktestConfig:
             raise ValueError("cash and price limits must be positive and ordered")
         if self.lot_size <= 0 or self.buy_slices <= 0 or self.sell_slices <= 0:
             raise ValueError("lot size and order slices must be positive")
-        if self.entry_rank <= 0 or self.exit_rank < self.entry_rank:
-            raise ValueError("entry and exit ranks must be positive and ordered")
         if self.max_holding_days <= 0:
             raise ValueError("max holding days must be positive")
         if self.limit_down_lookback_days <= 0 or self.max_recent_limit_downs < 0:
@@ -62,6 +59,7 @@ class Position:
     buy_notional: float
     buy_fees: float
     candidate_rank: int
+    target_holding_days: int = 1
 
 
 class PortfolioBacktester:
@@ -130,18 +128,38 @@ class PortfolioBacktester:
                 holding_days = self._holding_trade_days(
                     position.buy_date, trade_date
                 )
-                exit_rank = (
-                    self._candidate_rank(candidates, position.instrument)
+                executable = (
+                    self._executable_candidates(
+                        candidates,
+                        prediction_timestamp.date(),
+                        trade_date,
+                        cash + position.buy_notional,
+                        set(),
+                    )
                     if candidates is not None
                     else None
                 )
-                max_holding_reached = (
+                exit_position = (
+                    self._candidate_rank(executable, position.instrument)
+                    if executable is not None
+                    else None
+                )
+                fixed_horizon = (
+                    self._model_spec.strategy.holding_policy
+                    == "FIXED_NEXT_TRADING_DAY"
+                )
+                predicted_horizon_reached = (
+                    self._model_spec.data_level == "L2"
+                    and "dynamic-holding-value" in self._model_spec.strategy.label_contract
+                    and holding_days >= position.target_holding_days
+                )
+                max_holding_reached = fixed_horizon or predicted_horizon_reached or (
                     holding_days >= self._config.max_holding_days
                 )
                 if (
                     not max_holding_reached
-                    and exit_rank is not None
-                    and exit_rank <= self._config.exit_rank
+                    and exit_position is not None
+                    and exit_position <= self._config.exit_position
                 ):
                     retained_days += 1
                 else:
@@ -150,15 +168,18 @@ class PortfolioBacktester:
                         rejects.append(_reject_record(trade_date, position.instrument, sell_reject_reason or "SELL_UNAVAILABLE"))
                     else:
                         cash += sale["sellNotional"]
-                        exit_reason = (
-                            "MAX_HOLDING_DAYS"
-                            if max_holding_reached
-                            else "RANK_EXIT"
-                        )
+                        if fixed_horizon:
+                            exit_reason = "FIXED_HORIZON"
+                        elif predicted_horizon_reached:
+                            exit_reason = "PREDICTED_HORIZON"
+                        elif max_holding_reached:
+                            exit_reason = "MAX_HOLDING_DAYS"
+                        else:
+                            exit_reason = "RANK_EXIT"
                         trade = _trade_record(
                             position,
                             sale,
-                            exit_rank,
+                            exit_position,
                             holding_days,
                             exit_reason,
                         )
@@ -335,9 +356,49 @@ class PortfolioBacktester:
                 buy_notional=notional,
                 buy_fees=fees,
                 candidate_rank=rank,
+                target_holding_days=(
+                    self._predicted_holding_days(row)
+                    if self._model_spec.data_level == "L2"
+                    else 1
+                ),
             )
             return (position, notional), rejects
         return None, rejects
+
+    def _executable_candidates(
+        self,
+        candidates: pd.DataFrame,
+        prediction_date: date,
+        buy_date: date,
+        cash: float,
+        excluded_instruments: set[str],
+    ) -> pd.DataFrame:
+        """按实际买入约束过滤后返回可执行排名，供持仓保留判断使用。"""
+        rows: list[dict[str, object]] = []
+        for row in candidates.itertuples(index=False):
+            instrument = normalize_instrument(row.instrument)
+            if instrument in excluded_instruments:
+                continue
+            code = to_market_code(instrument)
+            if self._buy_reject_reason(instrument, code, prediction_date, buy_date):
+                continue
+            buy_price = self._buy_benchmark(code, buy_date) * (
+                1.0 + self._config.slippage_bps / 10_000.0
+            )
+            quantity, _ = self._affordable_quantity(cash, buy_price)
+            if quantity <= 0:
+                continue
+            rows.append({key: getattr(row, key) for key in row._fields})
+        return pd.DataFrame.from_records(rows, columns=list(candidates.columns))
+
+    @staticmethod
+    def _predicted_holding_days(row: object) -> int:
+        values = [
+            float(getattr(row, f"score_h{horizon}", float("nan")))
+            for horizon in (1, 2, 3)
+        ]
+        valid = [index for index, value in enumerate(values, start=1) if pd.notna(value)]
+        return max(valid, key=lambda index: values[index - 1]) if valid else 1
 
     @staticmethod
     def _candidate_rank(
@@ -384,7 +445,7 @@ class PortfolioBacktester:
             return "BUY_DAY_DATA_MISSING"
         if str(buy_daily["tradestatus"]) != "1":
             return "BUY_DAY_SUSPENDED"
-        if self._model_spec.data_level == "L2":
+        if self._model_spec.strategy.price_benchmark == "window-vwap":
             window = self._window_row(self._windows[code], buy_date)
             if window is None or not bool(window["buy_complete"]):
                 return "BUY_WINDOW_INCOMPLETE"
@@ -403,7 +464,7 @@ class PortfolioBacktester:
             return None, "SELL_DAY_DATA_MISSING"
         if str(daily["tradestatus"]) != "1":
             return None, "SELL_DAY_SUSPENDED"
-        if self._model_spec.data_level == "L2":
+        if self._model_spec.strategy.price_benchmark == "window-vwap":
             window = self._window_row(self._windows[code], sell_date)
             if window is None or not bool(window["sell_complete"]):
                 return None, "SELL_WINDOW_INCOMPLETE"
@@ -431,7 +492,7 @@ class PortfolioBacktester:
         )
 
     def _buy_benchmark(self, code: str, buy_date: date) -> float:
-        if self._model_spec.data_level == "L1":
+        if self._model_spec.strategy.price_benchmark == "daily-vwap":
             return float(self._daily_row(code, buy_date)["vwap"])
         return float(self._window_row(self._windows[code], buy_date)["buy_vwap"])
 
@@ -529,7 +590,7 @@ class PortfolioBacktester:
             "timeContract": trading_time_contract(self._model_spec),
             "simulationType": "window-vwap-benchmark",
             "sameDayRebuyAllowed": False,
-            "buyCandidateSelection": "TRADABLE_POOL_RANKED",
+            "buyCandidateSelection": "EXECUTABLE_POOL_RANKED",
             "executionLimitations": (
                 "窗口VWAP基准，并非逐分钟成交回放；不模拟盘口排队、部分成交和撤单。"
             ),
@@ -628,8 +689,7 @@ def run_portfolio_backtest(
         max_price=config.trading_max_price,
         order_fee=config.trading_order_fee,
         allowed_prefixes=config.trading_allowed_prefixes,
-        entry_rank=config.trading_entry_rank,
-        exit_rank=config.trading_exit_rank,
+        exit_position=config.exit_position,
         max_holding_days=config.trading_max_holding_days,
         limit_down_lookback_days=config.trading_limit_down_lookback_days,
         max_recent_limit_downs=config.trading_max_recent_limit_downs,
@@ -656,7 +716,7 @@ def _sell_locked_at_limit(code: str, daily: pd.Series, window: pd.Series) -> boo
 def _trade_record(
     position: Position,
     sale: dict[str, float],
-    exit_rank: int | None,
+    exit_position: int | None,
     holding_days: int,
     exit_reason: str,
 ) -> dict[str, object]:
@@ -665,7 +725,7 @@ def _trade_record(
     return {
         "instrument": position.instrument,
         "candidateRank": position.candidate_rank,
-        "exitRank": exit_rank,
+        "exitPosition": exit_position,
         "exitReason": exit_reason,
         "buyDate": position.buy_date.isoformat(),
         "sellDate": sale["sellDate"].isoformat(),
@@ -706,6 +766,7 @@ def _position_record(position: Position | None) -> dict[str, object] | None:
         "buyNotional": position.buy_notional,
         "buyFees": position.buy_fees,
         "candidateRank": position.candidate_rank,
+        "targetHoldingDays": position.target_holding_days,
     }
 
 
@@ -756,8 +817,7 @@ def backtest_artifact_valid(
     directory: Path,
     *,
     initial_cash: float | None = None,
-    entry_rank: int | None = None,
-    exit_rank: int | None = None,
+    exit_position: int | None = None,
     max_holding_days: int | None = None,
     limit_down_lookback_days: int | None = None,
     max_recent_limit_downs: int | None = None,
@@ -795,7 +855,7 @@ def backtest_artifact_valid(
         or summary.get("simulationType") != "window-vwap-benchmark"
         or summary.get("sameDayRebuyAllowed") is not False
         or summary.get("buyCandidateSelection")
-        != "TRADABLE_POOL_RANKED"
+        != "EXECUTABLE_POOL_RANKED"
         or not required_summary.issubset(summary)
         or not required_equity.issubset(equity.columns)
         or not isinstance(config, dict)
@@ -806,9 +866,7 @@ def backtest_artifact_valid(
         initial_cash
     ):
         return False
-    if entry_rank is not None and int(config.get("entry_rank", 0)) != entry_rank:
-        return False
-    if exit_rank is not None and int(config.get("exit_rank", 0)) != exit_rank:
+    if exit_position is not None and int(config.get("exit_position", 0)) != exit_position:
         return False
     if (
         max_holding_days is not None
@@ -834,4 +892,4 @@ def read_backtest_summary(directory: Path) -> dict[str, object]:
     """读取模型回测摘要。"""
     return json.loads((directory / "summary.json").read_text(encoding="utf-8"))
 
-# AI_GENERATE_END-------- -------------------------------
+# AI_GENERATE_END-2--------- -------------------------------

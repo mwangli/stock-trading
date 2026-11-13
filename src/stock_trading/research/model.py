@@ -1,4 +1,4 @@
-# AI_GENERATE_START-- --------------------------------------------
+# AI_GENERATE_START--- --------------------------------------------
 from __future__ import annotations
 
 import json
@@ -30,6 +30,7 @@ from stock_trading.utils.logging_utils import set_log_context
 
 LOGGER = logging.getLogger(__name__)
 EARLY_STOPPING_ROUNDS = 30
+MULTI_HORIZONS = (1, 2, 3)
 
 
 class ConfiguredResearchModel:
@@ -120,13 +121,14 @@ def train_configured_model(
 
     set_log_context(progress="-/-", target=spec.model_id)
     qlib.init(provider_uri=str(qlib_dir), region=REG_CN, kernels=2)
+    label_fields, label_names = _handler_label_spec(spec)
     handler = _configured_handler(spec)(
         instruments="all",
         start_time=segments.train_start,
         end_time=segments.test_end,
         fit_start_time=segments.train_start,
         fit_end_time=segments.train_end,
-        label=(["$label"], ["LABEL0"]),
+        label=(label_fields, label_names),
     )
     dataset = DatasetH(
         handler=handler,
@@ -142,36 +144,44 @@ def train_configured_model(
     test_features = dataset.prepare("test", col_set="feature", data_key=DataHandlerLP.DK_I)
     if train.empty or valid.empty or test_features.empty:
         raise ValueError(f"模型数据集为空：{spec.model_id}")
-    train_target = train["label"].iloc[:, 0].astype(float)
-    valid_target = valid["label"].iloc[:, 0].astype(float)
-    model = _configured_estimator(spec)
-    set_log_context(progress="0/300", target=spec.algorithm)
-    if spec.algorithm == "LightGBM":
-        import lightgbm as lgb
-
-        model.fit(
-            train["feature"],
-            train_target,
-            eval_set=[(valid["feature"], valid_target)],
-            eval_names=["valid"],
-            eval_metric="l2",
-            callbacks=[
-                lgb.early_stopping(EARLY_STOPPING_ROUNDS, verbose=False),
-                _lightgbm_progress_callback(),
-            ],
-        )
+    labels = dataset.prepare("test", col_set="label", data_key=DataHandlerLP.DK_R)
+    if spec.data_level == "L2" and _uses_dynamic_horizon_labels(spec):
+        models = {}
+        scored = pd.DataFrame(index=test_features.index)
+        for index, horizon in enumerate(MULTI_HORIZONS):
+            train_target = train["label"].iloc[:, index].astype(float)
+            valid_target = valid["label"].iloc[:, index].astype(float)
+            train_mask = train_target.notna()
+            valid_mask = valid_target.notna()
+            child = _fit_model(
+                spec,
+                train["feature"].loc[train_mask],
+                train_target.loc[train_mask],
+                valid["feature"].loc[valid_mask],
+                valid_target.loc[valid_mask],
+                horizon,
+            )
+            models[horizon] = child
+            scored[f"score_h{horizon}"] = _model_predict(child, test_features)
+            scored[f"label_h{horizon}"] = labels.iloc[:, index]
+        scored["score"] = scored[[f"score_h{horizon}" for horizon in MULTI_HORIZONS]].max(axis=1)
+        scored["label"] = scored[[f"label_h{horizon}" for horizon in MULTI_HORIZONS]].max(axis=1, skipna=False)
+        model = {"type": "multi_horizon", "models": models, "horizons": MULTI_HORIZONS}
     else:
-        model.fit(
+        train_target = train["label"].iloc[:, 0].astype(float)
+        valid_target = valid["label"].iloc[:, 0].astype(float)
+        model = _fit_model(
+            spec,
             train["feature"],
             train_target,
-            eval_set=[(valid["feature"], valid_target)],
-            verbose=False,
+            valid["feature"],
+            valid_target,
+            1,
         )
-    predictions = pd.Series(
-        _model_predict(model, test_features), index=test_features.index, name="score"
-    )
-    labels = dataset.prepare("test", col_set="label", data_key=DataHandlerLP.DK_R).iloc[:, 0].rename("label")
-    scored = pd.concat([predictions, labels], axis=1)
+        scored = pd.DataFrame(
+            {"score": _model_predict(model, test_features), "label": labels.iloc[:, 0]},
+            index=test_features.index,
+        )
     scored.index.names = ["datetime", "instrument"]
     set_log_context(progress="-/-", target=str(artifact_dir))
     return _persist_training_artifacts(
@@ -184,6 +194,53 @@ def train_configured_model(
         len(valid),
         train["feature"].shape[1],
     )
+
+
+def _handler_label_spec(spec: ModelSpec) -> tuple[list[str], list[str]]:
+    if spec.data_level == "L2" and _uses_dynamic_horizon_labels(spec):
+        return (
+            [f"$label_h{horizon}" for horizon in MULTI_HORIZONS],
+            [f"LABEL{horizon}" for horizon in MULTI_HORIZONS],
+        )
+    return ["$label"], ["LABEL0"]
+
+
+def _uses_dynamic_horizon_labels(spec: ModelSpec) -> bool:
+    return "dynamic-holding-value" in spec.strategy.label_contract
+
+
+def _fit_model(
+    spec: ModelSpec,
+    train_features: pd.DataFrame,
+    train_target: pd.Series,
+    valid_features: pd.DataFrame,
+    valid_target: pd.Series,
+    horizon: int,
+):
+    model = _configured_estimator(spec)
+    set_log_context(progress="0/300", target=f"{spec.algorithm}:H{horizon}")
+    if spec.algorithm == "LightGBM":
+        import lightgbm as lgb
+
+        model.fit(
+            train_features,
+            train_target,
+            eval_set=[(valid_features, valid_target)],
+            eval_names=["valid"],
+            eval_metric="l2",
+            callbacks=[
+                lgb.early_stopping(EARLY_STOPPING_ROUNDS, verbose=False),
+                _lightgbm_progress_callback(),
+            ],
+        )
+    else:
+        model.fit(
+            train_features,
+            train_target,
+            eval_set=[(valid_features, valid_target)],
+            verbose=False,
+        )
+    return model
 
 
 def _configured_handler(spec: ModelSpec):
@@ -253,14 +310,14 @@ def _persist_training_artifacts(
         "strategyContractHash": strategy_contract_hash(spec),
         "dataFeature": spec.feature_frequency,
         "featureSet": spec.feature_set,
-        "labelHorizon": 1,
+        "labelHorizon": spec.label_horizon,
         "labelContract": expected_label_contract(spec),
         "timeContractVersion": TRADING_TIME_CONTRACT,
         "timeContract": trading_time_contract(spec),
         "businessDescription": spec.business_description,
         "model": f"{spec.algorithm} Regression",
         "label": spec.label_description,
-        "labelPurgedTradeDays": 2,
+        "labelPurgedTradeDays": spec.label_horizon + 1,
         "algorithmParameters": spec.algorithm_parameters,
         "requiredFields": spec.required_fields,
         "segments": _segments_record(segments),
@@ -288,7 +345,7 @@ def predict_configured_model(
 ) -> dict[str, object]:
     metrics, calendar = _prediction_context(spec, qlib_dir, model_dir, prediction_date)
     features = _prediction_features(
-        _configured_handler(spec), qlib_dir, prediction_date, metrics["segments"], calendar
+        spec, qlib_dir, prediction_date, metrics["segments"], calendar
     )
     if features.empty:
         raise ValueError(f"目标日期没有可用模型特征：{prediction_date}")
@@ -298,20 +355,20 @@ def predict_configured_model(
     return {"modelId": spec.model_id, **_persist_prediction(scored, metrics, model_dir, prediction_date)}
 
 
-def _prediction_features(handler_type, qlib_dir: Path, prediction_date: date, segments: dict[str, str], calendar: pd.DatetimeIndex) -> pd.DataFrame:
+def _prediction_features(spec: ModelSpec, qlib_dir: Path, prediction_date: date, segments: dict[str, str], calendar: pd.DatetimeIndex) -> pd.DataFrame:
     import qlib
     from qlib.constant import REG_CN
     from qlib.data.dataset import DatasetH
     from qlib.data.dataset.handler import DataHandlerLP
 
     qlib.init(provider_uri=str(qlib_dir), region=REG_CN, kernels=2)
-    handler = handler_type(
+    handler = _configured_handler(spec)(
         instruments="all",
         start_time=pd.Timestamp(calendar.min()).date(),
         end_time=prediction_date,
         fit_start_time=date.fromisoformat(segments["train_start"]),
         fit_end_time=date.fromisoformat(segments["train_end"]),
-        label=(["$label"], ["LABEL0"]),
+        label=_handler_label_spec(spec),
     )
     dataset = DatasetH(handler=handler, segments={"prediction": (prediction_date, prediction_date)})
     return dataset.prepare("prediction", col_set="feature", data_key=DataHandlerLP.DK_I)
@@ -327,27 +384,48 @@ def _prediction_context(spec: ModelSpec, qlib_dir: Path, model_dir: Path, predic
     return metrics, calendar
 
 
-def _prediction_scores(model_dir: Path, features: pd.DataFrame, eligible_instruments: set[str] | None) -> pd.Series:
+def _prediction_scores(model_dir: Path, features: pd.DataFrame, eligible_instruments: set[str] | None) -> pd.DataFrame:
     if eligible_instruments is not None:
         allowed = {value.upper() for value in eligible_instruments}
         instruments = features.index.get_level_values("instrument").astype(str).str.upper()
         features = features[instruments.isin(allowed)]
         if features.empty:
-            return pd.Series(dtype="float64", name="score")
+            return pd.DataFrame(index=features.index)
     with (model_dir / "model.pkl").open("rb") as stream:
         model = pickle.load(stream)
-    columns = _model_feature_names(model)
+    models = (
+        model.get("models")
+        if isinstance(model, dict) and model.get("type") == "multi_horizon"
+        else None
+    )
+    reference_model = next(iter(models.values())) if models else model
+    columns = _model_feature_names(reference_model)
     if columns:
         missing = sorted(set(columns) - set(features.columns))
         if missing:
             raise ValueError(f"预测特征缺少训练字段：{missing[:5]}")
         features = features.loc[:, columns]
-    scored = pd.Series(_model_predict(model, features), index=features.index, name="score").dropna()
+    if models:
+        scored = pd.DataFrame(
+            {
+                f"score_h{horizon}": _model_predict(child, features)
+                for horizon, child in models.items()
+            },
+            index=features.index,
+        )
+        scored["score"] = scored[
+            [f"score_h{horizon}" for horizon in MULTI_HORIZONS]
+        ].max(axis=1)
+    else:
+        scored = pd.DataFrame(
+            {"score": _model_predict(model, features)}, index=features.index
+        )
+    scored = scored.dropna(subset=["score"])
     scored.index.names = ["datetime", "instrument"]
     return scored
 
 
-def _persist_prediction(scored: pd.Series, metrics: dict[str, object], model_dir: Path, prediction_date: date) -> dict[str, object]:
+def _persist_prediction(scored: pd.DataFrame, metrics: dict[str, object], model_dir: Path, prediction_date: date) -> dict[str, object]:
     ranking = scored.reset_index().sort_values(["datetime", "score", "instrument"], ascending=[True, False, True]).reset_index(drop=True)
     ranking["rank"] = range(1, len(ranking) + 1)
     ranking["label"] = float("nan")
@@ -462,4 +540,4 @@ def automatic_model_segments(
     )
 
 
-# AI_GENERATE_END-- --------------------------------------------
+# AI_GENERATE_END--- --------------------------------------------

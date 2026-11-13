@@ -1,12 +1,13 @@
 # AI_GENERATE_START------------ ---------
 from __future__ import annotations
 
+import calendar
 import json
 import logging
 import re
 import sys
 from collections.abc import Callable
-from datetime import date
+from datetime import date, timedelta
 from time import perf_counter
 from typing import Literal, TypeVar
 
@@ -134,7 +135,7 @@ def collect_command(
 
     def run(config: AppConfig) -> dict[str, object]:
         today = shanghai_today()
-        start, end = _parse_date_expression(date_value, today, today)
+        start, end = _parse_collect_date_expression(date_value, today)
         return collect_workflow(
             config,
             start,
@@ -388,7 +389,29 @@ def _parse_date_expression(
     return start_date, end_date
 
 
-
+def _parse_collect_date_expression(
+    value: str | None,
+    today: date,
+) -> tuple[date, date]:
+    if value is not None:
+        relative = re.fullmatch(r"-(\d+)([ymd])", value.strip(), re.IGNORECASE)
+        if relative is not None:
+            amount = int(relative.group(1))
+            unit = relative.group(2).lower()
+            try:
+                if unit == "d":
+                    start = today - timedelta(days=amount)
+                else:
+                    months = amount * (12 if unit == "y" else 1)
+                    month_index = today.year * 12 + today.month - 1 - months
+                    year, month_index = divmod(month_index, 12)
+                    month = month_index + 1
+                    day = min(today.day, calendar.monthrange(year, month)[1])
+                    start = date(year, month, day)
+            except (OverflowError, ValueError):
+                raise CliParameterError(f"相对日期超出支持范围：{value}") from None
+            return start, today
+    return _parse_date_expression(value, today, today)
 
 def _parse_stock_code(value: str) -> str:
     normalized = value.strip().lower()
@@ -600,7 +623,9 @@ app = typer.Typer(
 @app.command("data-collect")
 def data_collect(
     date_value: str | None = typer.Option(
-        None, "--date", help="采集日期或日期范围，默认当天。"
+        None,
+        "--date",
+        help="采集日期、日期范围或相对日期（如 -3y、-2m、-23d），默认当天。",
     ),
     codes_value: str | None = typer.Option(
         None, "--codes", help="股票代码，逗号分隔，默认全市场。"

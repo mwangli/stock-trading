@@ -1,4 +1,4 @@
-# AI_GENERATE_START------------ ----------------------------------------
+# AI_GENERATE_START-------------- ----------------------------------------
 from __future__ import annotations
 
 import logging
@@ -11,6 +11,7 @@ import pandas as pd
 
 from qlib.contrib.data.handler import Alpha158
 from qlib.contrib.data.loader import Alpha158DL
+from qlib.data.dataset.processor import Processor
 
 from stock_trading.market.domain import normalize_instrument, trade_dates
 from stock_trading.market.storage import ParquetMarketStore
@@ -51,6 +52,11 @@ class DailyAlpha158(Alpha158):
 class DailyMinute5PathAlpha158(Alpha158):
     """权威日线 Alpha158、基础指标和 5 分钟路径特征。"""
 
+    def __init__(self, *args, **kwargs):
+        infer_processors = list(kwargs.pop("infer_processors", ()))
+        infer_processors.append(Minute5CrossSectionalNormalizer())
+        super().__init__(*args, infer_processors=infer_processors, **kwargs)
+
     def get_feature_config(self):
         fields, names = Alpha158DL.get_feature_config(
             {
@@ -68,6 +74,55 @@ class DailyMinute5PathAlpha158(Alpha158):
         return fields, names
 
 
+class Minute5CrossSectionalNormalizer(Processor):
+    """按交易日稳健标准化分钟路径字段，避免极端值主导模型。"""
+
+    _FIELDS = frozenset(field.upper() for field in MINUTE5_FEATURE_FIELDS)
+
+    def __call__(self, frame: pd.DataFrame) -> pd.DataFrame:
+        columns = [
+            column
+            for column in frame.columns
+            if isinstance(column, tuple)
+            and len(column) >= 2
+            and column[0] == "feature"
+            and str(column[-1]).upper() in self._FIELDS
+        ]
+        if not columns:
+            return frame
+        values = frame.loc[:, columns].apply(pd.to_numeric, errors="coerce")
+        log_columns = [
+            column
+            for column in columns
+            if "VOLUME" in str(column[-1]).upper()
+            or "AMOUNT" in str(column[-1]).upper()
+        ]
+        if log_columns:
+            values.loc[:, log_columns] = np.sign(values[log_columns]) * np.log1p(
+                values[log_columns].abs()
+            )
+
+        normalized_array = values.to_numpy(dtype="float64", copy=True)
+        datetime_values = values.index.get_level_values("datetime")
+        for day in datetime_values.unique():
+            positions = np.flatnonzero(datetime_values == day)
+            block = normalized_array[positions, :]
+            lower = np.nanquantile(block, 0.01, axis=0)
+            upper = np.nanquantile(block, 0.99, axis=0)
+            block = np.clip(block, lower, upper)
+            order = np.argsort(np.argsort(block, axis=0), axis=0)
+            counts = np.sum(np.isfinite(block), axis=0)
+            normalized_array[positions, :] = (
+                (order + 1) / np.maximum(counts, 1) - 0.5
+            ) * 3.46
+        # MultiIndex 列逐列按位置回写，避免 pandas 将整块矩阵序列化到单个单元。
+        for index, column in enumerate(columns):
+            frame.iloc[:, frame.columns.get_loc(column)] = normalized_array[:, index].astype(
+                "float32"
+            )
+        return frame
+
+
 def build_labels(
     observation: pd.DataFrame,
     calendar: pd.DatetimeIndex,
@@ -79,7 +134,7 @@ def build_labels(
     if spec.data_level == "L1":
         return _daily_vwap_labels(observation, calendar)
     if spec.data_level == "L2":
-        return _minute5_window_labels(observation, calendar)
+        return _daily_vwap_labels(observation, calendar)
     raise ValueError(f"当前阶段不支持的数据等级：{spec.data_level}")
 
 
@@ -152,6 +207,50 @@ def _minute5_window_labels(
     return labels.astype("float32").rename("label")
 
 
+def _minute5_horizon_labels(
+    observation: pd.DataFrame, calendar: pd.DatetimeIndex
+) -> pd.DataFrame:
+    required = {
+        "full_complete",
+        "buy_vwap",
+        "sell_vwap",
+        "buy_complete",
+        "sell_complete",
+        "buy_locked",
+        "sell_locked",
+    }
+    if not required.issubset(observation.columns):
+        raise ValueError("L2 标签缺少完整日、买卖窗口或涨跌停锁死字段")
+    full_complete = observation["full_complete"].reindex(calendar).fillna(False)
+    buy_complete = observation["buy_complete"].reindex(calendar).shift(-1).fillna(False)
+    buy_locked = observation["buy_locked"].reindex(calendar).shift(-1).fillna(True)
+    buy_vwap = pd.to_numeric(observation["buy_vwap"], errors="coerce").reindex(calendar).shift(-1)
+    labels: dict[str, pd.Series] = {}
+    for horizon in (1, 2, 3):
+        sell_complete = observation["sell_complete"].reindex(calendar).shift(-(horizon + 1)).fillna(False)
+        sell_locked = observation["sell_locked"].reindex(calendar).shift(-(horizon + 1)).fillna(True)
+        sell_vwap = pd.to_numeric(observation["sell_vwap"], errors="coerce").reindex(calendar).shift(-(horizon + 1))
+        labels[f"label_h{horizon}"] = (
+            sell_vwap / buy_vwap - 1.0
+        ).where(
+            full_complete.astype(bool)
+            & buy_complete.astype(bool)
+            & sell_complete.astype(bool)
+            & ~buy_locked.astype(bool)
+            & ~sell_locked.astype(bool)
+            & buy_vwap.gt(0)
+            & sell_vwap.gt(0)
+        ).astype("float32")
+    return pd.DataFrame(labels, index=calendar)
+
+
+def _minute5_dynamic_labels(
+    observation: pd.DataFrame, calendar: pd.DatetimeIndex
+) -> pd.Series:
+    horizons = _minute5_horizon_labels(observation, calendar)
+    return horizons.max(axis=1, skipna=False).astype("float32").rename("label")
+
+
 QLIB_BASE_FIELDS = (
     "open", "high", "low", "close", "volume", "amount", "vwap", "factor",
 )
@@ -160,8 +259,10 @@ MINUTE5_QLIB_FIELDS = (
     QLIB_BASE_FIELDS
     + BASIC_FEATURE_FIELDS
     + MINUTE5_FEATURE_FIELDS
-    + ("label",)
+    + ("label", "label_h1", "label_h2", "label_h3")
 )
+
+LABEL_FIELDS = ("label", "label_h1", "label_h2", "label_h3")
 
 
 def _official_calendar(
@@ -299,6 +400,10 @@ class QlibBinaryStore:
             aligned = frame.reindex(calendar)
             labels = build_labels(frame, calendar, self._spec)
             aligned["label"] = labels.reindex(calendar)
+            if self._spec.data_level == "L2":
+                horizons = _minute5_horizon_labels(frame, calendar)
+                for field in LABEL_FIELDS[1:]:
+                    aligned[field] = horizons[field]
             qlib_code = normalize_instrument(code)
             self._write_features(temporary, qlib_code, aligned)
             instruments.append(
@@ -619,18 +724,41 @@ class QlibBinaryStore:
                 instrument = normalize_instrument(code)
                 full = self._adjusted_daily(code, start_date, end_date)
                 labels = build_labels(full, calendar, self._spec).reindex(calendar)
+                horizon_labels = (
+                    _minute5_horizon_labels(full, calendar)
+                    if self._spec.data_level == "L2"
+                    else pd.DataFrame(index=calendar)
+                )
+                all_labels = {"label": labels} | {
+                    field: horizon_labels[field]
+                    for field in LABEL_FIELDS[1:]
+                    if field in horizon_labels
+                }
+                feature_fields = tuple(
+                    field for field in self._qlib_fields if field not in LABEL_FIELDS
+                )
                 if instrument in existing_instruments:
                     if new_calendar.empty:
                         latest = full.reindex(calendar[-1:])
-                        for field in self._qlib_fields[:-1]:
+                        for field in feature_fields:
                             self._overwrite_last_field(
                                 temporary, instrument, field, latest[field]
                             )
                     else:
                         aligned = full.reindex(new_calendar)
-                        for field in self._qlib_fields[:-1]:
+                        for field in feature_fields:
                             self._append_field(
                                 temporary, instrument, field, aligned[field]
+                            )
+                    for field, values in all_labels.items():
+                        label_values = values.reindex(calendar)
+                        if new_calendar.empty:
+                            self._overwrite_last_field(
+                                temporary, instrument, field, label_values.iloc[-1:]
+                            )
+                        else:
+                            self._append_field(
+                                temporary, instrument, field, label_values.reindex(new_calendar)
                             )
                     valid = full.dropna(subset=["close"])
                     old_start, old_end = intervals[instrument]
@@ -646,14 +774,16 @@ class QlibBinaryStore:
                         LOGGER.warning("新增股票范围内无有效日线，已跳过：%s", code)
                         continue
                     aligned = full.reindex(calendar)
-                    aligned["label"] = labels
+                    for field, values in all_labels.items():
+                        aligned[field] = values
                     self._write_features(temporary, instrument, aligned)
                     intervals[instrument] = (
                         valid.index.min().date(),
                         valid.index.max().date(),
                     )
 
-                self._write_field(temporary, instrument, "label", labels)
+                for field, values in all_labels.items():
+                    self._write_field(temporary, instrument, field, values)
                 label_count += int(labels.notna().sum())
                 if should_log_progress(index, total_codes):
                     set_log_context(progress=f"{index}/{total_codes}", target=code)
@@ -784,4 +914,4 @@ class QlibBinaryStore:
             raise
         shutil.rmtree(backup, ignore_errors=True)
 
-# AI_GENERATE_END------------- ----------------------------------------
+# AI_GENERATE_END--------------- ----------------------------------------

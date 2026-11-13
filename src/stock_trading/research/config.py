@@ -1,4 +1,4 @@
-# AI_GENERATE_START---- ----------
+# AI_GENERATE_START-2------- ----------
 from __future__ import annotations
 
 import hashlib
@@ -20,6 +20,7 @@ class StrategySpec:
     sell_window: tuple[str, str]
     buy_window: tuple[str, str]
     price_benchmark: str
+    holding_policy: str
 
 
 @dataclass(frozen=True)
@@ -45,7 +46,7 @@ class ModelSpec:
 
     @property
     def label_horizon(self) -> int:
-        return 1
+        return 3 if self.data_level == "L2" and "dynamic-holding-value" in self.strategy.label_contract else 1
 
     @property
     def label_name(self) -> str:
@@ -64,18 +65,17 @@ L1_STRATEGY = StrategySpec(
     sell_window=("09:30", "15:00"),
     buy_window=("09:30", "15:00"),
     price_benchmark="daily-vwap",
+    holding_policy="RANK_EXIT_OR_MAX_HOLD",
 )
 L2_STRATEGY = StrategySpec(
     strategy_id="T1_AM_SELL_PM_BUY",
-    display_name="收盘排名、次日上午卖出、下午买入",
-    label_contract=(
-        "sell_vwap(D+2,09:30-11:30) / buy_vwap(D+1,14:00-15:00) - 1;"
-        "exclude limit-locked windows"
-    ),
+    display_name="分钟特征、全天日均价 T+1",
+    label_contract="daily_vwap(D+2) / daily_vwap(D+1) - 1",
     signal_timing="after-close",
-    sell_window=("09:30", "11:30"),
-    buy_window=("14:00", "15:00"),
-    price_benchmark="window-vwap",
+    sell_window=("09:30", "15:00"),
+    buy_window=("09:30", "15:00"),
+    price_benchmark="daily-vwap",
+    holding_policy="RANK_EXIT_OR_MAX_HOLD",
 )
 L3_PLANNED_STRATEGY = StrategySpec(
     strategy_id="T1_PM_SELL_PM_BUY",
@@ -87,6 +87,7 @@ L3_PLANNED_STRATEGY = StrategySpec(
     sell_window=("13:00", "14:00"),
     buy_window=("14:00", "15:00"),
     price_benchmark="minute1-window-vwap",
+    holding_policy="FIXED_NEXT_TRADING_DAY",
 )
 
 ALGORITHMS: dict[str, dict[str, object]] = {
@@ -199,9 +200,9 @@ def strategy_contract(spec: ModelSpec) -> dict[str, object]:
         "sellWindow": list(strategy.sell_window),
         "buyWindow": list(strategy.buy_window),
         "priceBenchmark": strategy.price_benchmark,
+        "holdingPolicy": strategy.holding_policy,
         "labelContract": strategy.label_contract,
-        "entryRank": 5,
-        "retainRank": 15,
+        "exitPosition": 10,
     }
 
 
@@ -227,4 +228,4 @@ def expected_qlib_contract(spec: ModelSpec) -> str:
     return f"{QLIB_CONTRACT_VERSION}:{spec.dataset_id}:{strategy_contract_hash(spec)}"
 
 
-# AI_GENERATE_END---- ----------
+# AI_GENERATE_END-2------- ----------
