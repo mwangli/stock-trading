@@ -202,7 +202,8 @@ def strategy_contract(spec: ModelSpec) -> dict[str, object]:
         "priceBenchmark": strategy.price_benchmark,
         "holdingPolicy": strategy.holding_policy,
         "labelContract": strategy.label_contract,
-        "exitPosition": 10,
+        "exitPosition": 5,
+        "exitFallbackPosition": 20,
     }
 
 

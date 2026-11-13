@@ -1,15 +1,17 @@
-# AI_GENERATE_START --
+# AI_GENERATE_START ---
 from __future__ import annotations
 
 import json
+import hashlib
 import logging
 import shutil
+from dataclasses import replace
 from datetime import date, time, timedelta
 from pathlib import Path
 
 import pandas as pd
 
-from stock_trading.config import AppConfig
+from stock_trading.config import AppConfig, TRADING_TIME_CONTRACT
 from stock_trading.market.domain import (
     latest_completed_trade_date,
     live_codes,
@@ -42,9 +44,14 @@ from stock_trading.research.artifacts import (
 )
 from stock_trading.research.backtest import (
     backtest_artifact_valid,
+    read_backtest_summary,
     run_portfolio_backtest,
 )
-from stock_trading.research.config import MIN_QLIB_TRADING_DAYS, ModelSpec
+from stock_trading.research.config import (
+    MIN_QLIB_TRADING_DAYS,
+    ModelSpec,
+    strategy_contract_hash,
+)
 from stock_trading.research.model import automatic_model_segments, create_research_model
 from stock_trading.state.store import StateStore
 from stock_trading.state.workflows import _record_task
@@ -241,7 +248,7 @@ def run_training_pipeline(
     spec: ModelSpec,
     force: bool = False,
 ) -> dict[str, object]:
-    """训练、回测和评估一个模型 ID，成功后再原子替换当前制品。"""
+    """只训练模型，成功后原子替换当前制品。"""
     model = create_research_model(config, spec)
     start_date, end_date = model.date_range() or default_training_range(config)
     codes = default_training_codes(config, start_date, end_date)
@@ -251,7 +258,7 @@ def run_training_pipeline(
     preparation_summary = _preparation_summary(preparation)
     target = model.artifact_dir
     store = StateStore(config.state_db_path)
-    if not force and complete_model_artifacts_valid(config, spec, target):
+    if not force and model_artifacts_valid(target, spec):
         state = (
             None
             if store.model_artifacts_registered(target)
@@ -280,10 +287,7 @@ def run_training_pipeline(
     try:
         training = model.train(staging, segments)
         validate_model_artifacts(staging, spec)
-        backtest = run_backtest(config, spec, model.qlib_dir, staging)
-        evaluation = evaluate_candidate(config, spec, staging, backtest)
-        if not complete_model_artifacts_valid(config, spec, staging):
-            raise ValueError("模型训练、回测或评估制品不完整")
+        _write_model_manifest(staging, spec, training, segments)
         target.parent.mkdir(parents=True, exist_ok=True)
         replace_model_directory(staging, target)
     finally:
@@ -298,7 +302,6 @@ def run_training_pipeline(
         "preparation": preparation_summary,
         "training": training
         | {"skipped": False, "artifactPath": str(target)},
-        "evaluation": evaluation,
         "state": state,
         "completedTrainingRequests": completed_requests,
     }
@@ -447,16 +450,125 @@ def run_backtest(
     spec: ModelSpec,
     qlib_dir: Path,
     model_dir: Path,
+    backtest_id: str,
+    exit_fallback_position: int = 20,
+    rank_grace_days: int = 1,
 ) -> dict[str, object]:
     set_log_context(progress="1/1", target=f"资金={config.backtest_capital}")
     return run_portfolio_backtest(
         config,
         spec,
         model_dir,
-        backtest_directory(model_dir),
+        backtest_directory(config.backtest_dir, backtest_id),
         config.backtest_capital,
         qlib_dir=qlib_dir,
+        exit_fallback_position=exit_fallback_position,
+        rank_grace_days=rank_grace_days,
     )
+
+
+def run_backtest_pipeline(
+    config: AppConfig,
+    spec: ModelSpec,
+    force: bool = False,
+    backtest_id: str | None = None,
+    exit_position: int | None = None,
+    exit_fallback_position: int = 20,
+    rank_grace_days: int = 1,
+    max_holding_days: int | None = None,
+    capital: int | None = None,
+) -> dict[str, object]:
+    """独立执行已训练模型的回测，不触发准备或训练。"""
+    if rank_grace_days < 0:
+        raise ValueError("rank_grace_days 必须为非负整数")
+    if exit_position is not None and exit_position <= 0:
+        raise ValueError("exit_position 必须大于 0")
+    if exit_fallback_position <= 0:
+        raise ValueError("exit_fallback_position 必须大于 0")
+    if max_holding_days is not None and max_holding_days <= 0:
+        raise ValueError("max_holding_days 必须大于 0")
+    if capital is not None and capital <= 0:
+        raise ValueError("capital 必须大于 0")
+    config = replace(
+        config,
+        exit_position=config.exit_position if exit_position is None else exit_position,
+        trading_max_holding_days=(
+            config.trading_max_holding_days
+            if max_holding_days is None
+            else max_holding_days
+        ),
+        backtest_capital=config.backtest_capital if capital is None else capital,
+    )
+    model = create_research_model(config, spec)
+    model_dir = model.artifact_dir
+    if not model_artifacts_valid(model_dir, spec):
+        raise ValueError(
+            f"模型制品不存在或合同不完整：{spec.model_id}；请先执行 stock model-train"
+        )
+    resolved_backtest_id = backtest_id or build_backtest_id(
+        config,
+        spec,
+        model_dir,
+        exit_fallback_position=exit_fallback_position,
+        rank_grace_days=rank_grace_days,
+    )
+    target = backtest_directory(config.backtest_dir, resolved_backtest_id)
+    if (
+        not force
+        and backtest_artifact_valid(
+            target,
+            initial_cash=config.backtest_capital,
+            max_holding_days=config.trading_max_holding_days,
+        )
+    ):
+        return {
+            "modelId": spec.model_id,
+            "backtestId": resolved_backtest_id,
+            "backtest": read_backtest_summary(target),
+            "artifactPath": str(target),
+            "reused": True,
+        }
+    result = run_backtest(
+        config,
+        spec,
+        model.qlib_dir,
+        model_dir,
+        resolved_backtest_id,
+        exit_fallback_position=exit_fallback_position,
+        rank_grace_days=rank_grace_days,
+    )
+    evaluation = evaluate_candidate(
+        config, spec, model_dir, result, resolved_backtest_id
+    )
+    _write_backtest_metadata(
+        target,
+        resolved_backtest_id,
+        spec,
+        model_dir,
+        result,
+        evaluation,
+    )
+    StateStore(config.state_db_path).record_backtest_run(
+        backtest_id=resolved_backtest_id,
+        model_id=spec.model_id,
+        model_artifact_hash=str(manifest_model_hash(model_dir)),
+        dataset_id=spec.dataset_id,
+        strategy_contract_hash=strategy_contract_hash(spec),
+        backtest_contract_hash=_backtest_contract_hash(result),
+        artifact_path=str(target),
+        status="SUCCESS",
+        summary=result,
+        created_at=str(evaluation["createdAt"]),
+        finished_at=str(evaluation["createdAt"]),
+    )
+    return {
+        "modelId": spec.model_id,
+        "backtestId": resolved_backtest_id,
+        "backtest": result,
+        "evaluation": evaluation,
+        "artifactPath": str(target),
+        "reused": False,
+    }
 
 
 def evaluate_candidate(
@@ -464,10 +576,11 @@ def evaluate_candidate(
     spec: ModelSpec,
     model_dir: Path,
     backtest: dict[str, object],
+    backtest_id: str,
 ) -> dict[str, object]:
     metrics = json.loads((model_dir / "metrics.json").read_text(encoding="utf-8"))
     if not backtest_artifact_valid(
-        backtest_directory(model_dir),
+        backtest_directory(config.backtest_dir, backtest_id),
         initial_cash=config.backtest_capital,
         max_holding_days=config.trading_max_holding_days,
     ):
@@ -498,15 +611,104 @@ def complete_model_artifacts_valid(
 ) -> bool:
     if not model_artifacts_valid(model_dir, spec):
         return False
+    backtest_id = build_backtest_id(config, spec, model_dir)
     return backtest_artifact_valid(
-        backtest_directory(model_dir),
+        backtest_directory(config.backtest_dir, backtest_id),
         initial_cash=config.backtest_capital,
         max_holding_days=config.trading_max_holding_days,
     )
 
 
-def backtest_directory(model_dir: Path) -> Path:
-    return model_dir / "backtest"
+def backtest_directory(backtest_root: Path, backtest_id: str) -> Path:
+    """返回唯一回测实验目录；模型制品不复制到该目录。"""
+    return backtest_root / backtest_id
+
+
+def build_backtest_id(
+    config: AppConfig,
+    spec: ModelSpec,
+    model_dir: Path,
+    *,
+    exit_fallback_position: int = 20,
+    rank_grace_days: int = 1,
+) -> str:
+    """根据模型制品和完整回测参数生成稳定、可复用的实验 ID。"""
+    artifact_hash = hashlib.sha256((model_dir / "model.pkl").read_bytes()).hexdigest()
+    contract = {
+        "modelId": spec.model_id,
+        "modelArtifactHash": artifact_hash,
+        "exitPosition": config.exit_position,
+        "exitFallbackPosition": exit_fallback_position,
+        "rankGraceDays": rank_grace_days,
+        "maxHoldingDays": config.trading_max_holding_days,
+        "initialCash": config.backtest_capital,
+        "orderFee": config.trading_order_fee,
+        "allowedPrefixes": config.trading_allowed_prefixes,
+        "timeContract": TRADING_TIME_CONTRACT,
+    }
+    digest = hashlib.sha256(
+        json.dumps(contract, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()[:12]
+    stamp = shanghai_now().strftime("%Y%m%d")
+    model_slug = spec.model_id.lower().replace("_", "-")
+    return f"bt_{stamp}_{model_slug}_{digest}"
+
+
+def _write_backtest_metadata(
+    target: Path,
+    backtest_id: str,
+    spec: ModelSpec,
+    model_dir: Path,
+    result: dict[str, object],
+    evaluation: dict[str, object],
+) -> None:
+    target.mkdir(parents=True, exist_ok=True)
+    artifact_hash = hashlib.sha256((model_dir / "model.pkl").read_bytes()).hexdigest()
+    manifest = {
+        "backtestId": backtest_id,
+        "modelId": spec.model_id,
+        "modelArtifactPath": f"data/models/trained/{spec.model_id}",
+        "modelArtifactHash": artifact_hash,
+        "datasetId": spec.dataset_id,
+        "strategy": {
+            "exitPosition": result["config"]["exit_position"],
+            "exitFallbackPosition": result["config"].get("exit_fallback_position", 20),
+            "rankGraceDays": result["config"].get("rank_grace_days", 1),
+            "maxHoldingDays": result["config"]["max_holding_days"],
+        },
+        "execution": {
+            "initialCash": result["initialCash"],
+            "orderFee": result["config"]["order_fee"],
+            "slippageBps": result["config"]["slippage_bps"],
+            "priceBenchmark": result["simulationType"],
+        },
+        "status": "EVALUATED",
+    }
+    (target / "backtest_manifest.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+    (target / "evaluation.json").write_text(
+        json.dumps(evaluation, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    (target / "report.md").write_text(
+        "# 回测报告\n\n"
+        f"- 回测 ID：`{backtest_id}`\n"
+        f"- 模型：`{spec.model_id}`\n"
+        f"- 毛收益率：{float(result['grossReturnBeforeFees']):.4%}\n"
+        f"- 最大回撤：{float(result['maxDrawdown']):.4%}\n"
+        f"- 成交笔数：{result['closedTrades']}\n",
+        encoding="utf-8",
+    )
+
+
+def manifest_model_hash(model_dir: Path) -> str:
+    return hashlib.sha256((model_dir / "model.pkl").read_bytes()).hexdigest()
+
+
+def _backtest_contract_hash(result: dict[str, object]) -> str:
+    payload = json.dumps(result["config"], ensure_ascii=False, sort_keys=True)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def _preparation_summary(preparation: dict[str, object]) -> dict[str, object]:
@@ -518,6 +720,39 @@ def _preparation_summary(preparation: dict[str, object]) -> dict[str, object]:
         "qlibReady": True,
         "dataQuality": preparation["dataQuality"],
     }
+
+
+def _write_model_manifest(
+    model_dir: Path,
+    spec: ModelSpec,
+    training: dict[str, object],
+    segments: object,
+) -> None:
+    metrics = json.loads((model_dir / "metrics.json").read_text(encoding="utf-8"))
+    manifest = {
+        "modelId": spec.model_id,
+        "datasetId": spec.dataset_id,
+        "algorithm": spec.algorithm,
+        "algorithmParameters": spec.algorithm_parameters,
+        "labelContract": spec.label_description,
+        "trainSegments": {
+            "trainStart": str(segments.train_start),
+            "trainEnd": str(segments.train_end),
+            "validStart": str(segments.valid_start),
+            "validEnd": str(segments.valid_end),
+            "testStart": str(segments.test_start),
+            "testEnd": str(segments.test_end),
+        },
+        "modelArtifactHash": hashlib.sha256(
+            (model_dir / "model.pkl").read_bytes()
+        ).hexdigest(),
+        "training": training,
+        "metrics": metrics.get("metrics", {}),
+        "status": "READY",
+    }
+    (model_dir / "model_manifest.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
 
 
 def _existing_prediction_summary(
@@ -595,4 +830,4 @@ def _assert_task_success(
     )
 
 
-# AI_GENERATE_END --
+# AI_GENERATE_END ---

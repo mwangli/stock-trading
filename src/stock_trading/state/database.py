@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Iterator
 
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 _MODEL_ID_MIGRATION = """
 ALTER TABLE model_version ADD COLUMN model_id TEXT NOT NULL DEFAULT 'legacy';
 ALTER TABLE model_evaluation ADD COLUMN model_id TEXT NOT NULL DEFAULT 'legacy';
@@ -61,6 +61,7 @@ SCHEMA_MIGRATIONS[9] = """
 ALTER TABLE broker_stock_permission ADD COLUMN response_json TEXT;
 ALTER TABLE broker_stock_permission ADD COLUMN response_msg TEXT;
 """
+SCHEMA_MIGRATIONS[10] = ""
 
 SCHEMA = """
 -- 任务运行记录：保存可恢复、可幂等任务的执行状态。
@@ -150,6 +151,36 @@ CREATE INDEX IF NOT EXISTS idx_model_evaluation_config
 ON model_evaluation(model_id, business_date);
 CREATE INDEX IF NOT EXISTS idx_training_request_config
 ON training_request(model_id, status, requested_at);
+
+-- 回测实验摘要：逐笔交易和权益仍保存在实验目录的 Parquet 文件中。
+CREATE TABLE IF NOT EXISTS backtest_run (
+    backtest_id TEXT PRIMARY KEY,
+    model_id TEXT NOT NULL,
+    model_version_id INTEGER,
+    model_artifact_hash TEXT NOT NULL,
+    dataset_id TEXT NOT NULL,
+    strategy_contract_hash TEXT NOT NULL,
+    backtest_contract_hash TEXT NOT NULL,
+    artifact_path TEXT NOT NULL,
+    status TEXT NOT NULL,
+    initial_cash REAL NOT NULL,
+    test_start TEXT,
+    test_end TEXT,
+    closed_trades INTEGER,
+    gross_profit REAL,
+    gross_return REAL,
+    net_profit REAL,
+    max_drawdown REAL,
+    win_rate REAL,
+    average_holding_days REAL,
+    turnover REAL,
+    summary_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    finished_at TEXT,
+    FOREIGN KEY(model_version_id) REFERENCES model_version(id)
+);
+CREATE INDEX IF NOT EXISTS idx_backtest_run_model
+ON backtest_run(model_id, created_at);
 
 -- 券商成交事实：只保存券商已成交订单及其模型归因。
 CREATE TABLE IF NOT EXISTS broker_order (

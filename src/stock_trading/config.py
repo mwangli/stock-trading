@@ -1,4 +1,4 @@
-# AI_GENERATE_START-2--------- ---------------------------------------------------------
+# AI_GENERATE_START-5--------- ---------------------------------------------------------
 from __future__ import annotations
 
 import logging
@@ -13,8 +13,8 @@ FIXED_TIME_URGENCY_STRATEGY = "FIXED_TIME_URGENCY"
 TRADING_MIN_PRICE = 0.01
 TRADING_MAX_PRICE = 1_000_000.0
 TRADING_ORDER_FEE = 5.0
-EXIT_POSITION = 10
-TRADING_MAX_HOLDING_DAYS = 3
+EXIT_POSITION = 5
+TRADING_MAX_HOLDING_DAYS = 5
 TRADING_LIMIT_DOWN_LOOKBACK_DAYS = 10
 TRADING_MAX_RECENT_LIMIT_DOWNS = 2
 ORDER_WAIT_SECONDS = 60
@@ -64,6 +64,7 @@ class AppConfig:
     market_dir: Path
     prepared_dir: Path
     model_dir: Path
+    backtest_dir: Path
     active_model_id: str
     state_db_path: Path
     baostock_proxy: str | None
@@ -126,8 +127,10 @@ class AppConfig:
             project_dir = load_project_environment()
         runtime_dir = project_dir / "data"
         market_dir = runtime_dir / "market"
-        prepared_dir = runtime_dir / "prepared"
-        model_dir = runtime_dir / "models"
+        models_dir = runtime_dir / "models"
+        prepared_dir = models_dir / "prepared"
+        model_dir = models_dir / "trained"
+        backtest_dir = models_dir / "backtests"
         state_db_path = runtime_dir / "state" / "trading.db"
         baostock_proxy = _optional_env("BAOSTOCK_PROXY")
         broker_token = _optional_env("ZXBROKER_TOKEN")
@@ -135,6 +138,7 @@ class AppConfig:
             market_dir=market_dir,
             prepared_dir=prepared_dir,
             model_dir=model_dir,
+            backtest_dir=backtest_dir,
             active_model_id=(
                 os.getenv("STOCK_TRADING_ACTIVE_MODEL", "L1_daily_LightGBM").strip()
                 or "L1_daily_LightGBM"
@@ -323,4 +327,4 @@ def _env_float(name: str, default: float) -> float:
         return float(value)
     except ValueError:
         raise ValueError(f"环境变量 {name} 必须是数字") from None
-# AI_GENERATE_END-2--------- ---------------------------------------------------------
+# AI_GENERATE_END-5--------- ---------------------------------------------------------

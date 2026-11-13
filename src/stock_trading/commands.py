@@ -1,4 +1,4 @@
-# AI_GENERATE_START------------ ---------
+# AI_GENERATE_START------------- ---------
 from __future__ import annotations
 
 import calendar
@@ -8,6 +8,7 @@ import re
 import sys
 from collections.abc import Callable
 from datetime import date, timedelta
+from pathlib import Path
 from time import perf_counter
 from typing import Literal, TypeVar
 
@@ -217,7 +218,10 @@ def generate_command(
         ),
     )
 
-def train_command(force: bool = False, model_id: str | None = None) -> None:
+def train_command(
+    force: bool = False,
+    model_id: str | None = None,
+) -> None:
     from stock_trading.research.workflows import run_training_pipeline
 
     def run(config: AppConfig) -> dict[str, object]:
@@ -228,7 +232,13 @@ def train_command(force: bool = False, model_id: str | None = None) -> None:
         errors: dict[str, str] = {}
         for spec in specs:
             try:
-                items.append(run_training_pipeline(config, spec, force=force))
+                items.append(
+                    run_training_pipeline(
+                        config,
+                        spec,
+                        force=force,
+                    )
+                )
             except Exception as error:
                 errors[spec.model_id] = str(error)
                 LOGGER.error("模型批量训练失败：模型=%s；原因=%s", spec.model_id, error)
@@ -240,9 +250,94 @@ def train_command(force: bool = False, model_id: str | None = None) -> None:
 
     result = _execute(
         "model-train",
-        {"force": force, "model": model_id},
+        {
+            "force": force,
+            "model": model_id,
+        },
         run,
         result_summary=_summarize_training,
+    )
+    if result.get("status") == "PARTIAL":
+        raise SystemExit(1)
+
+
+def backtests_command(
+    force: bool = False,
+    model_id: str | None = None,
+    backtest_id: str | None = None,
+    exit_position: int | None = None,
+    exit_fallback_position: int = 20,
+    rank_grace_days: int = 1,
+    max_holding_days: int | None = None,
+    capital: int | None = None,
+    config_path: str | None = None,
+) -> None:
+    from stock_trading.research.workflows import run_backtest_pipeline
+
+    def run(config: AppConfig) -> dict[str, object]:
+        batch: dict[str, object] = {}
+        if config_path:
+            batch = json.loads(Path(config_path).read_text(encoding="utf-8"))
+        configured_models = batch.get("modelIds")
+        specs = all_model_specs() if not configured_models else tuple(
+            resolve_model_spec(str(value)) for value in configured_models
+        )
+        if model_id is not None:
+            specs = (_resolve_model(model_id),)
+        strategies = batch.get("strategies") or [{}]
+        items: list[dict[str, object]] = []
+        errors: dict[str, str] = {}
+        for spec in specs:
+            for strategy in strategies:
+                try:
+                    strategy = dict(strategy)
+                    items.append(
+                        run_backtest_pipeline(
+                            config,
+                            spec,
+                            force=force,
+                            backtest_id=backtest_id,
+                            exit_position=strategy.get("exitPosition", exit_position),
+                            exit_fallback_position=int(strategy.get("exitFallbackPosition", exit_fallback_position)),
+                            rank_grace_days=int(strategy.get("rankGraceDays", rank_grace_days)),
+                            max_holding_days=(
+                                None
+                                if strategy.get("maxHoldingDays", max_holding_days) is None
+                                else int(strategy.get("maxHoldingDays", max_holding_days))
+                            ),
+                            capital=(
+                                None
+                                if strategy.get("capital", capital) is None
+                                else int(strategy.get("capital", capital))
+                            ),
+                        )
+                    )
+                except Exception as error:
+                    key = f"{spec.model_id}:{strategy}"
+                    errors[key] = str(error)
+                    LOGGER.error("模型回测失败：模型=%s；原因=%s", key, error)
+        return {
+            "status": "PARTIAL" if errors else "SUCCESS",
+            "items": items,
+            "errors": errors,
+        }
+
+    result = _execute(
+        "model-backtests",
+        {
+            "force": force,
+            "model": model_id,
+            "backtestId": backtest_id,
+            "exitPosition": exit_position,
+            "exitFallbackPosition": exit_fallback_position,
+            "rankGraceDays": rank_grace_days,
+            "maxHoldingDays": max_holding_days,
+            "capital": capital,
+        },
+        run,
+        result_summary=lambda value: (
+            f"模型回测完成：成功={len(value['items'])}；失败={len(value['errors'])}"
+        ),
     )
     if result.get("status") == "PARTIAL":
         raise SystemExit(1)
@@ -608,7 +703,7 @@ def _format_bytes(value: object) -> str:
     return "-"
 
 
-SyncScope = Literal["market", "prepared", "model", "state"]
+SyncScope = Literal["market", "prepared", "model", "backtest", "state"]
 HELP_CONTEXT = {"help_option_names": ["-h", "--help"]}
 
 
@@ -672,8 +767,38 @@ def model_train(
         None, "--model", help="只训练指定模型，默认全部。"
     ),
 ) -> None:
-    """训练、评估并回测已配置模型。"""
+    """只训练已准备好的模型；默认不执行回测。"""
     train_command(force, model_id)
+
+
+@app.command("model-backtests")
+def model_backtests(
+    force: bool = typer.Option(False, "--force", help="强制重新回测。"),
+    model_id: str | None = typer.Option(
+        None, "--model", help="只回测指定模型，默认全部。"
+    ),
+    backtest_id: str | None = typer.Option(
+        None, "--backtest-id", help="指定回测实验 ID；省略时按合同自动生成。"
+    ),
+    exit_position: int | None = typer.Option(None, "--exit-position"),
+    exit_fallback_position: int = typer.Option(20, "--exit-fallback-position"),
+    rank_grace_days: int = typer.Option(1, "--rank-grace-days"),
+    max_holding_days: int | None = typer.Option(None, "--max-holding-days"),
+    capital: int | None = typer.Option(None, "--capital"),
+    config_path: str | None = typer.Option(None, "--config"),
+) -> None:
+    """只执行已训练模型的回测，不准备数据或训练模型。"""
+    backtests_command(
+        force,
+        model_id,
+        backtest_id,
+        exit_position,
+        exit_fallback_position,
+        rank_grace_days,
+        max_holding_days,
+        capital,
+        config_path,
+    )
 
 
 @app.command("model-rank")
@@ -769,4 +894,4 @@ def main() -> None:
     app()
 
 
-# AI_GENERATE_END------------ ---------
+# AI_GENERATE_END------------- ---------

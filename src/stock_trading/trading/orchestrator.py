@@ -1,4 +1,4 @@
-# AI_GENERATE_START-2------- -----------------------------
+# AI_GENERATE_START-3------- -----------------------------
 from __future__ import annotations
 
 import logging
@@ -115,7 +115,10 @@ class LiveTradingOrchestrator:
             if (
                 not max_holding_reached
                 and rank is not None
-                and rank <= self._config.exit_position
+                and (
+                    rank <= self._config.exit_position
+                    or (rank <= 20 and (holding_days or 0) <= 1)
+                )
             ):
                 ignored.append(
                     {
@@ -437,4 +440,4 @@ class LiveTradingOrchestrator:
             "targets": [target] if target else [],
             "rejected": rejected,
         }
-# AI_GENERATE_END-2------- -----------------------------
+# AI_GENERATE_END-3------- -----------------------------

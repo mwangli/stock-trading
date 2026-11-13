@@ -1,4 +1,4 @@
-# AI_GENERATE_START-2--------- -------------------------------
+# AI_GENERATE_START-3--------- -------------------------------
 from __future__ import annotations
 
 import json
@@ -22,6 +22,9 @@ from stock_trading.utils.logging_utils import set_log_context, should_log_progre
 
 LOGGER = logging.getLogger(__name__)
 
+# 同一批量实验中的策略只改变回测参数，不改变行情事实；按数据范围和可交易约束缓存只读行情。
+_MARKET_CACHE: dict[tuple[object, ...], tuple[dict[str, pd.DataFrame], dict[str, pd.Series], dict[str, pd.DataFrame]]] = {}
+
 
 @dataclass(frozen=True)
 class BacktestConfig:
@@ -34,8 +37,10 @@ class BacktestConfig:
     buy_slices: int = 1
     sell_slices: int = 1
     allowed_prefixes: tuple[str, ...] = ()
-    exit_position: int = 10
-    max_holding_days: int = 3
+    exit_position: int = 5
+    exit_fallback_position: int = 20
+    rank_grace_days: int = 1
+    max_holding_days: int = 5
     limit_down_lookback_days: int = 10
     max_recent_limit_downs: int = 2
 
@@ -46,6 +51,8 @@ class BacktestConfig:
             raise ValueError("lot size and order slices must be positive")
         if self.max_holding_days <= 0:
             raise ValueError("max holding days must be positive")
+        if self.rank_grace_days < 0:
+            raise ValueError("rank grace days must be non-negative")
         if self.limit_down_lookback_days <= 0 or self.max_recent_limit_downs < 0:
             raise ValueError("limit-down lookback must be positive and threshold non-negative")
 
@@ -60,6 +67,7 @@ class Position:
     buy_fees: float
     candidate_rank: int
     target_holding_days: int = 1
+    rank_grace_used: bool = False
 
 
 class PortfolioBacktester:
@@ -156,11 +164,22 @@ class PortfolioBacktester:
                 max_holding_reached = fixed_horizon or predicted_horizon_reached or (
                     holding_days >= self._config.max_holding_days
                 )
+                if exit_position is not None and exit_position <= self._config.exit_position:
+                    position.rank_grace_used = False
                 if (
                     not max_holding_reached
                     and exit_position is not None
-                    and exit_position <= self._config.exit_position
+                    and (
+                        exit_position <= self._config.exit_position
+                        or (
+                            exit_position <= self._config.exit_fallback_position
+                            and self._config.rank_grace_days > 0
+                            and not position.rank_grace_used
+                        )
+                    )
                 ):
+                    if exit_position > self._config.exit_position:
+                        position.rank_grace_used = True
                     retained_days += 1
                 else:
                     sale, sell_reject_reason = self._try_sell(position, trade_date)
@@ -260,6 +279,22 @@ class PortfolioBacktester:
         return summary
 
     def _load_market(self, codes: list[str]) -> None:
+        cache_key = (
+            str(self._market_store._root),
+            tuple(codes),
+            self._model_spec.data_level,
+            self._calendar.min().date().isoformat(),
+            self._calendar.max().date().isoformat(),
+            self._config.min_price,
+            self._config.max_price,
+            self._config.limit_down_lookback_days,
+            self._config.max_recent_limit_downs,
+        )
+        cached = _MARKET_CACHE.get(cache_key)
+        if cached is not None:
+            self._daily, self._tradable, self._windows = cached
+            LOGGER.info("复用回测行情缓存：股票数=%d", len(codes))
+            return
         total_codes = len(codes)
         for index, code in enumerate(codes, start=1):
             daily = self._market_store.read_daily_history(code).set_index("trade_date")
@@ -283,6 +318,7 @@ class PortfolioBacktester:
             if should_log_progress(index, total_codes):
                 set_log_context(progress=f"{index}/{total_codes}", target=code)
                 LOGGER.info("回测行情加载完成")
+        _MARKET_CACHE[cache_key] = (self._daily, self._tradable, self._windows)
 
     def _tradable_rankings(self) -> dict[pd.Timestamp, pd.DataFrame]:
         """先过滤预测日可交易池再按分数排序，排名序号即真实候选顺序。"""
@@ -681,6 +717,8 @@ def run_portfolio_backtest(
     artifact_dir: Path,
     initial_cash: Decimal | int | float,
     qlib_dir: Path | None = None,
+    exit_fallback_position: int = 20,
+    rank_grace_days: int = 1,
 ) -> dict[str, object]:
     """使用统一交易配置执行一个资金档位的组合回测。"""
     backtest_config = BacktestConfig(
@@ -690,6 +728,8 @@ def run_portfolio_backtest(
         order_fee=config.trading_order_fee,
         allowed_prefixes=config.trading_allowed_prefixes,
         exit_position=config.exit_position,
+        exit_fallback_position=exit_fallback_position,
+        rank_grace_days=rank_grace_days,
         max_holding_days=config.trading_max_holding_days,
         limit_down_lookback_days=config.trading_limit_down_lookback_days,
         max_recent_limit_downs=config.trading_max_recent_limit_downs,
@@ -892,4 +932,4 @@ def read_backtest_summary(directory: Path) -> dict[str, object]:
     """读取模型回测摘要。"""
     return json.loads((directory / "summary.json").read_text(encoding="utf-8"))
 
-# AI_GENERATE_END-2--------- -------------------------------
+# AI_GENERATE_END-3--------- -------------------------------

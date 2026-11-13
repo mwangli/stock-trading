@@ -1,4 +1,4 @@
-# AI_GENERATE_START-- -------------------------
+# AI_GENERATE_START----- -------------------------
 from __future__ import annotations
 
 import hashlib
@@ -23,11 +23,12 @@ from stock_trading.utils.logging_utils import set_log_context, should_log_progre
 LOGGER = logging.getLogger(__name__)
 REMOTE_DATA_ROOT = "stock-trading/data"
 SERVER_ENV_NAMES = ("SERVER_IP", "SERVER_USER", "SERVER_PASS")
-SYNC_SCOPES = ("market", "prepared", "model", "state")
+SYNC_SCOPES = ("market", "prepared", "model", "backtest", "state")
 DIRECTORY_SCOPES = {
     "market": ("market",),
-    "prepared": ("prepared",),
-    "model": ("models",),
+    "prepared": ("models/prepared",),
+    "model": ("models/trained", "models/backtests"),
+    "backtest": ("models/backtests",),
 }
 
 
@@ -111,6 +112,7 @@ def sync_data(
         "market": "market",
         "prepared": "prepared",
         "model": "model",
+        "backtest": "backtest",
         "state": "state",
     }
     for index, scope in enumerate(scopes, start=1):
@@ -207,7 +209,7 @@ def _pull_directory_atomic(
 ) -> int:
     transfer_id = uuid4().hex
     temporary_root = local_data_root / f".{directory}.sync-{transfer_id}"
-    downloaded = temporary_root / directory
+    downloaded = temporary_root / Path(directory).name
     target = local_data_root / directory
     backup = local_data_root / f".{directory}.previous-{transfer_id}"
     local_data_root.mkdir(parents=True, exist_ok=True)
@@ -409,16 +411,26 @@ def _directory_publish_command(
     directory: str, transfer_id: str, file_count: int, digest: str
 ) -> str:
     """Verify the uploaded archive and replace under the shared lock; retain rollback data."""
-    if directory not in {"market", "prepared", "models"}:
+    if directory not in {
+        "market",
+        "prepared",
+        "models",
+        "backtests",
+        "models/prepared",
+        "models/backtests",
+    }:
         raise ValueError("无效的推送目录")
     if not re.fullmatch(r"[0-9a-f]{32}", transfer_id):
         raise ValueError("无效的传输标识")
     if not re.fullmatch(r"[0-9a-f]{64}", digest) or file_count < 1:
         raise ValueError("无效的归档校验信息")
     archive = f"/tmp/stock-sync-{transfer_id}.tar.gz"
-    staging = f"{REMOTE_DATA_ROOT}/.{directory}.sync-{transfer_id}"
-    backup = f"{REMOTE_DATA_ROOT}/.{directory}.previous-{transfer_id}"
+    directory_name = Path(directory).name
+    directory_parent = Path(directory).parent.as_posix()
+    staging = f"{REMOTE_DATA_ROOT}/.{directory_name}.sync-{transfer_id}"
+    backup = f"{REMOTE_DATA_ROOT}/.{directory_name}.previous-{transfer_id}"
     target = f"{REMOTE_DATA_ROOT}/{directory}"
+    target_parent = REMOTE_DATA_ROOT if directory_parent == "." else f"{REMOTE_DATA_ROOT}/{directory_parent}"
     return (
         "set -e; "
         f"test -d '{REMOTE_DATA_ROOT}/state'; "
@@ -426,16 +438,17 @@ def _directory_publish_command(
         "flock -n 9 || { echo '调度任务正在运行，未切换数据' >&2; exit 75; }; "
         f"printf '%s  %s\n' '{digest}' '{archive}' | sha256sum -c - >&2; "
         f"test ! -e '{staging}'; test ! -e '{backup}'; "
-        f"mkdir '{staging}'; tar -xzf '{archive}' -C '{staging}'; "
-        f"test -d '{staging}/{directory}'; "
-        f"count=$(find '{staging}/{directory}' -type f | wc -l); "
+        f"mkdir -p '{staging}'; tar -xzf '{archive}' -C '{staging}'; "
+        f"test -d '{staging}/{directory_name}'; "
+        f"count=$(find '{staging}/{directory_name}' -type f | wc -l); "
         f"test \"$count\" -eq '{file_count}'; "
         "restore_on_exit() { status=$?; "
         f"if [ -d '{backup}' ] && [ ! -e '{target}' ]; then mv '{backup}' '{target}'; fi; "
         "exit \"$status\"; }; trap restore_on_exit EXIT; "
         "saved=''; "
+        f"mkdir -p '{target_parent}'; "
         f"if [ -d '{target}' ]; then mv '{target}' '{backup}'; saved='{backup}'; fi; "
-        f"if mv '{staging}/{directory}' '{target}'; then "
+        f"if mv '{staging}/{directory_name}' '{target}'; then "
         "printf '%s\t%s\n' \"$count\" \"$saved\"; "
         "else status=$?; "
         f"if [ -d '{backup}' ] && [ ! -e '{target}' ]; then mv '{backup}' '{target}'; fi; "
@@ -630,4 +643,4 @@ def _run_command(
         raise RuntimeError(detail) from error
 
 
-# AI_GENERATE_END-- -------------------------
+# AI_GENERATE_END----- -------------------------

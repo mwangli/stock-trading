@@ -77,6 +77,74 @@ class StateStore(SQLiteStateDatabase):
         """创建或校验当前状态库结构。"""
         self.initialize_schema(SCHEMA, SCHEMA_VERSION, SCHEMA_MIGRATIONS)
 
+    def record_backtest_run(
+        self,
+        *,
+        backtest_id: str,
+        model_id: str,
+        model_artifact_hash: str,
+        dataset_id: str,
+        strategy_contract_hash: str,
+        backtest_contract_hash: str,
+        artifact_path: str,
+        status: str,
+        summary: dict[str, Any],
+        created_at: str,
+        finished_at: str | None,
+    ) -> None:
+        """登记回测实验摘要；逐笔文件仍由实验目录保存。"""
+        self.initialize()
+        rows = summary.get("monthlyPerformance") or []
+        test_start = str(rows[0]["month"]) if rows else None
+        test_end = str(rows[-1]["month"]) if rows else None
+        with self._connect() as connection:
+            model_row = connection.execute(
+                "SELECT id FROM model_version WHERE artifact_hash = ?",
+                (model_artifact_hash,),
+            ).fetchone()
+            connection.execute(
+                """
+                INSERT INTO backtest_run(
+                    backtest_id, model_id, model_version_id, model_artifact_hash,
+                    dataset_id, strategy_contract_hash, backtest_contract_hash,
+                    artifact_path, status, initial_cash, test_start, test_end,
+                    closed_trades, gross_profit, gross_return, net_profit,
+                    max_drawdown, win_rate, average_holding_days, turnover,
+                    summary_json, created_at, finished_at
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(backtest_id) DO UPDATE SET
+                    status=excluded.status,
+                    summary_json=excluded.summary_json,
+                    finished_at=excluded.finished_at,
+                    artifact_path=excluded.artifact_path
+                """,
+                (
+                    backtest_id,
+                    model_id,
+                    int(model_row["id"]) if model_row else None,
+                    model_artifact_hash,
+                    dataset_id,
+                    strategy_contract_hash,
+                    backtest_contract_hash,
+                    artifact_path,
+                    status,
+                    float(summary.get("initialCash", 0)),
+                    test_start,
+                    test_end,
+                    int(summary.get("closedTrades", 0)),
+                    float(summary.get("grossProfitBeforeFees", 0)),
+                    float(summary.get("grossReturnBeforeFees", 0)),
+                    float(summary.get("netProfit", 0)),
+                    float(summary.get("maxDrawdown", 0)),
+                    float(summary.get("winRate", 0)),
+                    float(summary.get("averageHoldingDays", 0)),
+                    float(summary.get("turnover", 0)),
+                    json.dumps(summary, ensure_ascii=False),
+                    created_at,
+                    finished_at,
+                ),
+            )
+
     def append_notification(
         self,
         category: str,
