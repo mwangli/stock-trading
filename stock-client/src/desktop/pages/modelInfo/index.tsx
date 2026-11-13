@@ -96,7 +96,7 @@ const ModelInfo: React.FC = () => {
   const loadOverview = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await request.get('/models/overview') as ApiResponse<ModelOverview>;
+      const response = await request.get('/models/overview') as unknown as ApiResponse<ModelOverview>;
       setOverview(response.success ? response.data : null);
     } catch {
       setOverview(null);
@@ -108,9 +108,11 @@ const ModelInfo: React.FC = () => {
   useEffect(() => { void loadOverview(); }, [loadOverview]);
 
   const versions = overview?.versions ?? [];
-  const versionById = useMemo(() => new Map(
-    versions.map((model) => [modelIdOf(model), model]).filter(([modelId]) => modelId),
-  ), [versions]);
+  const versionById = useMemo(() => versions.reduce((result, model) => {
+    const modelId = modelIdOf(model);
+    if (modelId) result.set(modelId, model);
+    return result;
+  }, new Map<string, ModelVersion>()), [versions]);
   const totals = useMemo(() => versions.reduce((result, item) => ({
     trades: result.trades + Number(item.realized_trade_count ?? 0),
     grossProfit: result.grossProfit + Number(item.gross_profit ?? 0),
