@@ -1,4 +1,4 @@
-# AI_GENERATE_START----- -------------------------
+# AI_GENERATE_START------ -------------------------
 from __future__ import annotations
 
 import hashlib
@@ -466,6 +466,7 @@ def _push_directory_archive(
     remote_archive = f"/tmp/stock-sync-{transfer_id}.tar.gz"
     with tempfile.TemporaryDirectory(prefix="stock-sync-archive-") as temporary:
         archive = Path(temporary) / f"{directory}.tar.gz"
+        archive.parent.mkdir(parents=True, exist_ok=True)
         file_count = _create_push_archive(local_data_root / directory, archive)
         with archive.open("rb") as stream:
             digest = hashlib.file_digest(stream, "sha256").hexdigest()
@@ -643,4 +644,4 @@ def _run_command(
         raise RuntimeError(detail) from error
 
 
-# AI_GENERATE_END----- -------------------------
+# AI_GENERATE_END------ -------------------------
