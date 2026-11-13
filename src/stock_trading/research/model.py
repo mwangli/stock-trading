@@ -1,4 +1,4 @@
-# AI_GENERATE_START---- --------------------------------------------
+# AI_GENERATE_START----- --------------------------------------------
 from __future__ import annotations
 
 import json
@@ -373,7 +373,8 @@ def _prediction_features(spec: ModelSpec, qlib_dir: Path, prediction_date: date,
         end_time=prediction_date,
         fit_start_time=inference_start,
         fit_end_time=prediction_date,
-        label=_handler_label_spec(spec),
+        # Live inference must not drop the newest date because its future label is unavailable.
+        label=None,
     )
     dataset = DatasetH(handler=handler, segments={"prediction": (prediction_date, prediction_date)})
     return dataset.prepare("prediction", col_set="feature", data_key=DataHandlerLP.DK_I)
@@ -545,4 +546,4 @@ def automatic_model_segments(
     )
 
 
-# AI_GENERATE_END---- --------------------------------------------
+# AI_GENERATE_END----- --------------------------------------------
