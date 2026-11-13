@@ -1,4 +1,4 @@
-# AI_GENERATE_START ---
+# AI_GENERATE_START ----
 from __future__ import annotations
 
 import json
@@ -68,13 +68,14 @@ def prepare_workflow(
     end_date: date,
     force: bool = False,
 ) -> dict[str, object]:
-    """读取 derived，补齐可信年度日历后幂等准备指定范围的 Qlib。"""
+    """读取 raw 股票元数据和 derived 行情指标，幂等准备指定范围的 Qlib。"""
     store = ParquetMarketStore(config.market_dir, source="derived")
+    metadata_store = ParquetMarketStore(config.market_dir)
     try:
-        stocks = store.read_stock_basics()
+        stocks = metadata_store.read_stock_basics()
     except (OSError, ValueError, KeyError) as error:
         raise ValueError(
-            "未找到派生股票基础信息；请先执行 stock data-generate"
+            "未找到原始股票基础信息；请先执行 stock data-collect --level 1"
         ) from error
     codes = research_codes(stocks, start_date, end_date)
     if not codes:
@@ -830,4 +831,4 @@ def _assert_task_success(
     )
 
 
-# AI_GENERATE_END ---
+# AI_GENERATE_END ----

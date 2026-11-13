@@ -1,4 +1,4 @@
-# AI_GENERATE_START -
+# AI_GENERATE_START --
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -404,7 +404,6 @@ def derive_workflow(
         raise ValueError(
             "未找到原始股票基础信息；请先执行 stock data-collect --level 1"
         ) from error
-    derived_store.write_derived_stock_basics(stocks)
     codes = research_codes(stocks, start_date, end_date)
     coverage_ranges = research_coverage_ranges(stocks, codes, start_date, end_date)
     start_dates = {code: values[0] for code, values in coverage_ranges.items()}
@@ -450,4 +449,4 @@ def derive_workflow(
 def _minute5_date_batches(dates: list[date]) -> list[list[date]]:
     """BaoStock 单连接按完整日期范围查询，避免按年度重复请求和写盘。"""
     return [dates] if dates else []
-# AI_GENERATE_END -
+# AI_GENERATE_END --

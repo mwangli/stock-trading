@@ -1,4 +1,4 @@
-# AI_GENERATE_START
+# AI_GENERATE_START-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -216,11 +216,6 @@ class ParquetMarketStore:
         """原子写入当前股票基础信息快照。"""
         target = self._root / "stock" / "stocks.parquet"
         return self._write(target, [stock.as_record() for stock in stocks])
-
-    def write_derived_stock_basics(self, frame: pd.DataFrame) -> Path:
-        """保存供 prepare 使用的标准化股票范围。"""
-        target = self._derived_root / "stock" / "stocks.parquet"
-        return self._write_frame(target, frame)
 
     def read_stock_basics(self) -> pd.DataFrame:
         """读取股票基础信息快照。"""
@@ -802,4 +797,4 @@ def _normalize_minute1_frame(frame: pd.DataFrame, code: str) -> pd.DataFrame:
     for field in ("bar_start", "bar_end"):
         normalized[field] = pd.to_datetime(normalized[field], utc=True).dt.tz_convert("Asia/Shanghai")
     return normalized.drop_duplicates(subset=["bar_end"], keep="last").sort_values("bar_end").reset_index(drop=True)
-# AI_GENERATE_END
+# AI_GENERATE_END-
