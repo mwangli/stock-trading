@@ -1,4 +1,4 @@
-# AI_GENERATE_START------ -------------------------
+# AI_GENERATE_START------- -------------------------
 from __future__ import annotations
 
 import hashlib
@@ -415,6 +415,7 @@ def _directory_publish_command(
         "market",
         "prepared",
         "models",
+        "models/trained",
         "backtests",
         "models/prepared",
         "models/backtests",
@@ -644,4 +645,4 @@ def _run_command(
         raise RuntimeError(detail) from error
 
 
-# AI_GENERATE_END------ -------------------------
+# AI_GENERATE_END------- -------------------------
