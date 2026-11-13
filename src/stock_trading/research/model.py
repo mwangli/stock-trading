@@ -1,11 +1,11 @@
-# AI_GENERATE_START--- --------------------------------------------
+# AI_GENERATE_START---- --------------------------------------------
 from __future__ import annotations
 
 import json
 import logging
 import pickle
 from dataclasses import asdict, dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -31,6 +31,7 @@ from stock_trading.utils.logging_utils import set_log_context
 LOGGER = logging.getLogger(__name__)
 EARLY_STOPPING_ROUNDS = 30
 MULTI_HORIZONS = (1, 2, 3)
+PREDICTION_LOOKBACK_DAYS = 120
 
 
 class ConfiguredResearchModel:
@@ -362,12 +363,16 @@ def _prediction_features(spec: ModelSpec, qlib_dir: Path, prediction_date: date,
     from qlib.data.dataset.handler import DataHandlerLP
 
     qlib.init(provider_uri=str(qlib_dir), region=REG_CN, kernels=2)
+    inference_start = max(
+        calendar.min().date(),
+        prediction_date - timedelta(days=PREDICTION_LOOKBACK_DAYS),
+    )
     handler = _configured_handler(spec)(
         instruments="all",
-        start_time=pd.Timestamp(calendar.min()).date(),
+        start_time=inference_start,
         end_time=prediction_date,
-        fit_start_time=date.fromisoformat(segments["train_start"]),
-        fit_end_time=date.fromisoformat(segments["train_end"]),
+        fit_start_time=inference_start,
+        fit_end_time=prediction_date,
         label=_handler_label_spec(spec),
     )
     dataset = DatasetH(handler=handler, segments={"prediction": (prediction_date, prediction_date)})
@@ -540,4 +545,4 @@ def automatic_model_segments(
     )
 
 
-# AI_GENERATE_END--- --------------------------------------------
+# AI_GENERATE_END---- --------------------------------------------
