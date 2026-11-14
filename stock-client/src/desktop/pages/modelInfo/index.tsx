@@ -1,9 +1,8 @@
-// AI_GENERATE_START -----------
+// AI_GENERATE_START -------------
 import './styles.css';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Descriptions, Drawer, Empty, Statistic, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { Activity, FlaskConical, Gauge, Rows3, Sparkles } from 'lucide-react';
 import request from '@shared/utils/request';
 import type { ApiResponse } from '@shared/utils/api';
 import { formatDateTime } from '@shared/utils/dateTime';
@@ -61,13 +60,6 @@ const MATRIX: MatrixDefinition[] = [
   { modelId: 'L2_minute5_XGBoost', level: 'L2', algorithm: 'XGBoost', strategyId: 'T1_AM_SELL_PM_BUY', dataLabel: '5 分钟线' },
 ];
 
-const DEMO_VARIANTS = [
-  { id: 'research', label: '研究控制台', hint: '矩阵对照', icon: <Rows3 size={15} strokeWidth={1.8} /> },
-  { id: 'cockpit', label: '策略驾驶舱', hint: '运行优先', icon: <Gauge size={15} strokeWidth={1.8} /> },
-  { id: 'lab', label: '实验室时间线', hint: '评估优先', icon: <FlaskConical size={15} strokeWidth={1.8} /> },
-  { id: 'terminal', label: '紧凑终端', hint: '高密扫描', icon: <Activity size={15} strokeWidth={1.8} /> },
-] as const;
-
 const parseMetrics = (raw?: string): Record<string, unknown> => {
   if (!raw) return {};
   try {
@@ -96,6 +88,9 @@ const metricNumber = (metrics: Record<string, unknown>, ...keys: string[]) => {
 };
 
 const percent = (value?: number) => value == null ? '-' : (value * 100).toFixed(2) + '%';
+const evaluationPercent = (value: number | undefined, item: ModelEvaluation) => value == null
+  ? <span className="model-evaluation-empty" title={item.reason || '有效评估样本不足'}>样本不足</span>
+  : percent(value);
 const decimal = (value?: number) => value == null ? '-' : value.toFixed(4);
 const money = (value?: number) => 'CNY ' + Number(value ?? 0).toFixed(2);
 const isReadyStatus = (status?: string) => ['READY', 'ACTIVE'].includes(String(status ?? '').toUpperCase());
@@ -129,7 +124,6 @@ const ModelInfo: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState<ModelVersion | null>(null);
-  const [variant, setVariant] = useState<(typeof DEMO_VARIANTS)[number]['id']>('terminal');
   usePageHeader('横向比较算法，纵向比较数据等级与固定交易策略');
 
   const loadOverview = useCallback(async () => {
@@ -184,40 +178,17 @@ const ModelInfo: React.FC = () => {
     { title: '业务日期', dataIndex: 'business_date', key: 'business_date', width: 120 },
     { title: '模型', dataIndex: 'model_name', key: 'model_name', width: 190, render: (value?: string) => value || '未绑定模型' },
     { title: '样本', key: 'observations', width: 110, render: (_value, item) => item.observations + '/' + item.window_days },
-    { title: '回测毛收益率', dataIndex: 'total_gross_return', key: 'total_gross_return', width: 130, render: percent },
-    { title: '真实净收益率', dataIndex: 'total_net_return', key: 'total_net_return', width: 130, render: percent },
-    { title: '最大回撤', dataIndex: 'max_drawdown', key: 'max_drawdown', width: 110, render: percent },
+    { title: '评估毛收益率', dataIndex: 'total_gross_return', key: 'total_gross_return', width: 130, render: (value: number | undefined, item) => evaluationPercent(value, item) },
+    { title: '真实净收益率', dataIndex: 'total_net_return', key: 'total_net_return', width: 130, render: (value: number | undefined, item) => evaluationPercent(value, item) },
+    { title: '最大回撤', dataIndex: 'max_drawdown', key: 'max_drawdown', width: 110, render: (value: number | undefined, item) => evaluationPercent(value, item) },
     { title: '结论', dataIndex: 'decision', key: 'decision', width: 120, render: (value: string) => <Tag>{value}</Tag> },
     { title: '原因', dataIndex: 'reason', key: 'reason', ellipsis: true },
   ];
 
   const selectedMetrics = parseMetrics(selectedModel?.metrics_json);
 
-  const activeVariant = DEMO_VARIANTS.find((item) => item.id === variant) ?? DEMO_VARIANTS[0];
-
   return (
-    <div className={`app-page model-matrix-page model-demo-${variant}`}>
-      <section className="model-demo-hero" aria-label="模型信息方案预览">
-        <div className="model-demo-hero-copy">
-          <div className="model-demo-kicker"><Sparkles size={14} /> UI 方案预览 · 4 套</div>
-          <h1>模型信息</h1>
-          <p>{activeVariant.hint}视图，沿用真实模型、策略合同与评估数据。</p>
-        </div>
-        <div className="demo-switcher" role="tablist" aria-label="选择模型信息 UI 方案">
-          {DEMO_VARIANTS.map((item) => (
-            <button
-              type="button"
-              role="tab"
-              aria-selected={variant === item.id}
-              className={variant === item.id ? 'is-selected' : ''}
-              key={item.id}
-              onClick={() => setVariant(item.id)}
-            >
-              {item.icon}<span>{item.label}</span><small>{item.hint}</small>
-            </button>
-          ))}
-        </div>
-      </section>
+    <div className="app-page model-matrix-page">
       <section className="matrix-summary" aria-label="模型矩阵汇总">
         <Statistic title="可用模型" value={modelRows.filter((item) => isReadyStatus(item.model?.status)).length} suffix="/ 4" />
         <Statistic title="已实现闭环交易" value={totals.trades} />
@@ -227,7 +198,7 @@ const ModelInfo: React.FC = () => {
 
       <section className="model-matrix-section model-list-section">
         <div className="matrix-heading">
-          <div><h2>{variant === 'terminal' ? '模型列表' : variant === 'cockpit' ? '当前策略组合' : variant === 'lab' ? '实验模型列表' : '模型列表'}</h2><p>按模型版本查看训练状态、策略合同和可用评估指标；数据来自最新模型版本。</p></div>
+          <div><h2>模型列表</h2><p>按模型版本查看训练状态、策略合同和可用评估指标；数据来自最新模型版本。</p></div>
           <div className="matrix-heading-meta"><span>当前交易合同</span><strong>T1 · 先卖后买</strong></div>
         </div>
         {loadError && (
@@ -309,4 +280,4 @@ const ModelInfo: React.FC = () => {
 };
 
 export default ModelInfo;
-// AI_GENERATE_END ----------
+// AI_GENERATE_END ------------
