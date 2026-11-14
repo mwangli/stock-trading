@@ -1,8 +1,9 @@
-// AI_GENERATE_START -------
+// AI_GENERATE_START ---------
 import './styles.css';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Descriptions, Drawer, Empty, Statistic, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import { Activity, FlaskConical, Gauge, Rows3, Sparkles } from 'lucide-react';
 import request from '@shared/utils/request';
 import type { ApiResponse } from '@shared/utils/api';
 import { formatDateTime } from '@shared/utils/dateTime';
@@ -59,6 +60,13 @@ const MATRIX: MatrixDefinition[] = [
   { modelId: 'L2_minute5_XGBoost', level: 'L2', algorithm: 'XGBoost', strategyId: 'T1_AM_SELL_PM_BUY', dataLabel: '5 分钟线' },
 ];
 
+const DEMO_VARIANTS = [
+  { id: 'research', label: '研究控制台', hint: '矩阵对照', icon: <Rows3 size={15} strokeWidth={1.8} /> },
+  { id: 'cockpit', label: '策略驾驶舱', hint: '运行优先', icon: <Gauge size={15} strokeWidth={1.8} /> },
+  { id: 'lab', label: '实验室时间线', hint: '评估优先', icon: <FlaskConical size={15} strokeWidth={1.8} /> },
+  { id: 'terminal', label: '紧凑终端', hint: '高密扫描', icon: <Activity size={15} strokeWidth={1.8} /> },
+] as const;
+
 const parseMetrics = (raw?: string): Record<string, unknown> => {
   if (!raw) return {};
   try {
@@ -83,16 +91,20 @@ const metricNumber = (metrics: Record<string, unknown>, ...keys: string[]) => {
 };
 
 const percent = (value?: number) => value == null ? '-' : (value * 100).toFixed(2) + '%';
+const decimal = (value?: number) => value == null ? '-' : value.toFixed(4);
 const money = (value?: number) => 'CNY ' + Number(value ?? 0).toFixed(2);
+const isReadyStatus = (status?: string) => ['READY', 'ACTIVE'].includes(String(status ?? '').toUpperCase());
+const statusColor = (status?: string) => String(status ?? '').toUpperCase() === 'ACTIVE' ? 'green' : isReadyStatus(status) ? 'blue' : 'default';
 
 const modelIdOf = (model: ModelVersion) => {
   const metrics = parseMetrics(model.metrics_json);
   if (metrics.modelId || metrics.model_id) {
     return String(metrics.modelId ?? metrics.model_id);
   }
-  if (model.model_name) return model.model_name;
   const path = model.artifact_path?.replaceAll('\\', '/').replace(/\/$/, '');
-  return path?.split('/').pop() ?? '';
+  const pathModelId = path?.split('/').slice(-2, -1)[0];
+  if (pathModelId && /^L\d+_(daily|minute5)_/i.test(pathModelId)) return pathModelId;
+  return model.model_name ?? '';
 };
 
 const artifactPathOf = (model: ModelVersion) => {
@@ -104,16 +116,23 @@ const artifactPathOf = (model: ModelVersion) => {
 const ModelInfo: React.FC = () => {
   const [overview, setOverview] = useState<ModelOverview | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState<ModelVersion | null>(null);
+  const [variant, setVariant] = useState<(typeof DEMO_VARIANTS)[number]['id']>('terminal');
   usePageHeader('横向比较算法，纵向比较数据等级与固定交易策略');
 
   const loadOverview = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const response = await request.get('/models/overview') as unknown as ApiResponse<ModelOverview>;
-      setOverview(response.success ? response.data : null);
-    } catch {
+      if (!response?.success || !response.data) {
+        throw new Error(response?.message || '模型信息接口未返回有效数据');
+      }
+      setOverview(response.data);
+    } catch (error) {
       setOverview(null);
+      setLoadError(error instanceof Error ? error.message : '模型信息加载失败');
     } finally {
       setLoading(false);
     }
@@ -124,9 +143,17 @@ const ModelInfo: React.FC = () => {
   const versions = overview?.versions ?? [];
   const versionById = useMemo(() => versions.reduce((result, model) => {
     const modelId = modelIdOf(model);
-    if (modelId) result.set(modelId, model);
+    if (!modelId) return result;
+    const previous = result.get(modelId);
+    if (!previous || String(model.created_at ?? '') > String(previous.created_at ?? '')) {
+      result.set(modelId, model);
+    }
     return result;
   }, new Map<string, ModelVersion>()), [versions]);
+  const modelRows = useMemo(() => MATRIX.map((definition) => ({
+    ...definition,
+    model: versionById.get(definition.modelId),
+  })), [versionById]);
   const totals = useMemo(() => versions.reduce((result, item) => ({
     trades: result.trades + Number(item.realized_trade_count ?? 0),
     grossProfit: result.grossProfit + Number(item.gross_profit ?? 0),
@@ -144,63 +171,72 @@ const ModelInfo: React.FC = () => {
 
   const selectedMetrics = parseMetrics(selectedModel?.metrics_json);
 
+  const activeVariant = DEMO_VARIANTS.find((item) => item.id === variant) ?? DEMO_VARIANTS[0];
+
   return (
-    <div className="app-page model-matrix-page">
+    <div className={`app-page model-matrix-page model-demo-${variant}`}>
+      <section className="model-demo-hero" aria-label="模型信息方案预览">
+        <div className="model-demo-hero-copy">
+          <div className="model-demo-kicker"><Sparkles size={14} /> UI 方案预览 · 4 套</div>
+          <h1>模型信息</h1>
+          <p>{activeVariant.hint}视图，沿用真实模型、策略合同与评估数据。</p>
+        </div>
+        <div className="demo-switcher" role="tablist" aria-label="选择模型信息 UI 方案">
+          {DEMO_VARIANTS.map((item) => (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={variant === item.id}
+              className={variant === item.id ? 'is-selected' : ''}
+              key={item.id}
+              onClick={() => setVariant(item.id)}
+            >
+              {item.icon}<span>{item.label}</span><small>{item.hint}</small>
+            </button>
+          ))}
+        </div>
+      </section>
       <section className="matrix-summary" aria-label="模型矩阵汇总">
-        <Statistic title="运行模型" value={versions.filter((item) => item.status === 'ACTIVE').length} suffix="/ 4" />
+        <Statistic title="可用模型" value={modelRows.filter((item) => isReadyStatus(item.model?.status)).length} suffix="/ 4" />
         <Statistic title="已实现闭环交易" value={totals.trades} />
         <Statistic title="真实已实现毛收益" value={totals.grossProfit} precision={2} prefix="CNY" />
         <div className="matrix-roadmap"><span>下一阶段</span><strong>T1_PM_SELL_PM_BUY</strong><small>分钟级午间决策，待数据完整后启用</small></div>
       </section>
 
-      <section className="model-matrix-section">
+      <section className="model-matrix-section model-list-section">
         <div className="matrix-heading">
-          <div><h2>2 x 2 模型矩阵</h2><p>按数据频率和算法对照模型表现，策略合同独立于模型版本。</p></div>
+          <div><h2>{variant === 'terminal' ? '模型列表' : variant === 'cockpit' ? '当前策略组合' : variant === 'lab' ? '实验模型列表' : '模型列表'}</h2><p>按模型版本查看训练状态、策略合同和可用评估指标；数据来自最新模型版本。</p></div>
           <div className="matrix-heading-meta"><span>当前交易合同</span><strong>T1 · 先卖后买</strong></div>
         </div>
-        <div className="model-matrix-grid">
-          <div className="matrix-corner">数据等级</div>
-          <div className="matrix-column">LightGBM</div>
-          <div className="matrix-column">XGBoost</div>
-          {(['L1', 'L2'] as const).map((level) => (
-            <React.Fragment key={level}>
-              <div className="matrix-row-label">
-                <strong>{level}</strong>
-                <span>{level === 'L1' ? '日线' : '5 分钟线'}</span>
-                <small>{level === 'L1' ? 'T1_ALL_SELL_ALL_BUY' : 'T1_AM_SELL_PM_BUY'}</small>
-              </div>
-              {MATRIX.filter((item) => item.level === level).map((definition) => {
-                const model = versionById.get(definition.modelId);
-                const metrics = parseMetrics(model?.metrics_json);
-                const grossReturn = metricNumber(metrics, 'grossReturn', 'gross_return', 'totalGrossReturn');
-                const drawdown = metricNumber(metrics, 'maxDrawdown', 'max_drawdown');
-                const winRate = metricNumber(metrics, 'winRate', 'win_rate');
-                const turnover = metricNumber(metrics, 'turnover');
-                return (
-                  <button
-                    type="button"
-                    className={'matrix-cell' + (model ? ' is-ready' : '') + (model?.status === 'ACTIVE' ? ' is-active' : '')}
-                    key={definition.modelId}
-                    onClick={() => model && setSelectedModel(model)}
-                    disabled={!model}
-                    aria-label={`${definition.modelId} 模型详情`}
-                  >
-                    <span className="matrix-cell-top"><span className="matrix-status"><Tag color={model?.status === 'ACTIVE' ? 'green' : 'default'}>{model?.status ?? '待训练'}</Tag>{model?.status === 'ACTIVE' && <i>当前启用</i>}</span><small>{definition.dataLabel}</small></span>
-                    <strong>{definition.modelId}</strong>
-                    <span className="matrix-strategy">{definition.strategyId}</span>
-                    <dl>
-                      <div><dt>回测毛收益率</dt><dd>{percent(grossReturn)}</dd></div>
-                      <div><dt>最大回撤</dt><dd>{percent(drawdown)}</dd></div>
-                      <div><dt>胜率</dt><dd>{percent(winRate)}</dd></div>
-                      <div><dt>换手率</dt><dd>{percent(turnover)}</dd></div>
-                    </dl>
-                    <span className="matrix-realized">真实毛收益 {money(model?.gross_profit)}</span>
-                  </button>
-                );
-              })}
-            </React.Fragment>
-          ))}
-        </div>
+        {loadError && (
+          <div className="model-list-error" role="alert">
+            <span>{loadError}</span>
+            <button type="button" onClick={() => void loadOverview}>重新加载</button>
+          </div>
+        )}
+        <Table
+          className="model-list-table"
+          rowKey="modelId"
+          columns={[
+            { title: '数据等级', dataIndex: 'level', key: 'level', width: 100, render: (value: string, row) => <div><strong>{value}</strong><small>{row.dataLabel}</small></div> },
+            { title: '状态', key: 'status', width: 120, render: (_value, row) => <Tag color={statusColor(row.model?.status)}>{row.model?.status ?? '待训练'}</Tag> },
+            { title: '模型 ID', dataIndex: 'modelId', key: 'modelId', width: 210, render: (value: string) => <span className="model-list-id">{value}</span> },
+            { title: '算法', dataIndex: 'algorithm', key: 'algorithm', width: 110 },
+            { title: '策略合同', dataIndex: 'strategyId', key: 'strategyId', width: 190, render: (value: string) => <span className="model-list-code">{value}</span> },
+            { title: 'IC 均值', key: 'icMean', width: 105, align: 'right', render: (_value, row) => decimal(metricNumber(parseMetrics(row.model?.metrics_json), 'icMean')) },
+            { title: 'Rank IC', key: 'rankIcMean', width: 105, align: 'right', render: (_value, row) => decimal(metricNumber(parseMetrics(row.model?.metrics_json), 'rankIcMean')) },
+            { title: '有效 IC 日', key: 'validIcDays', width: 105, align: 'right', render: (_value, row) => metricNumber(parseMetrics(row.model?.metrics_json), 'validIcDays') ?? '-' },
+            { title: '训练样本', key: 'trainRows', width: 105, align: 'right', render: (_value, row) => metricNumber(parseMetrics(row.model?.metrics_json), 'trainRows') ?? '-' },
+            { title: '真实毛收益', key: 'grossProfit', width: 135, align: 'right', render: (_value, row) => row.model ? money(row.model.gross_profit) : '-' },
+            { title: '更新时间', key: 'createdAt', width: 180, render: (_value, row) => row.model ? formatDateTime(row.model.created_at) : '-' },
+            { title: '操作', key: 'action', width: 80, render: (_value, row) => <a className="model-list-action" onClick={() => row.model && setSelectedModel(row.model)}>详情</a> },
+          ]}
+          dataSource={modelRows}
+          loading={loading}
+          scroll={{ x: 1480 }}
+          pagination={false}
+          locale={{ emptyText: <Empty description="暂无模型版本" /> }}
+        />
       </section>
 
       <section className="model-evaluation-section">
@@ -228,11 +264,11 @@ const ModelInfo: React.FC = () => {
               <Descriptions.Item label="标签合同">{String(selectedMetrics.labelContract ?? '-')}</Descriptions.Item>
               <Descriptions.Item label="合同哈希"><span className="model-detail-code">{String(selectedMetrics.strategyContractHash ?? '-')}</span></Descriptions.Item>
             </Descriptions>
-            <Descriptions title="回测与真实交易" column={1} bordered size="small">
-              <Descriptions.Item label="回测毛收益率">{percent(metricNumber(selectedMetrics, 'grossReturn', 'gross_return', 'totalGrossReturn'))}</Descriptions.Item>
-              <Descriptions.Item label="最大回撤">{percent(metricNumber(selectedMetrics, 'maxDrawdown', 'max_drawdown'))}</Descriptions.Item>
-              <Descriptions.Item label="胜率">{percent(metricNumber(selectedMetrics, 'winRate', 'win_rate'))}</Descriptions.Item>
-              <Descriptions.Item label="换手率">{percent(metricNumber(selectedMetrics, 'turnover'))}</Descriptions.Item>
+            <Descriptions title="训练质量与真实交易" column={1} bordered size="small">
+              <Descriptions.Item label="IC 均值">{decimal(metricNumber(selectedMetrics, 'icMean'))}</Descriptions.Item>
+              <Descriptions.Item label="Rank IC 均值">{decimal(metricNumber(selectedMetrics, 'rankIcMean'))}</Descriptions.Item>
+              <Descriptions.Item label="有效 IC 日">{metricNumber(selectedMetrics, 'validIcDays') ?? '-'}</Descriptions.Item>
+              <Descriptions.Item label="训练样本">{metricNumber(selectedMetrics, 'trainRows') ?? '-'}</Descriptions.Item>
               <Descriptions.Item label="真实闭环交易">{selectedModel.realized_trade_count}</Descriptions.Item>
               <Descriptions.Item label="真实已实现毛收益"><Text type={selectedModel.gross_profit >= 0 ? 'danger' : 'success'}>{money(selectedModel.gross_profit)}</Text></Descriptions.Item>
               <Descriptions.Item label="更新时间">{formatDateTime(selectedModel.created_at)}</Descriptions.Item>
@@ -245,4 +281,4 @@ const ModelInfo: React.FC = () => {
 };
 
 export default ModelInfo;
-// AI_GENERATE_END -------
+// AI_GENERATE_END --------
