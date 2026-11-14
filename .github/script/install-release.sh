@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# AI_GENERATE_START --
 set -euo pipefail
 
 release_tag="${1:-}"
@@ -17,6 +18,7 @@ data_dir="$project_dir/data"
 logs_dir="$data_dir/logs"
 config_dir="$project_dir/config"
 completion_dir="$config_dir/completion"
+bash_completion_dir="${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions"
 bootstrap_script="$release_dir/script/bootstrap-server.sh"
 scheduler_script="$release_dir/script/scheduler.sh"
 commands="stock"
@@ -48,27 +50,42 @@ fi
 wheel="$1"
 
 mkdir -p "$python_dir" "$uv_cache_dir" "$data_dir"/{market,qlib,artifacts,state} \
-  "$completion_dir" "$config_dir" "$logs_dir"
+  "$completion_dir" "$bash_completion_dir" "$config_dir" "$logs_dir"
 
 install -m 0644 \
   "$release_dir/script/stock-completion.bash" \
   "$completion_dir/stock-completion.bash"
 install -m 0644 \
+  "$release_dir/script/stock-completion.bash" \
+  "$bash_completion_dir/stock"
+install -m 0644 \
   "$release_dir/script/stock-completion.ps1" \
   "$completion_dir/stock-completion.ps1"
 
-bashrc="$HOME/.bashrc"
 completion_begin="# STOCK_TRADING_COMPLETION_BEGIN"
 completion_end="# STOCK_TRADING_COMPLETION_END"
-touch "$bashrc"
-if ! grep -Fqx "$completion_begin" "$bashrc"; then
+install_bash_completion_hook() {
+  local shell_config="$1"
+  local temp_file
+  temp_file="$(mktemp)"
+  touch "$shell_config"
+  awk -v begin="$completion_begin" -v end="$completion_end" '
+    $0 == begin { skipping = 1; next }
+    skipping && $0 == end { skipping = 0; next }
+    !skipping { print }
+  ' "$shell_config" > "$temp_file"
   {
+    cat "$temp_file"
     printf '\n%s\n' "$completion_begin"
     printf 'if [ -f "%s" ]; then\n' "$completion_dir/stock-completion.bash"
     printf '  source "%s"\n' "$completion_dir/stock-completion.bash"
     printf 'fi\n%s\n' "$completion_end"
-  } >> "$bashrc"
-fi
+  } > "$shell_config"
+  rm -f "$temp_file"
+}
+
+install_bash_completion_hook "$HOME/.bashrc"
+install_bash_completion_hook "$HOME/.bash_profile"
 
 shopt -s nullglob
 env_files=("$project_dir"/*.env)
@@ -130,3 +147,4 @@ find "$releases_dir" \
     done
 
 printf 'Release %s installed.\n' "$release_tag"
+# AI_GENERATE_END --

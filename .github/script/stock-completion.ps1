@@ -1,20 +1,22 @@
+# AI_GENERATE_START --
 Register-ArgumentCompleter -Native -CommandName @("stock", "stock.exe") -ScriptBlock {
     param($wordToComplete, $commandAst, $cursorPosition)
 
     $commands = @(
         "data-collect", "data-generate",
-        "model-prepare", "model-train", "model-rank", "model-evaluate",
+        "model-prepare", "model-train", "model-backtests", "model-rank", "model-evaluate",
         "trade-buy", "trade-sell",
         "broker-check", "broker-sync",
         "system-pull", "system-push", "system-clean",
         "-h", "--help"
     )
     $options = @{
-        "data-collect" = @("--date", "--codes", "--type", "-h", "--help")
-        "data-generate" = @("--date", "-h", "--help")
-        "model-prepare" = @("--date", "--force", "-h", "--help")
-        "model-train" = @("--force", "-h", "--help")
-        "model-rank" = @("--date", "-h", "--help")
+        "data-collect" = @("--date", "--codes", "--level", "-h", "--help")
+        "data-generate" = @("--date", "--level", "-h", "--help")
+        "model-prepare" = @("--date", "--force", "--model", "-h", "--help")
+        "model-train" = @("--force", "--model", "-h", "--help")
+        "model-backtests" = @("--force", "--model", "--backtest-id", "--exit-position", "--exit-fallback-position", "--rank-grace-days", "--max-holding-days", "--capital", "--config", "-h", "--help")
+        "model-rank" = @("--date", "--model", "-h", "--help")
         "model-evaluate" = @("--date", "-h", "--help")
         "trade-buy" = @("-h", "--help")
         "trade-sell" = @("-h", "--help")
@@ -25,8 +27,8 @@ Register-ArgumentCompleter -Native -CommandName @("stock", "stock.exe") -ScriptB
         "system-clean" = @("--date", "-h", "--help")
     }
     $values = @{
-        "--type" = @("stock", "daily", "minute5", "minute1")
-        "--scope" = @("market", "prepared", "model", "state")
+        "--level" = @("1", "2", "3")
+        "--scope" = @("market", "prepared", "model", "backtest", "state")
     }
 
     $tokens = @($commandAst.CommandElements | ForEach-Object { $_.Extent.Text })
@@ -53,3 +55,4 @@ Register-ArgumentCompleter -Native -CommandName @("stock", "stock.exe") -ScriptB
 if (Get-Command Set-PSReadLineKeyHandler -ErrorAction SilentlyContinue) {
     Set-PSReadLineKeyHandler -Key Tab -Function MenuComplete
 }
+# AI_GENERATE_END --
