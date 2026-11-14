@@ -1,4 +1,4 @@
-// AI_GENERATE_START --------------
+// AI_GENERATE_START ---------------
 package com.stock.console.market;
 
 import com.stock.console.config.ConsoleProperties;
@@ -109,9 +109,9 @@ public class MarketRepository {
                        NULL AS total_market_value,
                        indicators.circulating_market_value
                 FROM read_parquet(?) AS instruments
-                INNER JOIN read_parquet(?, hive_partitioning = true, union_by_name = true) AS bars
+                INNER JOIN read_parquet(?, hive_partitioning = true) AS bars
                     ON bars.code = instruments.code AND CAST(bars.trade_date AS DATE) = CAST(? AS DATE)
-                LEFT JOIN read_parquet(?, hive_partitioning = true, union_by_name = true) AS indicators
+                LEFT JOIN read_parquet(?, hive_partitioning = true) AS indicators
                     ON indicators.code = instruments.code AND CAST(indicators.trade_date AS DATE) = CAST(? AS DATE)
                 WHERE instruments.security_type = '1'
                   AND coalesce(instruments.status, '') IN ('', '1')
@@ -163,9 +163,9 @@ public class MarketRepository {
         String value = keyword == null ? "" : keyword.trim();
         String filter = """
                 FROM read_parquet(?) AS instruments
-                INNER JOIN read_parquet(?, hive_partitioning = true, union_by_name = true) AS bars
+                INNER JOIN read_parquet(?, hive_partitioning = true) AS bars
                     ON bars.code = instruments.code AND CAST(bars.trade_date AS DATE) = CAST(? AS DATE)
-                LEFT JOIN read_parquet(?, hive_partitioning = true, union_by_name = true) AS indicators
+                LEFT JOIN read_parquet(?, hive_partitioning = true) AS indicators
                     ON indicators.code = instruments.code AND CAST(indicators.trade_date AS DATE) = CAST(? AS DATE)
                 WHERE instruments.security_type = '1'
                   AND coalesce(instruments.status, '') IN ('', '1')
@@ -264,7 +264,7 @@ public class MarketRepository {
         }
         String sql = """
                 SELECT DISTINCT CAST(trade_date AS DATE) AS trade_date
-                FROM read_parquet(?, hive_partitioning = true, union_by_name = true)
+                FROM read_parquet(?, hive_partitioning = true)
                 WHERE CAST(trade_date AS DATE) BETWEEN CAST(? AS DATE) AND CAST(? AS DATE)
                 ORDER BY trade_date
                 """;
@@ -335,7 +335,7 @@ public class MarketRepository {
         String sql = """
                 WITH bars AS MATERIALIZED (
                     SELECT trade_date, code, close, preclose
-                    FROM read_parquet(?, hive_partitioning = true, union_by_name = true)
+                    FROM read_parquet(?, hive_partitioning = true)
                     WHERE CAST(trade_date AS DATE) = CAST(? AS DATE)
                       AND preclose IS NOT NULL AND preclose <> 0
                 ),
@@ -388,7 +388,7 @@ public class MarketRepository {
         if (source == null) {
             return Optional.empty();
         }
-        String sql = "SELECT max(CAST(trade_date AS DATE)) AS latest_date FROM read_parquet(?, hive_partitioning = true, union_by_name = true)";
+        String sql = "SELECT max(CAST(trade_date AS DATE)) AS latest_date FROM read_parquet(?, hive_partitioning = true)";
         try (Connection connection = open(); PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, source);
             List<Map<String, Object>> values = rows(statement);
@@ -502,4 +502,4 @@ public class MarketRepository {
         return message == null || message.isBlank() ? "行情数据源无法读取" : message;
     }
 }
-// AI_GENERATE_END --------------
+// AI_GENERATE_END ---------------
