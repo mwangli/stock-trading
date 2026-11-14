@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---------
+// AI_GENERATE_START -----------
 import './styles.css';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Descriptions, Drawer, Empty, Statistic, Table, Tag, Typography } from 'antd';
@@ -34,6 +34,7 @@ interface ModelEvaluation {
   observations: number;
   window_days: number;
   total_net_return?: number;
+  total_gross_return?: number;
   max_drawdown?: number;
   decision: string;
   reason: string;
@@ -74,9 +75,13 @@ const parseMetrics = (raw?: string): Record<string, unknown> => {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
     const record = value as Record<string, unknown>;
     const nested = record.metrics;
-    return nested && typeof nested === 'object' && !Array.isArray(nested)
+    const merged = nested && typeof nested === 'object' && !Array.isArray(nested)
       ? { ...record, ...(nested as Record<string, unknown>) }
       : record;
+    const backtest = merged.backtest;
+    return backtest && typeof backtest === 'object' && !Array.isArray(backtest)
+      ? { ...merged, ...(backtest as Record<string, unknown>) }
+      : merged;
   } catch {
     return {};
   }
@@ -98,13 +103,15 @@ const statusColor = (status?: string) => String(status ?? '').toUpperCase() === 
 
 const modelIdOf = (model: ModelVersion) => {
   const metrics = parseMetrics(model.metrics_json);
-  if (metrics.modelId || metrics.model_id) {
-    return String(metrics.modelId ?? metrics.model_id);
-  }
+  const rawModelId = String(metrics.modelId ?? metrics.model_id ?? '');
+  if (/^L[12]_(daily|minute5)_(LightGBM|XGBoost)$/i.test(rawModelId)) return rawModelId;
   const path = model.artifact_path?.replaceAll('\\', '/').replace(/\/$/, '');
   const pathModelId = path?.split('/').slice(-2, -1)[0];
-  if (pathModelId && /^L\d+_(daily|minute5)_/i.test(pathModelId)) return pathModelId;
-  return model.model_name ?? '';
+  if (pathModelId && /^L[12]_(daily|minute5)_(LightGBM|XGBoost)$/i.test(pathModelId)) return pathModelId;
+  const algorithm = String(metrics.algorithm ?? model.model_name ?? '').toLowerCase().includes('xgboost') ? 'XGBoost' : 'LightGBM';
+  const featureText = `${rawModelId} ${pathModelId ?? ''} ${String(metrics.featureLevel ?? '')} ${String(metrics.dataFeature ?? '')} ${model.feature_set ?? ''}`.toLowerCase();
+  const level = featureText.includes('minute5') || featureText.includes('minute') || featureText.includes('l2') ? 'L2' : 'L1';
+  return rawModelId || pathModelId || model.model_name ? `${level}_${level === 'L2' ? 'minute5' : 'daily'}_${algorithm}` : '';
 };
 
 const artifactPathOf = (model: ModelVersion) => {
@@ -112,6 +119,10 @@ const artifactPathOf = (model: ModelVersion) => {
   const modelId = modelIdOf(model);
   return modelId ? `data/models/trained/${modelId}` : '-';
 };
+
+const hasBacktest = (metrics: Record<string, unknown>) => [
+  'grossReturn', 'gross_return', 'totalGrossReturn', 'maxDrawdown', 'max_drawdown', 'closedTrades', 'winRate', 'win_rate',
+].some((key) => metricNumber(metrics, key) != null);
 
 const ModelInfo: React.FC = () => {
   const [overview, setOverview] = useState<ModelOverview | null>(null);
@@ -150,6 +161,16 @@ const ModelInfo: React.FC = () => {
     }
     return result;
   }, new Map<string, ModelVersion>()), [versions]);
+  const backtestById = useMemo(() => versions.reduce((result, model) => {
+    const modelId = modelIdOf(model);
+    const metrics = parseMetrics(model.metrics_json);
+    if (!modelId || !hasBacktest(metrics)) return result;
+    const previous = result.get(modelId);
+    if (!previous || String(model.created_at ?? '') > String(previous.created_at ?? '')) {
+      result.set(modelId, model);
+    }
+    return result;
+  }, new Map<string, ModelVersion>()), [versions]);
   const modelRows = useMemo(() => MATRIX.map((definition) => ({
     ...definition,
     model: versionById.get(definition.modelId),
@@ -163,6 +184,7 @@ const ModelInfo: React.FC = () => {
     { title: '业务日期', dataIndex: 'business_date', key: 'business_date', width: 120 },
     { title: '模型', dataIndex: 'model_name', key: 'model_name', width: 190, render: (value?: string) => value || '未绑定模型' },
     { title: '样本', key: 'observations', width: 110, render: (_value, item) => item.observations + '/' + item.window_days },
+    { title: '回测毛收益率', dataIndex: 'total_gross_return', key: 'total_gross_return', width: 130, render: percent },
     { title: '真实净收益率', dataIndex: 'total_net_return', key: 'total_net_return', width: 130, render: percent },
     { title: '最大回撤', dataIndex: 'max_drawdown', key: 'max_drawdown', width: 110, render: percent },
     { title: '结论', dataIndex: 'decision', key: 'decision', width: 120, render: (value: string) => <Tag>{value}</Tag> },
@@ -219,7 +241,7 @@ const ModelInfo: React.FC = () => {
           rowKey="modelId"
           columns={[
             { title: '数据等级', dataIndex: 'level', key: 'level', width: 100, render: (value: string, row) => <div><strong>{value}</strong><small>{row.dataLabel}</small></div> },
-            { title: '状态', key: 'status', width: 120, render: (_value, row) => <Tag color={statusColor(row.model?.status)}>{row.model?.status ?? '待训练'}</Tag> },
+            { title: '状态', key: 'status', width: 120, render: (_value, row) => <Tag color={statusColor(row.model?.status)}>{row.model?.status ?? '待同步'}</Tag> },
             { title: '模型 ID', dataIndex: 'modelId', key: 'modelId', width: 210, render: (value: string) => <span className="model-list-id">{value}</span> },
             { title: '算法', dataIndex: 'algorithm', key: 'algorithm', width: 110 },
             { title: '策略合同', dataIndex: 'strategyId', key: 'strategyId', width: 190, render: (value: string) => <span className="model-list-code">{value}</span> },
@@ -227,13 +249,16 @@ const ModelInfo: React.FC = () => {
             { title: 'Rank IC', key: 'rankIcMean', width: 105, align: 'right', render: (_value, row) => decimal(metricNumber(parseMetrics(row.model?.metrics_json), 'rankIcMean')) },
             { title: '有效 IC 日', key: 'validIcDays', width: 105, align: 'right', render: (_value, row) => metricNumber(parseMetrics(row.model?.metrics_json), 'validIcDays') ?? '-' },
             { title: '训练样本', key: 'trainRows', width: 105, align: 'right', render: (_value, row) => metricNumber(parseMetrics(row.model?.metrics_json), 'trainRows') ?? '-' },
+            { title: '回测毛收益率', key: 'grossReturn', width: 135, align: 'right', render: (_value, row) => percent(metricNumber(parseMetrics(backtestById.get(row.model ? modelIdOf(row.model) : row.modelId)?.metrics_json), 'grossReturn', 'gross_return', 'totalGrossReturn')) },
+            { title: '最大回撤', key: 'maxDrawdown', width: 110, align: 'right', render: (_value, row) => percent(metricNumber(parseMetrics(backtestById.get(row.model ? modelIdOf(row.model) : row.modelId)?.metrics_json), 'maxDrawdown', 'max_drawdown')) },
+            { title: '回测交易数', key: 'closedTrades', width: 105, align: 'right', render: (_value, row) => metricNumber(parseMetrics(backtestById.get(row.model ? modelIdOf(row.model) : row.modelId)?.metrics_json), 'closedTrades', 'closed_trades') ?? '-' },
             { title: '真实毛收益', key: 'grossProfit', width: 135, align: 'right', render: (_value, row) => row.model ? money(row.model.gross_profit) : '-' },
             { title: '更新时间', key: 'createdAt', width: 180, render: (_value, row) => row.model ? formatDateTime(row.model.created_at) : '-' },
             { title: '操作', key: 'action', width: 80, render: (_value, row) => <a className="model-list-action" onClick={() => row.model && setSelectedModel(row.model)}>详情</a> },
           ]}
           dataSource={modelRows}
           loading={loading}
-          scroll={{ x: 1480 }}
+          scroll={{ x: 1850 }}
           pagination={false}
           locale={{ emptyText: <Empty description="暂无模型版本" /> }}
         />
@@ -269,6 +294,9 @@ const ModelInfo: React.FC = () => {
               <Descriptions.Item label="Rank IC 均值">{decimal(metricNumber(selectedMetrics, 'rankIcMean'))}</Descriptions.Item>
               <Descriptions.Item label="有效 IC 日">{metricNumber(selectedMetrics, 'validIcDays') ?? '-'}</Descriptions.Item>
               <Descriptions.Item label="训练样本">{metricNumber(selectedMetrics, 'trainRows') ?? '-'}</Descriptions.Item>
+              <Descriptions.Item label="回测毛收益率">{percent(metricNumber(parseMetrics(backtestById.get(modelIdOf(selectedModel))?.metrics_json), 'grossReturn', 'gross_return', 'totalGrossReturn'))}</Descriptions.Item>
+              <Descriptions.Item label="最大回撤">{percent(metricNumber(parseMetrics(backtestById.get(modelIdOf(selectedModel))?.metrics_json), 'maxDrawdown', 'max_drawdown'))}</Descriptions.Item>
+              <Descriptions.Item label="回测交易数">{metricNumber(parseMetrics(backtestById.get(modelIdOf(selectedModel))?.metrics_json), 'closedTrades', 'closed_trades') ?? '-'}</Descriptions.Item>
               <Descriptions.Item label="真实闭环交易">{selectedModel.realized_trade_count}</Descriptions.Item>
               <Descriptions.Item label="真实已实现毛收益"><Text type={selectedModel.gross_profit >= 0 ? 'danger' : 'success'}>{money(selectedModel.gross_profit)}</Text></Descriptions.Item>
               <Descriptions.Item label="更新时间">{formatDateTime(selectedModel.created_at)}</Descriptions.Item>
@@ -281,4 +309,4 @@ const ModelInfo: React.FC = () => {
 };
 
 export default ModelInfo;
-// AI_GENERATE_END --------
+// AI_GENERATE_END ----------
