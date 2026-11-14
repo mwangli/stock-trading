@@ -1,10 +1,11 @@
-// AI_GENERATE_START ------------------
+// AI_GENERATE_START -------------------
 package com.stock.console.market;
 
 import com.stock.console.config.ConsoleProperties;
 import org.springframework.stereotype.Repository;
 
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -694,4 +695,4 @@ public class MarketRepository {
         return message == null || message.isBlank() ? "行情数据源无法读取" : message;
     }
 }
-// AI_GENERATE_END ------------------
+// AI_GENERATE_END -------------------
