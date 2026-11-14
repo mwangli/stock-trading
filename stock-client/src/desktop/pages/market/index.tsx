@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 import './styles.css';
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import ReactECharts from 'echarts-for-react';
@@ -491,13 +491,20 @@ const Market: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchStocks(1, marketPageSize, searchKeyword);
+    let cancelled = false;
+    const loadMarketSummary = async () => {
+      // 受限 CPU 环境下串行读取，避免首屏同时启动多个 DuckDB 查询。
+      await fetchStocks(1, marketPageSize, searchKeyword);
+      if (cancelled) return;
+      await fetchMarketStats();
+      if (cancelled) return;
+      await fetchTopGainers();
+    };
+    void loadMarketSummary();
+    return () => {
+      cancelled = true;
+    };
   }, [marketPageSize]);
-
-  useEffect(() => {
-    fetchMarketStats();
-    fetchTopGainers();
-  }, []);
 
   const fetchMarketStats = async () => {
     try {
@@ -1040,4 +1047,4 @@ const Market: React.FC = () => {
 };
 
 export default Market;
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

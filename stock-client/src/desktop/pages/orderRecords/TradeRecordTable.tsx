@@ -1,4 +1,4 @@
-// AI_GENERATE_START ----
+// AI_GENERATE_START -----
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dayjs from 'dayjs';
 import { Button, DatePicker, Empty, Input, Pagination, Space, Spin, Table, Typography } from 'antd';
@@ -91,6 +91,7 @@ const TradeRecordTable: React.FC = () => {
   const [draftFilters, setDraftFilters] = useState<TradeFilters>(defaultFilters);
   const [filters, setFilters] = useState<TradeFilters>(defaultFilters);
   const [records, setRecords] = useState<TradeRecord[]>([]);
+  const [allRecords, setAllRecords] = useState<TradeRecord[]>([]);
   const [page, setPage] = useState<PageState>({ current: 1, pageSize: 10, total: 0 });
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -164,12 +165,14 @@ const TradeRecordTable: React.FC = () => {
       ));
       const offset = (targetPage - 1) * page.pageSize;
       const nextRecords = filteredRecords.slice(offset, offset + page.pageSize);
+      setAllRecords(filteredRecords);
       setRecords((current) => append ? [...current, ...nextRecords] : nextRecords);
       mobileLoadedPageRef.current = append ? targetPage : 1;
       setPage((current) => ({ ...current, total: filteredRecords.length }));
     } catch (cause) {
       if (!append) {
         setRecords([]);
+        setAllRecords([]);
         setPage((current) => ({ ...current, total: 0 }));
       }
       setError(cause instanceof Error ? cause.message : '交易记录读取失败');
@@ -184,7 +187,13 @@ const TradeRecordTable: React.FC = () => {
 
   useEffect(() => {
     void loadRecords(isMobile ? 1 : page.current, false);
-  }, [isMobile, loadRecords, page.current]);
+  }, [isMobile, loadRecords]);
+
+  useEffect(() => {
+    if (isMobile) return;
+    const offset = (page.current - 1) * page.pageSize;
+    setRecords(allRecords.slice(offset, offset + page.pageSize));
+  }, [allRecords, isMobile, page.current, page.pageSize]);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia(MOBILE_MEDIA_QUERY);
@@ -450,4 +459,4 @@ const TradeRecordTable: React.FC = () => {
 };
 
 export default TradeRecordTable;
-// AI_GENERATE_END ----
+// AI_GENERATE_END -----

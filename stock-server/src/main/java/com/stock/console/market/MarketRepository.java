@@ -1,4 +1,4 @@
-// AI_GENERATE_START ---------------
+// AI_GENERATE_START ------------------
 package com.stock.console.market;
 
 import com.stock.console.config.ConsoleProperties;
@@ -29,7 +29,18 @@ public class MarketRepository {
     private static final String LEGACY_DAILY_BASIC_PATTERN = "daily_basic/trade_date=*/indicators.parquet";
     private static final String TRADING_CALENDAR_PATTERN = DAILY_PATTERN;
     private final ConsoleProperties properties;
+    private volatile String latestDailyDateSource;
+    private volatile long latestDailyDateModified = Long.MIN_VALUE;
+    private volatile Optional<String> latestDailyDateCache;
+    private volatile String tradingCalendarCacheSource;
+    private volatile long tradingCalendarCacheModified = Long.MIN_VALUE;
+    private volatile List<LocalDate> tradingCalendarCache = List.of();
 
+    /**
+     * 创建行情仓库并绑定控制台配置。
+     *
+     * @param properties 控制台配置
+     */
     public MarketRepository(ConsoleProperties properties) {
         this.properties = properties;
     }
@@ -88,6 +99,17 @@ public class MarketRepository {
             return List.of();
         }
         String sql = """
+                WITH selected_instruments AS MATERIALIZED (
+                    SELECT snapshot_date, ipo_date, code, code_name, market_category,
+                           trade_status, security_type, status
+                    FROM read_parquet(?) AS instruments
+                    WHERE instruments.security_type = '1'
+                      AND coalesce(instruments.status, '') IN ('', '1')
+                      AND instruments.trade_status = '1'
+                      AND (? = '' OR instruments.code ILIKE ? OR instruments.code_name ILIKE ?)
+                    ORDER BY instruments.code
+                    LIMIT ?
+                )
                 SELECT instruments.snapshot_date AS as_of_date,
                        instruments.ipo_date AS listed_date,
                        instruments.code,
@@ -108,29 +130,24 @@ public class MarketRepository {
                        indicators.volume_ratio,
                        NULL AS total_market_value,
                        indicators.circulating_market_value
-                FROM read_parquet(?) AS instruments
+                 FROM selected_instruments AS instruments
                 INNER JOIN read_parquet(?, hive_partitioning = true) AS bars
                     ON bars.code = instruments.code AND CAST(bars.trade_date AS DATE) = CAST(? AS DATE)
                 LEFT JOIN read_parquet(?, hive_partitioning = true) AS indicators
                     ON indicators.code = instruments.code AND CAST(indicators.trade_date AS DATE) = CAST(? AS DATE)
-                WHERE instruments.security_type = '1'
-                  AND coalesce(instruments.status, '') IN ('', '1')
-                  AND instruments.trade_status = '1'
-                  AND (? = '' OR instruments.code ILIKE ? OR instruments.code_name ILIKE ?)
-                ORDER BY instruments.code
-                LIMIT ?
+                 ORDER BY instruments.code
                 """;
         String value = keyword == null ? "" : keyword.trim();
         try (Connection connection = open(); PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, instruments);
-            statement.setString(2, daily);
-            statement.setString(3, latest.get());
-            statement.setString(4, dailyBasic);
-            statement.setString(5, latest.get());
-            statement.setString(6, value);
-            statement.setString(7, "%" + value + "%");
-            statement.setString(8, "%" + value + "%");
-            statement.setInt(9, Math.max(1, Math.min(limit, 500)));
+            statement.setString(2, value);
+            statement.setString(3, "%" + value + "%");
+            statement.setString(4, "%" + value + "%");
+            statement.setInt(5, Math.max(1, Math.min(limit, 500)));
+            statement.setString(6, daily);
+            statement.setString(7, latest.get());
+            statement.setString(8, dailyBasic);
+            statement.setString(9, latest.get());
             return rows(statement);
         } catch (Exception exception) {
             return List.of();
@@ -161,19 +178,28 @@ public class MarketRepository {
         int normalizedPageSize = Math.max(1, Math.min(pageSize, 100));
         int offset = (normalizedPage - 1) * normalizedPageSize;
         String value = keyword == null ? "" : keyword.trim();
-        String filter = """
+        // 总数只依赖股票目录和最新日线，避免为分页计数再次读取指标文件。
+        String countFilter = """
                 FROM read_parquet(?) AS instruments
                 INNER JOIN read_parquet(?, hive_partitioning = true) AS bars
                     ON bars.code = instruments.code AND CAST(bars.trade_date AS DATE) = CAST(? AS DATE)
-                LEFT JOIN read_parquet(?, hive_partitioning = true) AS indicators
-                    ON indicators.code = instruments.code AND CAST(indicators.trade_date AS DATE) = CAST(? AS DATE)
                 WHERE instruments.security_type = '1'
                   AND coalesce(instruments.status, '') IN ('', '1')
                   AND instruments.trade_status = '1'
                   AND (? = '' OR instruments.code ILIKE ? OR instruments.code_name ILIKE ?)
                 """;
-        String countSql = "SELECT count(*) AS total " + filter;
+        String countSql = "SELECT count(*) AS total " + countFilter;
         String dataSql = """
+                WITH selected_instruments AS MATERIALIZED (
+                    SELECT snapshot_date, ipo_date, code, code_name, market_category
+                    FROM read_parquet(?) AS instruments
+                    WHERE instruments.security_type = '1'
+                      AND coalesce(instruments.status, '') IN ('', '1')
+                      AND instruments.trade_status = '1'
+                      AND (? = '' OR instruments.code ILIKE ? OR instruments.code_name ILIKE ?)
+                    ORDER BY instruments.code
+                    LIMIT ? OFFSET ?
+                )
                 SELECT instruments.snapshot_date AS as_of_date,
                        instruments.ipo_date AS listed_date,
                        instruments.code,
@@ -198,20 +224,25 @@ public class MarketRepository {
                        indicators.volume_ratio,
                        NULL AS total_market_value,
                        indicators.circulating_market_value
-                """ + filter + " ORDER BY instruments.code LIMIT ? OFFSET ?";
+                FROM selected_instruments AS instruments
+                INNER JOIN read_parquet(?, hive_partitioning = true) AS bars
+                    ON bars.code = instruments.code AND CAST(bars.trade_date AS DATE) = CAST(? AS DATE)
+                LEFT JOIN read_parquet(?, hive_partitioning = true) AS indicators
+                    ON indicators.code = instruments.code AND CAST(indicators.trade_date AS DATE) = CAST(? AS DATE)
+                ORDER BY instruments.code
+                """;
 
         try (Connection connection = open();
              PreparedStatement countStatement = connection.prepareStatement(countSql);
              PreparedStatement dataStatement = connection.prepareStatement(dataSql)) {
-            bindInstrumentFilter(countStatement, instruments, daily, latest.get(), dailyBasic, latest.get(), value);
+            bindCountFilter(countStatement, instruments, daily, latest.get(), value);
             List<Map<String, Object>> countRows = rows(countStatement);
             long total = countRows.isEmpty()
                     ? 0
                     : ((Number) countRows.get(0).getOrDefault("total", 0)).longValue();
 
-            bindInstrumentFilter(dataStatement, instruments, daily, latest.get(), dailyBasic, latest.get(), value);
-            dataStatement.setInt(9, normalizedPageSize);
-            dataStatement.setInt(10, offset);
+            bindDataPage(dataStatement, instruments, value, normalizedPageSize, offset,
+                    daily, latest.get(), dailyBasic, latest.get());
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("items", rows(dataStatement));
             result.put("total", total);
@@ -258,26 +289,46 @@ public class MarketRepository {
      * @return 升序交易日列表
      */
     public List<LocalDate> tradingDates(LocalDate startDate, LocalDate endDate) {
+        String source = tradingCalendarSource();
         if (startDate == null || endDate == null || endDate.isBefore(startDate)
-                || dailySource() == null) {
+                || source == null) {
             return List.of();
+        }
+        return cachedTradingCalendar(source).stream()
+                .filter(date -> !date.isBefore(startDate) && !date.isAfter(endDate))
+                .toList();
+    }
+
+    /**
+     * 读取并缓存完整交易日历，数据文件更新后自动重新加载。
+     *
+     * @param source 交易日历数据源
+     * @return 升序交易日列表
+     */
+    private List<LocalDate> cachedTradingCalendar(String source) {
+        long modified = source.contains("*") ? Long.MIN_VALUE : lastModified(source);
+        List<LocalDate> cached = tradingCalendarCache;
+        if (!cached.isEmpty() && source.equals(tradingCalendarCacheSource)
+                && modified == tradingCalendarCacheModified) {
+            return cached;
         }
         String sql = """
                 SELECT DISTINCT CAST(trade_date AS DATE) AS trade_date
                 FROM read_parquet(?, hive_partitioning = true)
-                WHERE CAST(trade_date AS DATE) BETWEEN CAST(? AS DATE) AND CAST(? AS DATE)
                 ORDER BY trade_date
                 """;
         try (Connection connection = open(); PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setString(1, marketSource(TRADING_CALENDAR_PATTERN));
-            statement.setString(2, startDate.toString());
-            statement.setString(3, endDate.toString());
+            statement.setString(1, source);
             try (ResultSet resultSet = statement.executeQuery()) {
                 List<LocalDate> dates = new ArrayList<>();
                 while (resultSet.next()) {
                     dates.add(LocalDate.parse(resultSet.getString("trade_date")));
                 }
-                return dates;
+                List<LocalDate> result = List.copyOf(dates);
+                tradingCalendarCacheSource = source;
+                tradingCalendarCacheModified = modified;
+                tradingCalendarCache = result;
+                return result;
             }
         } catch (Exception exception) {
             return List.of();
@@ -384,21 +435,52 @@ public class MarketRepository {
     }
 
     private Optional<String> latestDailyDate() {
-        String source = dailySource();
+        String source = tradingCalendarSource();
         if (source == null) {
             return Optional.empty();
+        }
+        long modified = source.contains("*") ? Long.MIN_VALUE : lastModified(source);
+        Optional<String> cached = latestDailyDateCache;
+        if (cached != null && source.equals(latestDailyDateSource)
+                && modified == latestDailyDateModified) {
+            return cached;
         }
         String sql = "SELECT max(CAST(trade_date AS DATE)) AS latest_date FROM read_parquet(?, hive_partitioning = true)";
         try (Connection connection = open(); PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, source);
             List<Map<String, Object>> values = rows(statement);
             Object latest = values.isEmpty() ? null : values.get(0).get("latest_date");
-            return latest == null ? Optional.empty() : Optional.of(latest.toString());
+            Optional<String> result = latest == null ? Optional.empty() : Optional.of(latest.toString());
+            latestDailyDateSource = source;
+            latestDailyDateModified = modified;
+            latestDailyDateCache = result;
+            return result;
         } catch (Exception exception) {
             return Optional.empty();
         }
     }
 
+    /**
+     * 读取行情文件的最后修改时间，用于判断最新日期缓存是否失效。
+     *
+     * @param source 行情文件路径
+     * @return 文件修改时间，无法读取时返回最小值
+     */
+    private long lastModified(String source) {
+        try {
+            return Files.getLastModifiedTime(Path.of(source)).toMillis();
+        } catch (Exception exception) {
+            return Long.MIN_VALUE;
+        }
+    }
+
+    /**
+     * 校验并规范化股票代码。
+     *
+     * @param code 原始股票代码
+     * @return 小写市场代码
+     * @throws IllegalArgumentException 股票代码格式错误
+     */
     private String requireCode(String code) {
         String normalizedCode = code == null ? "" : code.trim().toLowerCase();
         if (!CODE.matcher(normalizedCode).matches()) {
@@ -407,41 +489,94 @@ public class MarketRepository {
         return normalizedCode;
     }
 
+    /**
+     * 打开临时 DuckDB 查询连接。
+     *
+     * @return DuckDB 连接
+     * @throws Exception 连接创建失败
+     */
     private Connection open() throws Exception {
         return DriverManager.getConnection("jdbc:duckdb:");
     }
 
+    /**
+     * 将行情相对路径解析为绝对路径。
+     *
+     * @param relativePath 行情目录下的相对路径
+     * @return 规范化绝对路径
+     */
     private String marketSource(String relativePath) {
         return properties.marketDir().resolve(relativePath)
                 .toAbsolutePath().normalize().toString().replace('\\', '/');
     }
 
-    /** 返回当前股票基础信息快照，兼容尚未迁移的旧单文件路径。 */
+    /**
+     * 返回当前股票基础信息快照，并兼容旧单文件路径。
+     *
+     * @return 基础信息文件路径，不可用时返回 null
+     */
     private String basicSource() {
         if (marketAvailable(BASIC_RELATIVE)) return marketSource(BASIC_RELATIVE);
         if (marketAvailable(LEGACY_BASIC_RELATIVE)) return marketSource(LEGACY_BASIC_RELATIVE);
         return null;
     }
 
-    /** 返回按股票分区的当前日线数据通配路径。 */
+    /**
+     * 返回按股票分区的当前日线数据通配路径。
+     *
+     * @return 日线通配路径，不可用时返回 null
+     */
     private String dailySource() {
         if (marketDirectoryAvailable("raw/daily")) return marketSource(DAILY_PATTERN);
         if (marketDirectoryAvailable("daily")) return marketSource(LEGACY_DAILY_PATTERN);
         return null;
     }
 
-    /** 返回按股票分区的当前每日指标数据通配路径。 */
+    /**
+     * 返回按股票分区的当前每日指标数据通配路径。
+     *
+     * @return 指标通配路径，不可用时返回 null
+     */
     private String basicHistorySource() {
         if (marketDirectoryAvailable("derived/basic")) return marketSource(BASIC_HISTORY_PATTERN);
         if (marketDirectoryAvailable("daily_basic")) return marketSource(LEGACY_DAILY_BASIC_PATTERN);
         return null;
     }
 
-    /** 判断路径是否为包含 parquet 分区的目录。 */
+    /**
+     * 返回计算持有天数所需的交易日历数据源，优先使用单只代表股票文件。
+     *
+     * @return 交易日历文件或通配路径，不可用时返回 null
+     */
+    private String tradingCalendarSource() {
+        String[] candidates = {
+                "raw/daily/code=sh.600000/bars.parquet",
+                "daily/code=sh.600000/bars.parquet"
+        };
+        for (String candidate : candidates) {
+            if (marketAvailable(candidate)) {
+                return marketSource(candidate);
+            }
+        }
+        return dailySource();
+    }
+
+    /**
+     * 判断路径是否为包含行情分区的目录。
+     *
+     * @param relativePath 行情目录下的相对路径
+     * @return 目录存在时返回 true
+     */
     private boolean marketDirectoryAvailable(String relativePath) {
         return Files.isDirectory(properties.marketDir().resolve(relativePath));
     }
 
+    /**
+     * 判断行情文件是否存在且为普通文件。
+     *
+     * @param relativePath 行情目录下的相对路径
+     * @return 文件存在时返回 true
+     */
     private boolean marketAvailable(String relativePath) {
         return Files.isRegularFile(properties.marketDir().resolve(relativePath));
     }
@@ -487,6 +622,57 @@ public class MarketRepository {
         statement.setString(8, "%" + keyword + "%");
     }
 
+    /**
+     * 绑定股票总数查询所需的目录、日线日期和关键字参数。
+     *
+     * @param statement 总数查询语句
+     * @param instruments 股票目录文件路径
+     * @param daily 日线通配路径
+     * @param dailyDate 最新日线日期
+     * @param keyword 股票关键字
+     * @throws Exception 参数绑定失败
+     */
+    private void bindCountFilter(
+            PreparedStatement statement, String instruments, String daily,
+            String dailyDate, String keyword) throws Exception {
+        statement.setString(1, instruments);
+        statement.setString(2, daily);
+        statement.setString(3, dailyDate);
+        statement.setString(4, keyword);
+        statement.setString(5, "%" + keyword + "%");
+        statement.setString(6, "%" + keyword + "%");
+    }
+
+    /**
+     * 绑定股票分页查询的目录筛选、分页、日线和指标参数。
+     *
+     * @param statement 分页查询语句
+     * @param instruments 股票目录文件路径
+     * @param keyword 股票关键字
+     * @param pageSize 每页数量
+     * @param offset 分页偏移量
+     * @param daily 日线通配路径
+     * @param dailyDate 最新日线日期
+     * @param dailyBasic 每日指标通配路径
+     * @param basicDate 最新指标日期
+     * @throws Exception 参数绑定失败
+     */
+    private void bindDataPage(
+            PreparedStatement statement, String instruments, String keyword,
+            int pageSize, int offset, String daily, String dailyDate,
+            String dailyBasic, String basicDate) throws Exception {
+        statement.setString(1, instruments);
+        statement.setString(2, keyword);
+        statement.setString(3, "%" + keyword + "%");
+        statement.setString(4, "%" + keyword + "%");
+        statement.setInt(5, pageSize);
+        statement.setInt(6, offset);
+        statement.setString(7, daily);
+        statement.setString(8, dailyDate);
+        statement.setString(9, dailyBasic);
+        statement.setString(10, basicDate);
+    }
+
     private Map<String, Object> emptyInstrumentPage(int page, int pageSize, String asOfDate) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("items", List.of());
@@ -497,9 +683,15 @@ public class MarketRepository {
         return result;
     }
 
+    /**
+     * 将异常转换为安全的中文消息。
+     *
+     * @param exception 查询异常
+     * @return 非空异常消息
+     */
     private String safeMessage(Exception exception) {
         String message = exception.getMessage();
         return message == null || message.isBlank() ? "行情数据源无法读取" : message;
     }
 }
-// AI_GENERATE_END ---------------
+// AI_GENERATE_END ------------------

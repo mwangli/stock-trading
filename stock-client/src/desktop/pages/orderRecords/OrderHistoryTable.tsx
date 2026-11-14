@@ -1,4 +1,4 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dayjs from 'dayjs';
 import { Button, DatePicker, Empty, Input, Pagination, Select, Space, Spin, Table, Tag } from 'antd';
@@ -73,6 +73,7 @@ const OrderHistoryTable: React.FC = () => {
   const [draftFilters, setDraftFilters] = useState<OrderFilters>(defaultFilters);
   const [filters, setFilters] = useState<OrderFilters>(defaultFilters);
   const [orders, setOrders] = useState<BrokerOrder[]>([]);
+  const [allOrders, setAllOrders] = useState<BrokerOrder[]>([]);
   const [page, setPage] = useState<PageState>({ current: 1, pageSize: 10, total: 0 });
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -132,12 +133,14 @@ const OrderHistoryTable: React.FC = () => {
       }).sort((left, right) => timestamp(right.orderTime) - timestamp(left.orderTime));
       const offset = (targetPage - 1) * page.pageSize;
       const nextOrders = filteredOrders.slice(offset, offset + page.pageSize);
+      setAllOrders(filteredOrders);
       setOrders((current) => append ? [...current, ...nextOrders] : nextOrders);
       mobileLoadedPageRef.current = append ? targetPage : 1;
       setPage((current) => ({ ...current, total: filteredOrders.length }));
     } catch (cause) {
       if (!append) {
         setOrders([]);
+        setAllOrders([]);
         setPage((current) => ({ ...current, total: 0 }));
       }
       setError(cause instanceof Error ? cause.message : t('historyOrders.loadError'));
@@ -152,7 +155,13 @@ const OrderHistoryTable: React.FC = () => {
 
   useEffect(() => {
     void loadOrders(isMobile ? 1 : page.current, false);
-  }, [isMobile, loadOrders, page.current]);
+  }, [isMobile, loadOrders]);
+
+  useEffect(() => {
+    if (isMobile) return;
+    const offset = (page.current - 1) * page.pageSize;
+    setOrders(allOrders.slice(offset, offset + page.pageSize));
+  }, [allOrders, isMobile, page.current, page.pageSize]);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia(MOBILE_MEDIA_QUERY);
@@ -398,4 +407,4 @@ const OrderHistoryTable: React.FC = () => {
 };
 
 export default OrderHistoryTable;
-// AI_GENERATE_END -
+// AI_GENERATE_END --
