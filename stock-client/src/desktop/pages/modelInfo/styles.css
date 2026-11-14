@@ -1,4 +1,4 @@
-/* AI_GENERATE_START ------ */
+/* AI_GENERATE_START ------- */
 .model-matrix-page { display: grid; gap: 16px; }
 .matrix-summary { display: grid; grid-template-columns: repeat(3, minmax(150px, 1fr)) minmax(260px, 1.4fr); border: 1px solid var(--border-color); background: var(--panel-bg); }
 .matrix-summary > * { min-width: 0; padding: 16px; border-right: 1px solid var(--border-color); }
@@ -59,4 +59,4 @@
 @media (prefers-reduced-motion: reduce) {
   .matrix-cell { transition: none; }
 }
-/* AI_GENERATE_END ------ */
+/* AI_GENERATE_END ------- */

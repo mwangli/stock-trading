@@ -1,4 +1,4 @@
-// AI_GENERATE_START ------
+// AI_GENERATE_START -------
 import './styles.css';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Descriptions, Drawer, Empty, Statistic, Table, Tag, Typography } from 'antd';
@@ -63,9 +63,12 @@ const parseMetrics = (raw?: string): Record<string, unknown> => {
   if (!raw) return {};
   try {
     const value = JSON.parse(raw) as unknown;
-    return value && typeof value === 'object' && !Array.isArray(value)
-      ? value as Record<string, unknown>
-      : {};
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+    const record = value as Record<string, unknown>;
+    const nested = record.metrics;
+    return nested && typeof nested === 'object' && !Array.isArray(nested)
+      ? { ...record, ...(nested as Record<string, unknown>) }
+      : record;
   } catch {
     return {};
   }
@@ -84,7 +87,18 @@ const money = (value?: number) => 'CNY ' + Number(value ?? 0).toFixed(2);
 
 const modelIdOf = (model: ModelVersion) => {
   const metrics = parseMetrics(model.metrics_json);
-  return String(metrics.modelId ?? metrics.model_id ?? '');
+  if (metrics.modelId || metrics.model_id) {
+    return String(metrics.modelId ?? metrics.model_id);
+  }
+  if (model.model_name) return model.model_name;
+  const path = model.artifact_path?.replaceAll('\\', '/').replace(/\/$/, '');
+  return path?.split('/').pop() ?? '';
+};
+
+const artifactPathOf = (model: ModelVersion) => {
+  if (model.artifact_path) return model.artifact_path;
+  const modelId = modelIdOf(model);
+  return modelId ? `data/models/trained/${modelId}` : '-';
 };
 
 const ModelInfo: React.FC = () => {
@@ -207,6 +221,7 @@ const ModelInfo: React.FC = () => {
           <div className="model-detail-content">
             <div className="model-detail-heading"><div><span>模型 ID</span><strong>{modelIdOf(selectedModel)}</strong></div><Tag color={selectedModel.status === 'ACTIVE' ? 'green' : 'default'}>{selectedModel.status}</Tag></div>
             <Descriptions title="策略合同" column={1} bordered size="small">
+              <Descriptions.Item label="模型制品"><span className="model-detail-code">{artifactPathOf(selectedModel)}</span></Descriptions.Item>
               <Descriptions.Item label="策略 ID">{String(selectedMetrics.strategyId ?? '-')}</Descriptions.Item>
               <Descriptions.Item label="数据等级">{String(selectedMetrics.featureLevel ?? '-')}</Descriptions.Item>
               <Descriptions.Item label="算法">{String(selectedMetrics.algorithm ?? selectedModel.model_name)}</Descriptions.Item>
@@ -230,4 +245,4 @@ const ModelInfo: React.FC = () => {
 };
 
 export default ModelInfo;
-// AI_GENERATE_END ------
+// AI_GENERATE_END -------
