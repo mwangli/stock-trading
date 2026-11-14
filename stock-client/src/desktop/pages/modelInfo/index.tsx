@@ -1,4 +1,4 @@
-// AI_GENERATE_START -----
+// AI_GENERATE_START ------
 import './styles.css';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Descriptions, Drawer, Empty, Statistic, Table, Tag, Typography } from 'antd';
@@ -136,13 +136,13 @@ const ModelInfo: React.FC = () => {
         <Statistic title="运行模型" value={versions.filter((item) => item.status === 'ACTIVE').length} suffix="/ 4" />
         <Statistic title="已实现闭环交易" value={totals.trades} />
         <Statistic title="真实已实现毛收益" value={totals.grossProfit} precision={2} prefix="CNY" />
-        <div className="matrix-roadmap"><span>L3 规划</span><strong>T1_PM_SELL_PM_BUY</strong><small>分钟级午间决策，待数据完整后启用</small></div>
+        <div className="matrix-roadmap"><span>下一阶段</span><strong>T1_PM_SELL_PM_BUY</strong><small>分钟级午间决策，待数据完整后启用</small></div>
       </section>
 
       <section className="model-matrix-section">
         <div className="matrix-heading">
-          <div><h2>2 x 2 模型矩阵</h2><p>每个数据等级固定一个策略，所有策略 ID 均按先卖后买命名。</p></div>
-          <Tag color="blue">entryRank 5 / retainRank 15</Tag>
+          <div><h2>2 x 2 模型矩阵</h2><p>按数据频率和算法对照模型表现，策略合同独立于模型版本。</p></div>
+          <div className="matrix-heading-meta"><span>当前交易合同</span><strong>T1 · 先卖后买</strong></div>
         </div>
         <div className="model-matrix-grid">
           <div className="matrix-corner">数据等级</div>
@@ -165,12 +165,13 @@ const ModelInfo: React.FC = () => {
                 return (
                   <button
                     type="button"
-                    className={'matrix-cell' + (model ? ' is-ready' : '')}
+                    className={'matrix-cell' + (model ? ' is-ready' : '') + (model?.status === 'ACTIVE' ? ' is-active' : '')}
                     key={definition.modelId}
                     onClick={() => model && setSelectedModel(model)}
                     disabled={!model}
+                    aria-label={`${definition.modelId} 模型详情`}
                   >
-                    <span className="matrix-cell-top"><Tag color={model?.status === 'ACTIVE' ? 'green' : 'default'}>{model?.status ?? '待训练'}</Tag><small>{definition.dataLabel}</small></span>
+                    <span className="matrix-cell-top"><span className="matrix-status"><Tag color={model?.status === 'ACTIVE' ? 'green' : 'default'}>{model?.status ?? '待训练'}</Tag>{model?.status === 'ACTIVE' && <i>当前启用</i>}</span><small>{definition.dataLabel}</small></span>
                     <strong>{definition.modelId}</strong>
                     <span className="matrix-strategy">{definition.strategyId}</span>
                     <dl>
@@ -229,4 +230,4 @@ const ModelInfo: React.FC = () => {
 };
 
 export default ModelInfo;
-// AI_GENERATE_END -----
+// AI_GENERATE_END ------

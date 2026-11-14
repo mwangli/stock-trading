@@ -1,11 +1,10 @@
-// AI_GENERATE_START -------------
+// AI_GENERATE_START --------------
 package com.stock.console.market;
 
 import com.stock.console.config.ConsoleProperties;
 import org.springframework.stereotype.Repository;
 
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -22,8 +21,13 @@ import java.util.regex.Pattern;
 public class MarketRepository {
 
     private static final Pattern CODE = Pattern.compile("(?i)(sh|sz)[.]\\d{6}");
-    private static final String BASIC_RELATIVE = "basic/stocks.parquet";
-    private static final String TRADING_CALENDAR_PATTERN = "daily/code=sh.60000*/bars.parquet";
+    private static final String BASIC_RELATIVE = "raw/stock/stocks.parquet";
+    private static final String LEGACY_BASIC_RELATIVE = "basic/stocks.parquet";
+    private static final String DAILY_PATTERN = "raw/daily/code=*/bars.parquet";
+    private static final String LEGACY_DAILY_PATTERN = "daily/code=*/bars.parquet";
+    private static final String BASIC_HISTORY_PATTERN = "derived/basic/code=*/indicators.parquet";
+    private static final String LEGACY_DAILY_BASIC_PATTERN = "daily_basic/trade_date=*/indicators.parquet";
+    private static final String TRADING_CALENDAR_PATTERN = DAILY_PATTERN;
     private final ConsoleProperties properties;
 
     public MarketRepository(ConsoleProperties properties) {
@@ -36,8 +40,8 @@ public class MarketRepository {
      * @return 行情数据源状态
      */
     public Map<String, Object> status() {
-        String instruments = marketSource(BASIC_RELATIVE);
-        if (!marketAvailable(BASIC_RELATIVE)) {
+        String instruments = basicSource();
+        if (instruments == null) {
             return Map.of(
                     "available", false,
                     "reason", "股票目录文件不存在",
@@ -73,18 +77,16 @@ public class MarketRepository {
      * @return 股票详情列表
      */
     public List<Map<String, Object>> instruments(String keyword, int limit) {
-        String instruments = marketSource(BASIC_RELATIVE);
+        String instruments = basicSource();
         Optional<String> latest = latestDailyDate();
-        if (!marketAvailable(BASIC_RELATIVE) || latest.isEmpty()) {
+        if (instruments == null || latest.isEmpty()) {
             return List.of();
         }
-        String dailyRelative = "daily/trade_date=" + latest.get() + "/bars.parquet";
-        String dailyBasicRelative = "daily_basic/trade_date=" + latest.get() + "/indicators.parquet";
-        if (!marketAvailable(dailyRelative) || !marketAvailable(dailyBasicRelative)) {
+        String daily = dailySource();
+        String dailyBasic = basicHistorySource();
+        if (daily == null || dailyBasic == null) {
             return List.of();
         }
-        String daily = marketSource(dailyRelative);
-        String dailyBasic = marketSource(dailyBasicRelative);
         String sql = """
                 SELECT instruments.snapshot_date AS as_of_date,
                        instruments.ipo_date AS listed_date,
@@ -104,11 +106,13 @@ public class MarketRepository {
                        bars.amount,
                        indicators.turnover_rate,
                        indicators.volume_ratio,
-                       indicators.total_market_value,
+                       NULL AS total_market_value,
                        indicators.circulating_market_value
                 FROM read_parquet(?) AS instruments
-                INNER JOIN read_parquet(?) AS bars ON bars.code = instruments.code
-                LEFT JOIN read_parquet(?) AS indicators ON indicators.code = instruments.code
+                INNER JOIN read_parquet(?, hive_partitioning = true, union_by_name = true) AS bars
+                    ON bars.code = instruments.code AND CAST(bars.trade_date AS DATE) = CAST(? AS DATE)
+                LEFT JOIN read_parquet(?, hive_partitioning = true, union_by_name = true) AS indicators
+                    ON indicators.code = instruments.code AND CAST(indicators.trade_date AS DATE) = CAST(? AS DATE)
                 WHERE instruments.security_type = '1'
                   AND coalesce(instruments.status, '') IN ('', '1')
                   AND instruments.trade_status = '1'
@@ -120,11 +124,13 @@ public class MarketRepository {
         try (Connection connection = open(); PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, instruments);
             statement.setString(2, daily);
-            statement.setString(3, dailyBasic);
-            statement.setString(4, value);
-            statement.setString(5, "%" + value + "%");
-            statement.setString(6, "%" + value + "%");
-            statement.setInt(7, Math.max(1, Math.min(limit, 500)));
+            statement.setString(3, latest.get());
+            statement.setString(4, dailyBasic);
+            statement.setString(5, latest.get());
+            statement.setString(6, value);
+            statement.setString(7, "%" + value + "%");
+            statement.setString(8, "%" + value + "%");
+            statement.setInt(9, Math.max(1, Math.min(limit, 500)));
             return rows(statement);
         } catch (Exception exception) {
             return List.of();
@@ -140,14 +146,14 @@ public class MarketRepository {
      * @return 包含原始数值和格式化展示值的股票分页数据
      */
     public Map<String, Object> activeInstruments(String keyword, int page, int pageSize) {
-        String instruments = marketSource(BASIC_RELATIVE);
+        String instruments = basicSource();
         Optional<String> latest = latestDailyDate();
-        if (!marketAvailable(BASIC_RELATIVE) || latest.isEmpty()) {
+        if (instruments == null || latest.isEmpty()) {
             return emptyInstrumentPage(page, pageSize, null);
         }
-        String dailyRelative = "daily/trade_date=" + latest.get() + "/bars.parquet";
-        String dailyBasicRelative = "daily_basic/trade_date=" + latest.get() + "/indicators.parquet";
-        if (!marketAvailable(dailyRelative) || !marketAvailable(dailyBasicRelative)) {
+        String daily = dailySource();
+        String dailyBasic = basicHistorySource();
+        if (daily == null || dailyBasic == null) {
             return emptyInstrumentPage(page, pageSize, latest.get());
         }
 
@@ -155,12 +161,12 @@ public class MarketRepository {
         int normalizedPageSize = Math.max(1, Math.min(pageSize, 100));
         int offset = (normalizedPage - 1) * normalizedPageSize;
         String value = keyword == null ? "" : keyword.trim();
-        String daily = marketSource(dailyRelative);
-        String dailyBasic = marketSource(dailyBasicRelative);
         String filter = """
                 FROM read_parquet(?) AS instruments
-                INNER JOIN read_parquet(?) AS bars ON bars.code = instruments.code
-                LEFT JOIN read_parquet(?) AS indicators ON indicators.code = instruments.code
+                INNER JOIN read_parquet(?, hive_partitioning = true, union_by_name = true) AS bars
+                    ON bars.code = instruments.code AND CAST(bars.trade_date AS DATE) = CAST(? AS DATE)
+                LEFT JOIN read_parquet(?, hive_partitioning = true, union_by_name = true) AS indicators
+                    ON indicators.code = instruments.code AND CAST(indicators.trade_date AS DATE) = CAST(? AS DATE)
                 WHERE instruments.security_type = '1'
                   AND coalesce(instruments.status, '') IN ('', '1')
                   AND instruments.trade_status = '1'
@@ -190,22 +196,22 @@ public class MarketRepository {
                             ELSE printf('¥%.2f', bars.amount) END AS amount_display,
                        indicators.turnover_rate,
                        indicators.volume_ratio,
-                       indicators.total_market_value,
+                       NULL AS total_market_value,
                        indicators.circulating_market_value
                 """ + filter + " ORDER BY instruments.code LIMIT ? OFFSET ?";
 
         try (Connection connection = open();
              PreparedStatement countStatement = connection.prepareStatement(countSql);
              PreparedStatement dataStatement = connection.prepareStatement(dataSql)) {
-            bindInstrumentFilter(countStatement, instruments, daily, dailyBasic, value);
+            bindInstrumentFilter(countStatement, instruments, daily, latest.get(), dailyBasic, latest.get(), value);
             List<Map<String, Object>> countRows = rows(countStatement);
             long total = countRows.isEmpty()
                     ? 0
                     : ((Number) countRows.get(0).getOrDefault("total", 0)).longValue();
 
-            bindInstrumentFilter(dataStatement, instruments, daily, dailyBasic, value);
-            dataStatement.setInt(7, normalizedPageSize);
-            dataStatement.setInt(8, offset);
+            bindInstrumentFilter(dataStatement, instruments, daily, latest.get(), dailyBasic, latest.get(), value);
+            dataStatement.setInt(9, normalizedPageSize);
+            dataStatement.setInt(10, offset);
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("items", rows(dataStatement));
             result.put("total", total);
@@ -227,7 +233,7 @@ public class MarketRepository {
      */
     public List<Map<String, Object>> dailyBars(String code, int limit) {
         String normalizedCode = requireCode(code);
-        String relative = "daily/code=" + normalizedCode + "/bars.parquet";
+        String relative = "raw/daily/code=" + normalizedCode + "/bars.parquet";
         return readBars(relative, "trade_date", limit, 1000);
     }
 
@@ -240,7 +246,7 @@ public class MarketRepository {
      */
     public List<Map<String, Object>> minuteBars(String code, int limit) {
         String normalizedCode = requireCode(code);
-        String relative = "minute5/code=" + normalizedCode + "/bars.parquet";
+        String relative = "raw/minute5/code=" + normalizedCode + "/bars.parquet";
         return readBars(relative, "bar_end", limit, 2000);
     }
 
@@ -253,12 +259,12 @@ public class MarketRepository {
      */
     public List<LocalDate> tradingDates(LocalDate startDate, LocalDate endDate) {
         if (startDate == null || endDate == null || endDate.isBefore(startDate)
-                || !Files.isDirectory(properties.marketDir().resolve("daily"))) {
+                || dailySource() == null) {
             return List.of();
         }
         String sql = """
                 SELECT DISTINCT CAST(trade_date AS DATE) AS trade_date
-                FROM read_parquet(?)
+                FROM read_parquet(?, hive_partitioning = true, union_by_name = true)
                 WHERE CAST(trade_date AS DATE) BETWEEN CAST(? AS DATE) AND CAST(? AS DATE)
                 ORDER BY trade_date
                 """;
@@ -283,7 +289,7 @@ public class MarketRepository {
         if (latest.isEmpty()) {
             return Map.of("available", false, "reason", "全市场日线分区尚未生成");
         }
-        String source = marketSource("daily/trade_date=" + latest.get() + "/bars.parquet");
+        String source = dailySource();
         String sql = """
                 SELECT count(*) AS total,
                        sum(CASE WHEN close > preclose THEN 1 ELSE 0 END) AS advances,
@@ -291,10 +297,12 @@ public class MarketRepository {
                        sum(CASE WHEN close = preclose THEN 1 ELSE 0 END) AS unchanged,
                        coalesce(sum(amount), 0) AS total_amount,
                        coalesce(sum(volume), 0) AS total_volume
-                FROM read_parquet(?)
+                FROM read_parquet(?, hive_partitioning = true, union_by_name = true)
+                WHERE CAST(trade_date AS DATE) = CAST(? AS DATE)
                 """;
         try (Connection connection = open(); PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, source);
+            statement.setString(2, latest.get());
             List<Map<String, Object>> values = rows(statement);
             Map<String, Object> result = new LinkedHashMap<>(values.isEmpty() ? Map.of() : values.get(0));
             result.put("available", true);
@@ -315,35 +323,21 @@ public class MarketRepository {
      * @return 最新日线排名
      */
     public List<Map<String, Object>> latestDailyRanking(int limit) {
-        String instruments = marketSource(BASIC_RELATIVE);
-        if (!marketAvailable(BASIC_RELATIVE)) {
+        String instruments = basicSource();
+        if (instruments == null) {
             return List.of();
         }
 
-        String dailySource = null;
-        String dailyReader;
         Optional<String> latest = latestDailyDate();
-        String latestRelative = latest
-                .map(value -> "daily/trade_date=" + value + "/bars.parquet")
-                .orElse("");
-        if (!latestRelative.isEmpty() && marketAvailable(latestRelative)) {
-            dailySource = marketSource(latestRelative);
-            dailyReader = "read_parquet(?)";
-        } else {
-            Path directory = properties.marketDir().resolve("daily");
-            if (!Files.isDirectory(directory)) {
-                return List.of();
-            }
-            dailySource = directory.resolve("code=*/bars.parquet")
-                    .toAbsolutePath().normalize().toString().replace('\\', '/');
-            dailyReader = "read_parquet(?, hive_partitioning = true, union_by_name = true)";
-        }
+        String dailySource = dailySource();
+        if (latest.isEmpty() || dailySource == null) return List.of();
 
         String sql = """
                 WITH bars AS MATERIALIZED (
                     SELECT trade_date, code, close, preclose
-                    FROM %s
-                    WHERE preclose IS NOT NULL AND preclose <> 0
+                    FROM read_parquet(?, hive_partitioning = true, union_by_name = true)
+                    WHERE CAST(trade_date AS DATE) = CAST(? AS DATE)
+                      AND preclose IS NOT NULL AND preclose <> 0
                 ),
                 latest_date AS (
                     SELECT max(trade_date) AS trade_date
@@ -360,10 +354,11 @@ public class MarketRepository {
                 LEFT JOIN read_parquet(?) AS instruments ON instruments.code = bars.code
                 ORDER BY "returnRate" DESC, bars.code
                 LIMIT ?
-                """.formatted(dailyReader);
+                """;
         try (Connection connection = open(); PreparedStatement statement = connection.prepareStatement(sql)) {
             int parameter = 1;
             statement.setString(parameter++, dailySource);
+            statement.setString(parameter++, latest.get());
             statement.setString(parameter++, instruments);
             statement.setInt(parameter, Math.max(1, Math.min(limit, 100)));
             return rows(statement);
@@ -389,16 +384,16 @@ public class MarketRepository {
     }
 
     private Optional<String> latestDailyDate() {
-        Path directory = properties.marketDir().resolve("daily");
-        if (!Files.isDirectory(directory)) {
+        String source = dailySource();
+        if (source == null) {
             return Optional.empty();
         }
-        try (var paths = Files.list(directory)) {
-            return paths.filter(Files::isDirectory)
-                    .map(path -> path.getFileName().toString())
-                    .filter(name -> name.startsWith("trade_date="))
-                    .map(name -> name.substring("trade_date=".length()))
-                    .max(String::compareTo);
+        String sql = "SELECT max(CAST(trade_date AS DATE)) AS latest_date FROM read_parquet(?, hive_partitioning = true, union_by_name = true)";
+        try (Connection connection = open(); PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, source);
+            List<Map<String, Object>> values = rows(statement);
+            Object latest = values.isEmpty() ? null : values.get(0).get("latest_date");
+            return latest == null ? Optional.empty() : Optional.of(latest.toString());
         } catch (Exception exception) {
             return Optional.empty();
         }
@@ -419,6 +414,32 @@ public class MarketRepository {
     private String marketSource(String relativePath) {
         return properties.marketDir().resolve(relativePath)
                 .toAbsolutePath().normalize().toString().replace('\\', '/');
+    }
+
+    /** 返回当前股票基础信息快照，兼容尚未迁移的旧单文件路径。 */
+    private String basicSource() {
+        if (marketAvailable(BASIC_RELATIVE)) return marketSource(BASIC_RELATIVE);
+        if (marketAvailable(LEGACY_BASIC_RELATIVE)) return marketSource(LEGACY_BASIC_RELATIVE);
+        return null;
+    }
+
+    /** 返回按股票分区的当前日线数据通配路径。 */
+    private String dailySource() {
+        if (marketDirectoryAvailable("raw/daily")) return marketSource(DAILY_PATTERN);
+        if (marketDirectoryAvailable("daily")) return marketSource(LEGACY_DAILY_PATTERN);
+        return null;
+    }
+
+    /** 返回按股票分区的当前每日指标数据通配路径。 */
+    private String basicHistorySource() {
+        if (marketDirectoryAvailable("derived/basic")) return marketSource(BASIC_HISTORY_PATTERN);
+        if (marketDirectoryAvailable("daily_basic")) return marketSource(LEGACY_DAILY_BASIC_PATTERN);
+        return null;
+    }
+
+    /** 判断路径是否为包含 parquet 分区的目录。 */
+    private boolean marketDirectoryAvailable(String relativePath) {
+        return Files.isDirectory(properties.marketDir().resolve(relativePath));
     }
 
     private boolean marketAvailable(String relativePath) {
@@ -446,19 +467,24 @@ public class MarketRepository {
      * @param statement 查询语句
      * @param instruments 基础信息文件
      * @param daily 日线横截面文件
+     * @param dailyDate 日线查询日期
      * @param dailyBasic 每日指标文件
+     * @param basicDate 每日指标查询日期
      * @param keyword 股票关键字
      * @throws Exception 参数绑定失败
      */
     private void bindInstrumentFilter(
             PreparedStatement statement, String instruments, String daily,
-            String dailyBasic, String keyword) throws Exception {
+            String dailyDate, String dailyBasic, String basicDate,
+            String keyword) throws Exception {
         statement.setString(1, instruments);
         statement.setString(2, daily);
-        statement.setString(3, dailyBasic);
-        statement.setString(4, keyword);
-        statement.setString(5, "%" + keyword + "%");
-        statement.setString(6, "%" + keyword + "%");
+        statement.setString(3, dailyDate);
+        statement.setString(4, dailyBasic);
+        statement.setString(5, basicDate);
+        statement.setString(6, keyword);
+        statement.setString(7, "%" + keyword + "%");
+        statement.setString(8, "%" + keyword + "%");
     }
 
     private Map<String, Object> emptyInstrumentPage(int page, int pageSize, String asOfDate) {
@@ -476,4 +502,4 @@ public class MarketRepository {
         return message == null || message.isBlank() ? "行情数据源无法读取" : message;
     }
 }
-// AI_GENERATE_END -------------
+// AI_GENERATE_END --------------
