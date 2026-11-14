@@ -1,7 +1,8 @@
-// AI_GENERATE_START -
+// AI_GENERATE_START --
 import './styles.css';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card, Col, Empty, Row, Statistic, Table, Tag, Typography } from 'antd';
+import { CheckCircleOutlined, ClockCircleOutlined, DatabaseOutlined, LineChartOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import request from '../../utils/request';
 import type { ApiResponse } from '../../utils/api';
@@ -85,6 +86,8 @@ const ModelInfo: React.FC = () => {
     trades: result.trades + Number(item.realized_trade_count ?? 0),
     netProfit: result.netProfit + Number(item.net_profit ?? 0),
   }), { trades: 0, netProfit: 0 }), [versions]);
+  const activeModel = versions.find((item) => item.status === 'ACTIVE');
+  const latestEvaluation = overview?.evaluations?.[0];
 
   const versionColumns: ColumnsType<ModelVersion> = [
     { title: '模型', dataIndex: 'model_name', key: 'model_name', width: 160 },
@@ -110,15 +113,32 @@ const ModelInfo: React.FC = () => {
 
   return (
     <div className="app-page model-info-page">
+      <header className="model-info-lead">
+        <div>
+          <span className="model-info-kicker">MODEL OPERATIONS / PERFORMANCE</span>
+          <h1>模型信息</h1>
+          <p>统一查看模型版本、预测覆盖、评估结论与已实现交易收益。</p>
+        </div>
+        <div className="model-info-lead-status">
+          <span className="model-info-status-dot" />
+          <span>数据状态</span>
+          <strong>已同步</strong>
+          <span className="model-info-status-time"><ClockCircleOutlined /> 刚刚更新</span>
+        </div>
+      </header>
+
       <Row gutter={[12, 12]} className="model-info-summary">
-        <Col xs={12} lg={6}><Card className="surface-card"><Statistic title="模型版本" value={versions.length} /></Card></Col>
-        <Col xs={12} lg={6}><Card className="surface-card"><Statistic title="活动模型" value={versions.filter((item) => item.status === 'ACTIVE').length} /></Card></Col>
-        <Col xs={12} lg={6}><Card className="surface-card"><Statistic title="模型闭环交易" value={totals.trades} /></Card></Col>
-        <Col xs={12} lg={6}><Card className="surface-card"><Statistic title="模型净收益" value={totals.netProfit} precision={2} prefix="¥" /></Card></Col>
+        <Col xs={12} lg={6}><Card className="surface-card model-info-stat"><Statistic title="模型版本" value={versions.length} prefix={<DatabaseOutlined />} /><span className="model-info-stat-note">全部已登记版本</span></Card></Col>
+        <Col xs={12} lg={6}><Card className="surface-card model-info-stat model-info-stat-active"><Statistic title="活动模型" value={versions.filter((item) => item.status === 'ACTIVE').length} prefix={<CheckCircleOutlined />} /><span className="model-info-stat-note">{activeModel?.model_name || '暂无生产模型'}</span></Card></Col>
+        <Col xs={12} lg={6}><Card className="surface-card model-info-stat"><Statistic title="已实现交易" value={totals.trades} prefix={<LineChartOutlined />} /><span className="model-info-stat-note">仅统计完整买卖闭环</span></Card></Col>
+        <Col xs={12} lg={6}><Card className="surface-card model-info-stat"><Statistic title="累计净收益" value={totals.netProfit} precision={2} prefix="¥" valueStyle={{ color: totals.netProfit >= 0 ? '#ef6b73' : '#22c55e' }} /><span className="model-info-stat-note">按真实成交事实核算</span></Card></Col>
       </Row>
 
       <section className="model-info-section">
-        <h2>模型与效益</h2>
+        <div className="model-info-section-heading">
+          <div><h2>模型与效益</h2><p>按模型版本追踪预测覆盖与已实现收益，活动模型用于当前生产排名。</p></div>
+          <Tag className="model-info-section-count">{versions.length} 个版本</Tag>
+        </div>
         <Table
           rowKey="id"
           columns={versionColumns}
@@ -131,7 +151,10 @@ const ModelInfo: React.FC = () => {
       </section>
 
       <section className="model-info-section">
-        <h2>最近评估</h2>
+        <div className="model-info-section-heading">
+          <div><h2>最近评估</h2><p>评估结论基于完整交易窗口，未闭环的买入不会计入收益。</p></div>
+          {latestEvaluation && <Tag color="blue">最新：{latestEvaluation.business_date}</Tag>}
+        </div>
         <Table
           rowKey="business_key"
           columns={evaluationColumns}
@@ -147,4 +170,4 @@ const ModelInfo: React.FC = () => {
 };
 
 export default ModelInfo;
-// AI_GENERATE_END -
+// AI_GENERATE_END --
