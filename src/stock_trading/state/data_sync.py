@@ -1,4 +1,4 @@
-# AI_GENERATE_START------- -------------------------
+# AI_GENERATE_START-------- -------------------------
 from __future__ import annotations
 
 import hashlib
@@ -208,10 +208,11 @@ def _pull_directory_atomic(
     password: str,
 ) -> int:
     transfer_id = uuid4().hex
-    temporary_root = local_data_root / f".{directory}.sync-{transfer_id}"
+    directory_key = directory.replace("/", "-")
+    temporary_root = local_data_root / f".{directory_key}.sync-{transfer_id}"
     downloaded = temporary_root / Path(directory).name
     target = local_data_root / directory
-    backup = local_data_root / f".{directory}.previous-{transfer_id}"
+    backup = local_data_root / f".{directory_key}.previous-{transfer_id}"
     local_data_root.mkdir(parents=True, exist_ok=True)
     temporary_root.mkdir()
     try:
@@ -645,4 +646,4 @@ def _run_command(
         raise RuntimeError(detail) from error
 
 
-# AI_GENERATE_END------- -------------------------
+# AI_GENERATE_END-------- -------------------------

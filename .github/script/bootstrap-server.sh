@@ -82,8 +82,7 @@ apply_environment() {
     "$project_dir/python" \
     "$project_dir/.uv-cache" \
     "$project_dir/data/market" \
-    "$project_dir/data/qlib" \
-    "$project_dir/data/artifacts" \
+    "$project_dir/data/models" \
     "$project_dir/data/state" \
     "$project_dir/data/logs" \
     "$project_dir/config"

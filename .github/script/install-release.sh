@@ -49,7 +49,7 @@ if [ "$#" -ne 1 ] || [ ! -f "$1" ]; then
 fi
 wheel="$1"
 
-mkdir -p "$python_dir" "$uv_cache_dir" "$data_dir"/{market,qlib,artifacts,state} \
+mkdir -p "$python_dir" "$uv_cache_dir" "$data_dir"/{market,models,state} \
   "$completion_dir" "$bash_completion_dir" "$config_dir" "$logs_dir"
 
 install -m 0644 \

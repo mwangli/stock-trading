@@ -14,7 +14,7 @@ SCHEDULER=__PROJECT_DIR__/config/scheduler.sh
 
 # After-close data readiness checks precede next-trading-day ranking.
 # If a provider is late, report failure; never reuse a stale execution-date signal.
-10 16 * * 1-5 "$SCHEDULER" run "stock data-collect" "stock data-generate" "stock model-prepare" "stock model-rank"
+10 16 * * 1-5 "$SCHEDULER" run "stock data-collect --level 1" "stock data-collect --level 2" "stock data-generate --level 1" "stock data-generate --level 2" "stock model-prepare" "stock model-rank"
 
 # Historical orders and model review
 20 20 * * 1-5 "$SCHEDULER" run "stock broker-sync" "stock model-evaluate"
