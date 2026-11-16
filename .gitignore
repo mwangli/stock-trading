@@ -11,8 +11,8 @@
 .ruff_cache/
 .mypy_cache/
 outputs
-
-
+target/
+dist/
 # Runtime data and artifacts
 .tmp/
 /data/
