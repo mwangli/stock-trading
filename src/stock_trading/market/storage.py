@@ -1,4 +1,4 @@
-# AI_GENERATE_START-
+# AI_GENERATE_START--
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -239,6 +239,9 @@ class ParquetMarketStore:
             )
             if existing_contracts != {DAILY_CONTRACT_BAOSTOCK}:
                 return self._write(target, records)
+            return self._merge_history(
+                target, records, "trade_date", existing=existing
+            )
         return self._merge_history(target, records, "trade_date")
 
     def write_basic_history(
@@ -253,6 +256,9 @@ class ParquetMarketStore:
             contracts = set(existing.get("source_contract", pd.Series(dtype=str)))
             if contracts != {BASIC_CONTRACT_BAOSTOCK}:
                 return self._write(target, records)
+            return self._merge_history(
+                target, records, "trade_date", existing=existing
+            )
         return self._merge_history(target, records, "trade_date")
 
     def read_basic_panel(
@@ -316,6 +322,9 @@ class ParquetMarketStore:
             )
             if existing_contracts != contracts:
                 return self._write(target, records)
+            return self._merge_history(
+                target, records, "operate_date", existing=existing
+            )
         return self._merge_history(target, records, "operate_date")
 
 
@@ -371,16 +380,18 @@ class ParquetMarketStore:
         target: Path,
         records: list[dict[str, object]],
         date_field: str,
+        existing: pd.DataFrame | None = None,
     ) -> Path:
         if not records:
             raise ValueError(f"Refusing to write empty market history: {target}")
         frames = [pd.DataFrame.from_records(records)]
-        existing = pd.DataFrame()
-        if target.is_file():
+        if existing is None and target.is_file():
             try:
                 existing = _read_parquet_file(target)
             except Exception:
                 existing = pd.DataFrame()
+        if existing is None:
+            existing = pd.DataFrame()
         if not existing.empty:
             frames.insert(0, existing)
         merged = pd.concat(frames, ignore_index=True)
@@ -797,4 +808,4 @@ def _normalize_minute1_frame(frame: pd.DataFrame, code: str) -> pd.DataFrame:
     for field in ("bar_start", "bar_end"):
         normalized[field] = pd.to_datetime(normalized[field], utc=True).dt.tz_convert("Asia/Shanghai")
     return normalized.drop_duplicates(subset=["bar_end"], keep="last").sort_values("bar_end").reset_index(drop=True)
-# AI_GENERATE_END-
+# AI_GENERATE_END--

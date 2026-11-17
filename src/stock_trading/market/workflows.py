@@ -1,4 +1,4 @@
-# AI_GENERATE_START --
+# AI_GENERATE_START ---
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -190,20 +190,21 @@ def _collect_daily(
         code: coverage_ranges[code][0]
         for code in codes
     }
-    pending_codes = [
+    valid_codes = {
         code
         for code in codes
-        if not quality.daily_history_valid(store,
+        if quality.daily_history_valid(store,
             code, start_dates[code], end_dates[code]
         )
-    ]
+    }
+    pending_codes = [code for code in codes if code not in valid_codes]
     if pending_codes:
         result = provider.sync_daily(store, stocks, pending_codes, dates)
     else:
         result = {"skipped": True, "reason": "daily 数据已完整"}
-    usable_codes = sum(
+    usable_codes = len(valid_codes) + sum(
         quality.daily_history_valid(store, code, start_dates[code], end_dates[code])
-        for code in codes
+        for code in pending_codes
     )
     code_quality = require_data_quality(
         "collect-daily-codes",
@@ -449,4 +450,4 @@ def derive_workflow(
 def _minute5_date_batches(dates: list[date]) -> list[list[date]]:
     """BaoStock 单连接按完整日期范围查询，避免按年度重复请求和写盘。"""
     return [dates] if dates else []
-# AI_GENERATE_END --
+# AI_GENERATE_END ---

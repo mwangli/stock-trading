@@ -1,4 +1,4 @@
-# AI_GENERATE_START
+# AI_GENERATE_START -
 from __future__ import annotations
 
 import logging
@@ -627,6 +627,7 @@ class BaoStockMarketProvider:
         rows = 0
         failures: dict[str, str] = {}
         attempts: dict[str, int] = defaultdict(int)
+        empty_failures = 0
         index = 0
         while index < len(codes):
             session_end = min(index + BAOSTOCK_SESSION_REQUEST_LIMIT, len(codes))
@@ -680,7 +681,12 @@ class BaoStockMarketProvider:
                         break
                     except Exception as error:
                         failures[code] = str(error)
-                        LOGGER.warning("%s采集失败：股票=%s；原因=%s", label, code, error)
+                        if str(error).endswith("为空"):
+                            empty_failures += 1
+                        else:
+                            LOGGER.warning(
+                                "%s采集失败：股票=%s；原因=%s", label, code, error
+                            )
                         index += 1
                     else:
                         completed += 1
@@ -689,6 +695,14 @@ class BaoStockMarketProvider:
                         index += 1
             if reconnect:
                 continue
+        if empty_failures:
+            LOGGER.warning(
+                "%s采集空结果汇总：空结果=%d；失败总数=%d；样例=%s",
+                label,
+                empty_failures,
+                len(failures),
+                ",".join(list(failures)[:20]),
+            )
         return {
             "provider": self.name,
             "execution": "serial",
@@ -1052,4 +1066,4 @@ def _to_minute_bars(
         )
         for point in regular
     ]
-# AI_GENERATE_END
+# AI_GENERATE_END -

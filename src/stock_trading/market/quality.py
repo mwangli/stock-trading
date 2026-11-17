@@ -1,4 +1,4 @@
-# AI_GENERATE_START ------
+# AI_GENERATE_START -------
 from __future__ import annotations
 
 import logging
@@ -365,21 +365,25 @@ def valid_basic_codes(
 
 def daily_history_valid(store, code: str, start_date: date, end_date: date) -> bool:
         """检查日线文件可读、字段完整且覆盖研究窗口。"""
-        try:
-            frame = store.read_daily_history(code)
-            pd.to_datetime(frame["trade_date"], errors="raise")
-        except (OSError, ValueError, KeyError, AttributeError):
-            return False
         required = {
-            "code", "trade_date", "open", "high", "low", "close", "preclose",
+            "trade_date", "open", "high", "low", "close", "preclose",
             "volume", "amount", "turnover_rate", "pe_ttm", "pb_mrq",
             "ps_ttm", "pcf_ncf_ttm", "tradestatus", "is_st",
             "source_contract",
         }
+        try:
+            path = store._daily_root / "daily" / f"code={code}" / "bars.parquet"
+            parquet = pq.ParquetFile(path)
+            if not required.issubset(parquet.schema_arrow.names):
+                return False
+            frame = parquet.read(
+                columns=["trade_date", "source_contract"]
+            ).to_pandas()
+        except (OSError, ValueError, KeyError, AttributeError):
+            return False
         dates = pd.to_datetime(frame["trade_date"], errors="coerce").dt.date
         return (
-            required.issubset(frame.columns)
-            and not frame.empty
+            not frame.empty
             and dates.notna().all()
             and dates.min() <= start_date + timedelta(days=15)
             and dates.le(end_date).any()
@@ -877,4 +881,4 @@ def _eligible_daily_rows(frame: pd.DataFrame) -> pd.DataFrame:
             & (frame["volume"].astype(float) > 0)
         ]
 
-# AI_GENERATE_END ------
+# AI_GENERATE_END -------
